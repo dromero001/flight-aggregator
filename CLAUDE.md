@@ -23,9 +23,10 @@ These rules apply to every AI agent (main session and subagents) working in this
 ## Documenting AI usage
 - Every relevant working session gets a file in `docs/ai-sessions/` (numbered, in English): goal, what happened, decisions, lesson.
 - Each session ends with a **"Prompts that added value"** section, holding only the prompts (the user's, or the briefs given to subagents) that changed the outcome: a challenge that exposed a wrong assumption, a framing that reshaped the design, a brief that made delegated work verifiable. For each prompt, quote or paraphrase it faithfully and say what it changed.
+- Prompts are written in English. The working sessions were held in Spanish, so prompts are translated faithfully, keeping their meaning and tone.
 - Leave out routine instructions ("commit and push", "document it", "go on"), and never invent or embellish a prompt.
 
 ## Conventions
-- English everywhere: code, tests, logs, docs and every user-facing text.
+- English everywhere: everything that is presented or documented (code, tests, logs, commit messages, docs, prompts, the dashboard and every user-facing text), even when the conversation with the agent happens in Spanish.
 - Dependencies: the latest **stable GA** release, verified against a primary source (Maven Central `maven-metadata.xml`, official release pages) before pinning. No milestones or release candidates. Libraries managed by the Spring Boot BOM take the BOM version.
 - Hexagonal boundaries: no framework or persistence types in the domain.
