@@ -77,10 +77,12 @@ class DatasetGeneratorTest {
     void someLegsAreSoldByTwoOrThreeProvidersAtDifferentPrices() {
         var providersByKey = allRecords().stream().collect(Collectors.groupingBy(
                 record -> record.leg().key(), Collectors.mapping(ProviderRecord::provider, Collectors.toSet())));
-        double total = providersByKey.size();
+        int total = providersByKey.size();
 
-        assertThat(count(providersByKey, 2) / total).isCloseTo(CONFIG.twoProviderShare(), within(0.02));
-        assertThat(count(providersByKey, 3) / total).isCloseTo(CONFIG.threeProviderShare(), within(0.02));
+        assertThat((double) count(providersByKey, 2) / total)
+                .isCloseTo(CONFIG.twoProviderShare(), within(fourSigma(CONFIG.twoProviderShare(), total)));
+        assertThat((double) count(providersByKey, 3) / total)
+                .isCloseTo(CONFIG.threeProviderShare(), within(fourSigma(CONFIG.threeProviderShare(), total)));
         var sharedOffers = dataset.validLegs().stream().collect(Collectors.groupingBy(Leg::key)).values().stream()
                 .filter(offers -> offers.size() > 1)
                 .toList();

@@ -35,7 +35,16 @@ public record GeneratorConfig(long seed, int windowDays, int maxDailyFlightsPerR
 
     /** The parameters used by the mock providers, calibrated to about one million itineraries. */
     public static GeneratorConfig defaults() {
-        return new GeneratorConfig(20261116L, 30, 2, 0.45, 0.25, 0.10, 0.01, Duration.ofMinutes(15));
+        long seed = 20261116L;
+        int windowDays = 30;
+        int maxDailyFlightsPerRoute = 2;
+        double operatingProbability = 0.45;
+        double twoProviderShare = 0.25;
+        double threeProviderShare = 0.10;
+        double malformedShare = 0.01;
+        var priceBucket = Duration.ofMinutes(15);
+        return new GeneratorConfig(seed, windowDays, maxDailyFlightsPerRoute, operatingProbability,
+                twoProviderShare, threeProviderShare, malformedShare, priceBucket);
     }
 
     ScheduleParameters scheduleParameters() {

@@ -26,6 +26,8 @@ final class ItineraryCount {
         if (itinerary.stream().map(Leg::airline).distinct().count() > 1) {
             interlining++;
         }
+        // Circular itineraries (e.g. MAD-LHR-MAD-JFK) are valid under §4 and counted above, but they would make
+        // a pair look reachable with fewer stops than a traveller would accept, so they are left out of the pair sets.
         if (visitsAnAirportTwice(itinerary)) {
             revisitingAnAirport++;
             return;

@@ -2,7 +2,6 @@ package com.flightaggregator.mockgds.calibration;
 
 import com.flightaggregator.mockgds.model.Leg;
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -46,17 +45,21 @@ record ConnectionCensus(long valid, long belowMinimumConnectionTime, long layove
     }
 
     private static long countBetween(long[] sorted, long fromInclusive, long toInclusive) {
-        return firstIndexAbove(sorted, toInclusive) - firstIndexAbove(sorted, fromInclusive - 1);
+        return lowerBound(sorted, toInclusive + 1) - lowerBound(sorted, fromInclusive);
     }
 
-    private static int firstIndexAbove(long[] sorted, long value) {
-        int index = Arrays.binarySearch(sorted, value + 1);
-        if (index < 0) {
-            return -index - 1;
+    /** Index of the first element not less than {@code value}. */
+    private static int lowerBound(long[] sorted, long value) {
+        int low = 0;
+        int high = sorted.length;
+        while (low < high) {
+            int middle = (low + high) >>> 1;
+            if (sorted[middle] < value) {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
         }
-        while (index > 0 && sorted[index - 1] > value) {
-            index--;
-        }
-        return index;
+        return low;
     }
 }

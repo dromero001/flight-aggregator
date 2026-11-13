@@ -8,14 +8,14 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-/** Seeded decisions of who sells each leg and which records are served malformed. */
-final class ProviderSelection {
+/** Seeded decisions about each offer: which providers sell a leg, and whether a provider serves it malformed. */
+final class OfferDecisions {
 
     private static final List<Provider> ALL = List.of(Provider.values());
 
     private final GeneratorConfig config;
 
-    ProviderSelection(GeneratorConfig config) {
+    OfferDecisions(GeneratorConfig config) {
         this.config = config;
     }
 
