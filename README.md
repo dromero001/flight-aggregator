@@ -11,3 +11,5 @@ Flight aggregation & cache optimization system: ingests itineraries from three l
   - [02 — Hiring team's answers and project plan](docs/ai-sessions/02-team-answers-and-project-plan.md)
   - [03 — Grill-me on the open design decisions](docs/ai-sessions/03-grill-me-design-decisions.md)
 - [Project plan draft](docs/superpowers/specs/2026-11-13-flight-aggregator-design.md)
+- [Implementation plan — mock dataset](docs/superpowers/plans/2026-11-13-mock-dataset.md)
+- [Progress report — 2026-11-13](docs/progress/2026-11-13.md)
