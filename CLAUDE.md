@@ -20,6 +20,11 @@ These rules apply to every AI agent (main session and subagents) working in this
 ## Pushing
 - Only to the personal account: run `direnv exec . gh api user --jq .login` and push only if it prints `dromero001`.
 
+## Documenting AI usage
+- Every relevant working session gets a file in `docs/ai-sessions/` (numbered, in English): goal, what happened, decisions, lesson.
+- Each session ends with a **"Prompts that added value"** section, holding only the prompts (the user's, or the briefs given to subagents) that changed the outcome: a challenge that exposed a wrong assumption, a framing that reshaped the design, a brief that made delegated work verifiable. For each prompt, quote or paraphrase it faithfully and say what it changed.
+- Leave out routine instructions ("commit and push", "document it", "go on"), and never invent or embellish a prompt.
+
 ## Conventions
 - English everywhere: code, tests, logs, docs and every user-facing text.
 - Dependencies: the latest **stable GA** release, verified against a primary source (Maven Central `maven-metadata.xml`, official release pages) before pinning. No milestones or release candidates. Libraries managed by the Spring Boot BOM take the BOM version.

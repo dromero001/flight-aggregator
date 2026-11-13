@@ -83,6 +83,14 @@ The agent started from the business ("does a real OTA make you log in to search?
 
 All three use ISO-8601 times with offset. Malformed records are skipped one by one, counted and logged, never silently. The differences are what make the anti-corruption layer meaningful rather than ceremonial.
 
+## Prompts that added value
+
+- *"Is this a modern stack? Why Java 21 and not 25? Isn't Spring Boot on version 4?"*: exposed an outdated proposal that included a framework already out of support.
+- *"Review the rest of the stack, in case you propose outdated versions again."*: turned a single fix into a check of every component, and surfaced Spring 7's built-in resilience, the missing Resilience4j starter and PostgreSQL 19's RC status.
+- *"Have you taken into account that flight prices can change at any moment?"*: led to re-price on selection, generation-aware pagination and price drift in the mocks.
+- *"I want to be able to justify the use of the cache, and which type."*: forced each cache level to be justified by pattern, cost and rejected alternatives, including the honest note that PostgreSQL alone would cope at demo volume.
+- *"Is that acceptable in a real production environment?"* (about cross-partition sorting and partitions created ahead): added the safeguards (7 days ahead, DEFAULT partition, alerts).
+
 ## Q8 onwards
 
 Pending.

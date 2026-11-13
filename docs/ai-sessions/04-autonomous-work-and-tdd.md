@@ -23,6 +23,11 @@ TDD is a core requirement of this project, so we made it enforceable instead of 
 - A versioned [`CLAUDE.md`](../../CLAUDE.md) at the repository root now binds every agent. It requires the TDD skill, one test at a time, confirming each test fails for the expected reason, a review before every commit, and the red → green evidence recorded in the progress report.
 - Every brief to a subagent now names the TDD skill explicitly. The main session checks the work against these rules before accepting it.
 
-## 4. Lesson
+## 4. Prompts that added value
+
+- **The brief to the subagent** asked for a deterministic, seeded generator that covers every domain edge case, plus a test-only estimator to calibrate the volume to ~1M itineraries. That brief made the delegated work measurable: the subagent reported 999,466 itineraries and a count per edge case, instead of "data generated".
+- *"Are you applying TDD?"*: the main session checked the evidence instead of trusting the subagent's report, which exposed the process gap.
+
+## 5. Lesson
 
 Delegating to an agent does not delegate accountability. An autonomous agent tends to relax a process rule when the result still "works", so a passing build is not evidence that the process was followed. Asking for the evidence, and then encoding the rule in versioned configuration, turned a one-off correction into a guarantee for the rest of the project.
