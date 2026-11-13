@@ -201,7 +201,24 @@ Starting point: on a real OTA, **searching does not require logging in**. Requir
 - **Credentials towards the providers:** each mock requires its own API key in a header, as a real GDS does. The adapters send it from configuration, injected through environment variables and never committed.
 - **Tests:** public search without a token; admin endpoints returning 401 without a token and 403 without the `ADMIN` role; rate-limit 429; a provider rejecting a wrong API key.
 
-### 6.7 Language
+### 6.7 Provider payload schemas (decided in the grill-me, Q7)
+
+The hiring team left the schemas to us. Each provider is **deliberately different**, as real legacy systems are, so that each adapter performs a real translation into our model instead of copying fields.
+
+| | Alpha (JSON) | Beta (XML) | Gamma (CSV) |
+|---|---|---|---|
+| Structure | flat list of legs, `camelCase` names | nested (`<Segments><Segment><Carrier code="IB"/>…`), mixing attributes and elements | one line per leg, **with a header row** |
+| Price | decimal as a string, `"129.90"` | integer in minor units (cents), `12990` | decimal with a dot |
+| Pagination | cursor (`nextCursor`) | page number | `offset` / `limit` |
+| Times | ISO-8601 with offset in all three (§4.2) | | |
+| Auth | API key in a header, different per provider (§6.6) | | |
+
+- **Why Gamma has a header row:** columns are read by name, not by position. Reordering columns does not break the parser, and the file describes itself. Without a header, adding a column would silently corrupt the parsing.
+- **Malformed records:** only the malformed line or element is discarded. It is counted in a metric and logged with the provider and the reason. A batch is never lost because of one bad record, and nothing is discarded silently.
+- **Why it matters:** these differences are what justify the **adapter / anti-corruption layer** pattern. No external format crosses into the domain, and adding a fourth provider means writing one adapter, without touching the domain or the itinerary builder.
+- **Tests:** a parser contract test per provider, covering valid payloads, every malformed case and pagination to the last page.
+
+### 6.8 Language
 
 All user-facing text is in **English**: API error messages, dashboard labels, filters, notices and empty states. The same applies to code, logs and documentation.
 
@@ -256,7 +273,7 @@ Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight wor
 4. ~~**Job frequency and TTL / staleness threshold**~~ — **decided**, see §6.4.
 5. ~~**All three providers down**~~ — **decided**, see §6.5.
 6. ~~**Authentication**~~ — **decided**, see §6.6.
-7. **Payload schemas** for Alpha, Beta and Gamma (Gamma with or without headers), designed to cover every case and to be defended in the interview.
+7. ~~**Payload schemas**~~ — **decided**, see §6.7.
 8. **Dashboard** — design and frontend stack.
 9. **Observability** — metrics, traces, logs; which stack in docker compose.
 10. **CI** — GitHub Actions scope (build, tests, image build).

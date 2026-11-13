@@ -63,7 +63,7 @@ Asking about the business reality ("prices change") rather than the technology e
 - re-price on selection refuses to sell at an unconfirmed price (503 + `Retry-After`);
 - the system reports DEGRADED (not DOWN), with per-provider freshness metrics and alerts.
 
-The guiding principle: degrade visibly, never fail silently, and never sell at a price we could not confirm. I also set that every user-facing text (messages, dashboard, filters) is in English (§6.7).
+The guiding principle: degrade visibly, never fail silently, and never sell at a price we could not confirm. I also set that every user-facing text (messages, dashboard, filters) is in English (§6.8).
 
 ## Q6 — Authentication
 
@@ -74,6 +74,15 @@ The guiding principle: degrade visibly, never fail silently, and never sell at a
 
 The agent started from the business ("does a real OTA make you log in to search?") rather than from the technology, so authentication went where it protects something.
 
-## Q7 onwards
+## Q7 — Provider payload schemas
+
+**Decided** (§6.7 of the plan): the three providers are deliberately different in structure, price representation and pagination:
+- Alpha: flat JSON, decimal string prices, cursor pagination;
+- Beta: nested XML, prices in cents, page numbers;
+- Gamma: CSV with a header row, offset/limit.
+
+All three use ISO-8601 times with offset. Malformed records are skipped one by one, counted and logged, never silently. The differences are what make the anti-corruption layer meaningful rather than ceremonial.
+
+## Q8 onwards
 
 Pending.
