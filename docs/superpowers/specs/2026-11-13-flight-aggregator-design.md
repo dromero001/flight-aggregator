@@ -117,7 +117,24 @@ Keyset (seek) pagination with one composite index per supported sort order — p
 
 ## 6. Architecture (hexagonal / DDD) — proposal
 
-Proposed stack (pending the grill-me, Q1): **Java 21 + Spring Boot 3 + virtual threads + Resilience4j + PostgreSQL + Redis + Gradle (multi-module) + Testcontainers**. The frontend stack is still open.
+### 6.1 Technology stack (decided in the grill-me, Q1)
+
+**Version policy:** the latest **stable GA** of every component; no milestones, release candidates or `.0` releases published days before the delivery. With a fixed deadline, a framework bug that is not ours is a risk we cannot absorb. Exact patch versions are verified in Maven Central and on the official sites when the skeleton is created, and are pinned. Libraries managed by the Spring Boot BOM (Flyway, Testcontainers, Jackson, Micrometer, drivers) take the BOM version, so they are known to work together.
+
+| Component | Choice | Why |
+|---|---|---|
+| Language | **Java 25 (LTS)** | Current LTS. Virtual threads no longer pin carrier threads inside `synchronized` (JEP 491), which matters for concurrent calls to three slow providers. Scoped Values are final, and carry the ingestion context (correlation id). Preview features (e.g. structured concurrency) are deliberately not used |
+| Framework | **Spring Boot 4.1.x** | Latest stable line (Spring Framework 7, Jakarta EE 11, JSpecify null-safety, Jackson 3, OpenTelemetry-based observability). 3.5 reached end of OSS support on 2026-06-30. 4.2 is excluded while it is a release candidate or a fresh `.0` |
+| Retry and concurrency limits | **Spring Framework 7 core** (`@Retryable`, `@ConcurrencyLimit`, `RetryTemplate`) | Built into the framework since 7.0 (it supersedes Spring Retry), so we use the canonical mechanism instead of adding a library for it |
+| Circuit breaker and time limiter | **Resilience4j core modules** | Spring 7 has no circuit breaker. Resilience4j has no official Boot 4 starter yet, but its core is framework-agnostic; we wire it ourselves and bind its metrics to Micrometer |
+| Database | **PostgreSQL 18** | Latest GA. PostgreSQL 19 is a release candidate with GA planned after our delivery date. Native declarative partitioning covers §4.3 |
+| Cache | **Valkey 9** | BSD-licensed, Linux Foundation fork of Redis, protocol-compatible and the default engine in AWS ElastiCache. Redis 8 (AGPL) was considered; its native JSON and search modules are not needed here. Spring Data Redis works with both, so the choice is reversible |
+| Build | **Gradle 9.x (latest stable)**, multi-module, Kotlin DSL | Supports Java 25; modules enforce the hexagonal boundaries at compile time |
+| Tests | JUnit 5, AssertJ, **Testcontainers**, WireMock, ArchUnit | Real PostgreSQL and Valkey in integration tests instead of in-memory fakes |
+
+The frontend stack is still open (Q8).
+
+How the stack was chosen is part of the AI story: the agent's first proposal (Java 21 + Spring Boot 3) was outdated, and the review caught it. See [session 03](../../ai-sessions/03-grill-me-design-decisions.md).
 
 Modules (Gradle subprojects; the dependency direction is enforced with ArchUnit):
 
@@ -164,7 +181,7 @@ Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight wor
 
 ## 10. Open decisions (for the grill-me)
 
-1. **Stack** — proposed: Java 21 + Spring Boot 3 + virtual threads + Resilience4j + PostgreSQL + Redis + Gradle + Testcontainers.
+1. ~~**Stack**~~ — **decided**, see §6.1.
 2. **Where itineraries are built** (§5.3) — proposed: materialised at ingestion.
 3. **Role of Redis** — e.g. cache of search pages vs freshness markers per route vs distributed lock for the job.
 4. **Job frequency and TTL / staleness threshold** per route.
