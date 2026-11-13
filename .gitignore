@@ -4,3 +4,12 @@
 # Local environment (direnv)
 .envrc
 .env
+
+# Gradle
+.gradle/
+build/
+.kotlin/
+
+# IDE
+.idea/
+*.iml
