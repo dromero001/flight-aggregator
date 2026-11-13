@@ -55,6 +55,16 @@ Asking about the business reality ("prices change") rather than the technology e
 
 **Decided:** full ingestion every 30 min, a 10-minute per-origin freshness threshold that triggers a background refresh, and a 5-minute Valkey TTL, all configurable (§6.4 of the plan). Frequently searched origins stay fresh without recomputing the whole inventory continuously, and the re-price on selection covers the moment of purchase. The numbers are a starting point, to be validated against the measured ingestion time rather than taken on faith.
 
-## Q5 onwards
+## Q5 — Provider outages
+
+**Decided** (§6.5 of the plan):
+- search keeps serving the last good inventory, with a freshness indicator;
+- ingestion keeps a failed provider's previous legs instead of deleting them, and publishes each run atomically;
+- re-price on selection refuses to sell at an unconfirmed price (503 + `Retry-After`);
+- the system reports DEGRADED (not DOWN), with per-provider freshness metrics and alerts.
+
+The guiding principle: degrade visibly, never fail silently, and never sell at a price we could not confirm. I also set that every user-facing text (messages, dashboard, filters) is in English (§6.6).
+
+## Q6 onwards
 
 Pending.

@@ -177,6 +177,23 @@ All values are configurable, and will be tuned by measuring how long the real in
 
 Resulting guarantees: origins that people search are at most ~10 min old; the rest at most ~30 min. The re-price on selection (§6.3) protects the moment of purchase regardless of these bounds. The ingestion duration is exposed as a metric, so that the 30-minute cadence can be checked against it.
 
+### 6.5 Provider outages (decided in the grill-me, Q5)
+
+Covers 1, 2 or all 3 providers down.
+
+- **Search keeps working** on the last good inventory. It reads only from PostgreSQL, so it does not depend on the providers. Every result shows its freshness ("updated X min ago"). No error is returned.
+- **Ingestion never replaces good data with nothing.** When a provider fails, its previously ingested legs are **kept**, not deleted, so its itineraries do not vanish all at once. Each ingestion is published atomically (the generation is incremented at the end), so a run that fails halfway never leaves a mixed state.
+- **Re-price on selection with providers down:** we never sell at an unconfirmed price. The endpoint answers `503 Service Unavailable` with `Retry-After`, and the dashboard shows *"We can't confirm the price right now. Please try again in a few minutes."*
+- **No silent failure:**
+  - circuit breakers open per provider and probe again periodically (half-open);
+  - the health check reports **DEGRADED, not DOWN**: search still works, and the orchestrator must not restart the API;
+  - a freshness metric per provider, plus an alert after N consecutive failed ingestions.
+- **Tests:** ingestion with 1, 2 and 3 providers down; re-price with all providers down; search served from the last good inventory.
+
+### 6.6 Language
+
+All user-facing text is in **English**: API error messages, dashboard labels, filters, notices and empty states. The same applies to code, logs and documentation.
+
 Modules (Gradle subprojects; the dependency direction is enforced with ArchUnit):
 
 | Module | Content | Depends on |
@@ -226,7 +243,7 @@ Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight wor
 2. ~~**Where itineraries are built**~~ — **decided**: materialised at ingestion (§5.3).
 3. ~~**Role of the cache**~~ — **decided**, see §6.2 and §6.3.
 4. ~~**Job frequency and TTL / staleness threshold**~~ — **decided**, see §6.4.
-5. **All three providers down** — serve stale data with a freshness flag, or fail?
+5. ~~**All three providers down**~~ — **decided**, see §6.5.
 6. **Authentication** — API key, JWT (OAuth2 resource server), or none for search with auth only on admin endpoints.
 7. **Payload schemas** for Alpha, Beta and Gamma (Gamma with or without headers), designed to cover every case and to be defended in the interview.
 8. **Dashboard** — design and frontend stack.
