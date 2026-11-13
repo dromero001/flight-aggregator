@@ -51,6 +51,10 @@ Details are in §6.2 and §6.3 of the plan.
 
 Asking about the business reality ("prices change") rather than the technology exposed requirements that a purely technical review missed: confirming the price before sale, and keeping pagination consistent. A cache has to be justified by evidence it can expose (hit ratio, and a test with Valkey down), not by habit.
 
-## Q4 onwards
+## Q4 — Refresh cadence and staleness bounds
+
+**Decided:** full ingestion every 30 min, a 10-minute per-origin freshness threshold that triggers a background refresh, and a 5-minute Valkey TTL, all configurable (§6.4 of the plan). Frequently searched origins stay fresh without recomputing the whole inventory continuously, and the re-price on selection covers the moment of purchase. The numbers are a starting point, to be validated against the measured ingestion time rather than taken on faith.
+
+## Q5 onwards
 
 Pending.

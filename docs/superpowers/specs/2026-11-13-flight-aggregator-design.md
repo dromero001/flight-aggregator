@@ -163,7 +163,19 @@ Fares change at any moment. The design accepts that search shows an *indicative*
 - **Re-price on selection:** an endpoint re-quotes the itinerary's legs live from their providers, with the same timeout and resilience policies, and returns either the confirmed price or "price changed: was X, now Y". The stored itinerary is updated with the new price.
 - **Mocks with price drift:** mock prices change over time, deterministically from the seed, so the behaviour can be shown in the demo and asserted in tests.
 - **Pagination while prices change:** an in-place price update can move an itinerary across pages, so a user paging by price could see it twice or never. The cursor carries the inventory generation. When the generation changes mid-pagination, the API flags it and the dashboard offers "results updated, reload". This is an accepted trade-off: keeping full inventory snapshots for perfectly stable pagination would duplicate ~1M rows on every ingestion.
-- **Maximum staleness:** bounded by the job frequency and the per-origin refresh threshold (Q4).
+- **Maximum staleness:** bounded by the job frequency and the per-origin refresh threshold (§6.4).
+
+### 6.4 Refresh cadence and staleness bounds (decided in the grill-me, Q4)
+
+All values are configurable, and will be tuned by measuring how long the real ingestion takes.
+
+| Setting | Value | Why |
+|---|---|---|
+| Full ingestion | every **30 min** | Rebuilding ~1M itineraries takes minutes; running it more often would keep the database permanently busy |
+| Per-origin freshness threshold | **10 min** | A search on an origin older than this triggers a background refresh of that origin's legs (deduplicated with `SET NX`, §6.2) |
+| Valkey result TTL | **5 min** | Below the threshold, so the cache never extends staleness |
+
+Resulting guarantees: origins that people search are at most ~10 min old; the rest at most ~30 min. The re-price on selection (§6.3) protects the moment of purchase regardless of these bounds. The ingestion duration is exposed as a metric, so that the 30-minute cadence can be checked against it.
 
 Modules (Gradle subprojects; the dependency direction is enforced with ArchUnit):
 
@@ -213,7 +225,7 @@ Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight wor
 1. ~~**Stack**~~ — **decided**, see §6.1.
 2. ~~**Where itineraries are built**~~ — **decided**: materialised at ingestion (§5.3).
 3. ~~**Role of the cache**~~ — **decided**, see §6.2 and §6.3.
-4. **Job frequency and TTL / staleness threshold** per route.
+4. ~~**Job frequency and TTL / staleness threshold**~~ — **decided**, see §6.4.
 5. **All three providers down** — serve stale data with a freshness flag, or fail?
 6. **Authentication** — API key, JWT (OAuth2 resource server), or none for search with auth only on admin endpoints.
 7. **Payload schemas** for Alpha, Beta and Gamma (Gamma with or without headers), designed to cover every case and to be defended in the interview.
