@@ -190,7 +190,18 @@ Covers 1, 2 or all 3 providers down.
   - a freshness metric per provider, plus an alert after N consecutive failed ingestions.
 - **Tests:** ingestion with 1, 2 and 3 providers down; re-price with all providers down; search served from the last good inventory.
 
-### 6.6 Language
+### 6.6 Authentication and access control (decided in the grill-me, Q6)
+
+Starting point: on a real OTA, **searching does not require logging in**. Requiring it would hurt the business, so authentication goes where it adds value.
+
+- **Search and re-price: public**, with **rate limiting per client IP** against scraping, a real problem in the travel industry. The counters live in Valkey, so the limit holds across API instances. Over the limit: `429 Too Many Requests` with `Retry-After`.
+- **Admin endpoints: OAuth2 with JWT.** These are manual ingestion trigger, provider and circuit-breaker status, and actuator. The API is a Spring Security *resource server* and requires the `ADMIN` role.
+  - Token issuer: **Keycloak** in docker compose, an open-source identity provider and the de facto standard. Its realm is imported at startup, with a demo admin user (documented in the README). Spring integrates with it out of the box through standard OIDC, so it could be swapped for any other provider (Auth0, Cognito, Okta) through configuration only.
+  - Rejected: a static API key for admin (not how it would be done in production); authentication on search (against the business).
+- **Credentials towards the providers:** each mock requires its own API key in a header, as a real GDS does. The adapters send it from configuration, injected through environment variables and never committed.
+- **Tests:** public search without a token; admin endpoints returning 401 without a token and 403 without the `ADMIN` role; rate-limit 429; a provider rejecting a wrong API key.
+
+### 6.7 Language
 
 All user-facing text is in **English**: API error messages, dashboard labels, filters, notices and empty states. The same applies to code, logs and documentation.
 
@@ -244,7 +255,7 @@ Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight wor
 3. ~~**Role of the cache**~~ — **decided**, see §6.2 and §6.3.
 4. ~~**Job frequency and TTL / staleness threshold**~~ — **decided**, see §6.4.
 5. ~~**All three providers down**~~ — **decided**, see §6.5.
-6. **Authentication** — API key, JWT (OAuth2 resource server), or none for search with auth only on admin endpoints.
+6. ~~**Authentication**~~ — **decided**, see §6.6.
 7. **Payload schemas** for Alpha, Beta and Gamma (Gamma with or without headers), designed to cover every case and to be defended in the interview.
 8. **Dashboard** — design and frontend stack.
 9. **Observability** — metrics, traces, logs; which stack in docker compose.

@@ -63,8 +63,17 @@ Asking about the business reality ("prices change") rather than the technology e
 - re-price on selection refuses to sell at an unconfirmed price (503 + `Retry-After`);
 - the system reports DEGRADED (not DOWN), with per-provider freshness metrics and alerts.
 
-The guiding principle: degrade visibly, never fail silently, and never sell at a price we could not confirm. I also set that every user-facing text (messages, dashboard, filters) is in English (§6.6).
+The guiding principle: degrade visibly, never fail silently, and never sell at a price we could not confirm. I also set that every user-facing text (messages, dashboard, filters) is in English (§6.7).
 
-## Q6 onwards
+## Q6 — Authentication
+
+**Decided** (§6.6 of the plan):
+- search and re-price stay public, as on a real OTA, with rate limiting per IP against scraping;
+- admin endpoints use OAuth2/JWT, with Keycloak as the identity provider in docker compose;
+- each mock provider requires its own API key, like a real GDS.
+
+The agent started from the business ("does a real OTA make you log in to search?") rather than from the technology, so authentication went where it protects something.
+
+## Q7 onwards
 
 Pending.
