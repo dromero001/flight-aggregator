@@ -22,6 +22,7 @@ Success means that:
 - Ingestion: concurrent fetching, normalisation, cross-provider leg deduplication, itinerary building, validation (dead legs / invalid connections), pricing (+5% markup), storage.
 - Hybrid refresh: periodic job plus background refresh of stale routes, per-provider timeout (~2–3 s), fallback to the last good data.
 - Search API with optional, combinable filters (Origin, Destination, Max Price, Carrier) and keyset pagination over up to 1M rows.
+- Live re-price on selection, with a "price changed" notice (§6.3).
 - Frontend dashboard to search as an end customer.
 - PostgreSQL + Redis, authentication, observability, CI.
 - Unit, integration and end-to-end tests, written test-first. Failure tests for 1, 2 and 3 providers down.
@@ -102,7 +103,7 @@ Success means that:
 | Mixed (some legs, some itineraries) | Two code paths for the same concept | Rejected |
 | **All three return legs; a single itinerary builder** | One domain service owns the connection rules; matches the industry pattern recommended by eDreams | **Chosen (2026-11-13)** |
 
-### 5.3 Where itineraries are built — proposal, to confirm in the grill-me
+### 5.3 Where itineraries are built — decided (grill-me, Q2): materialised at ingestion
 
 | Approach | Trade-off |
 |---|---|
@@ -135,6 +136,34 @@ Keyset (seek) pagination with one composite index per supported sort order — p
 The frontend stack is still open (Q8).
 
 How the stack was chosen is part of the AI story: the agent's first proposal (Java 21 + Spring Boot 3) was outdated, and the review caught it. See [session 03](../../ai-sessions/03-grill-me-design-decisions.md).
+
+### 6.2 Caching strategy (decided in the grill-me, Q3)
+
+There are two cache levels, each with its own justification.
+
+**Level 1 — PostgreSQL as a cache of the providers' inventory**
+- **Pattern:** a pre-computed inventory with *refresh-ahead* (the periodic job refreshes it before it expires) and *stale-while-revalidate* (a stale origin is served as is and refreshed in the background).
+- **Why:** providers answer in 100–5000 ms and fail with HTTP 500s. Search traffic in the travel industry outnumbers bookings by orders of magnitude (look-to-book ratio), and in real life every GDS query has a cost. Without this level, every search would be as slow as the slowest provider and would fail with it.
+- **Cost:** displayed prices can be stale. This is mitigated by the freshness indicator and the re-price on selection (§6.3).
+
+**Level 2 — Valkey as a result cache**
+- **Pattern:** *cache-aside* with **versioned keys** (normalised filters + inventory **generation**) and a short TTL. The ingestion job increments the generation when it finishes, which invalidates everything at once with no key scan or delete; old keys expire through their TTL. Eviction: `allkeys-lru` with `maxmemory`.
+- **Why:** traffic concentrates on a few popular routes and on the first page. Each price-sorted search spans ~30 partitions (§4.3), and the cache avoids repeating that work for the hottest queries, which takes load off the database.
+- **Second role, coordination:** per-origin freshness markers, plus `SET NX` with a TTL to trigger a background refresh, so that a thousand searches detecting the same stale origin trigger one refresh, not a thousand.
+- **Why distributed and not local (Caffeine):** with several API instances, a local cache would serve different generations depending on the instance, duplicate memory, and could not coordinate refreshes.
+- **Rejected:** *write-through* (users do not write); Valkey as source of truth (PostgreSQL is); a two-level Caffeine + Valkey cache (complexity with no gain at this volume); the ingestion job's lock in Valkey (it goes in PostgreSQL with ShedLock JDBC, so that exclusion does not depend on two systems).
+- **Honest note:** at ~1M rows, a well-indexed PostgreSQL would cope without Valkey. Valkey is justified by horizontal scaling and coordination, not by the demo's volume. To back this with evidence instead of opinion:
+  - the **cache hit ratio** is exposed as a metric;
+  - an integration test proves that the system keeps working (only slower) when Valkey is down.
+
+### 6.3 Price volatility (decided in the grill-me, Q3)
+
+Fares change at any moment. The design accepts that search shows an *indicative* price and confirms it before selling, as real OTAs do.
+- **Freshness shown to the user:** each result carries the time its price was last updated ("updated X min ago").
+- **Re-price on selection:** an endpoint re-quotes the itinerary's legs live from their providers, with the same timeout and resilience policies, and returns either the confirmed price or "price changed: was X, now Y". The stored itinerary is updated with the new price.
+- **Mocks with price drift:** mock prices change over time, deterministically from the seed, so the behaviour can be shown in the demo and asserted in tests.
+- **Pagination while prices change:** an in-place price update can move an itinerary across pages, so a user paging by price could see it twice or never. The cursor carries the inventory generation. When the generation changes mid-pagination, the API flags it and the dashboard offers "results updated, reload". This is an accepted trade-off: keeping full inventory snapshots for perfectly stable pagination would duplicate ~1M rows on every ingestion.
+- **Maximum staleness:** bounded by the job frequency and the per-origin refresh threshold (Q4).
 
 Modules (Gradle subprojects; the dependency direction is enforced with ArchUnit):
 
@@ -182,8 +211,8 @@ Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight wor
 ## 10. Open decisions (for the grill-me)
 
 1. ~~**Stack**~~ — **decided**, see §6.1.
-2. **Where itineraries are built** (§5.3) — proposed: materialised at ingestion.
-3. **Role of Redis** — e.g. cache of search pages vs freshness markers per route vs distributed lock for the job.
+2. ~~**Where itineraries are built**~~ — **decided**: materialised at ingestion (§5.3).
+3. ~~**Role of the cache**~~ — **decided**, see §6.2 and §6.3.
 4. **Job frequency and TTL / staleness threshold** per route.
 5. **All three providers down** — serve stale data with a freshness flag, or fail?
 6. **Authentication** — API key, JWT (OAuth2 resource server), or none for search with auth only on admin endpoints.
