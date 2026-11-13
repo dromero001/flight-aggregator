@@ -40,13 +40,16 @@ public final class ReferenceData {
         return airport;
     }
 
+    public Airline airline(String code) {
+        return airlines.stream()
+                .filter(airline -> airline.code().equals(code))
+                .findFirst()
+                .orElseThrow(() -> new NoSuchElementException("Unknown airline: " + code));
+    }
+
     public List<Airline> carriersBasedAt(Airport hub) {
         return airlines.stream()
                 .filter(airline -> airline.homeHub().filter(hub.iata()::equals).isPresent())
                 .toList();
-    }
-
-    public List<Airline> lowCostCarriers() {
-        return airlines.stream().filter(airline -> airline.homeHub().isEmpty()).toList();
     }
 }

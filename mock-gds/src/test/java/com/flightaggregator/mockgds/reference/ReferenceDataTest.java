@@ -1,9 +1,11 @@
 package com.flightaggregator.mockgds.reference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.NoSuchElementException;
 import org.junit.jupiter.api.Test;
 
 class ReferenceDataTest {
@@ -84,6 +86,14 @@ class ReferenceDataTest {
     void distanceBetweenAirportsIsTheGreatCircleDistance() {
         assertThat(reference.airport("MAD").distanceKmTo(reference.airport("JFK"))).isBetween(5700.0, 5800.0);
         assertThat(reference.airport("MAD").distanceKmTo(reference.airport("BCN"))).isBetween(480.0, 500.0);
+    }
+
+    @Test
+    void looksUpAirportsAndAirlinesByCode() {
+        assertThat(reference.airline("IB").homeHub()).contains("MAD");
+        assertThat(reference.airport("LHR").zone().getId()).isEqualTo("Europe/London");
+        assertThatThrownBy(() -> reference.airport("ZZZ")).isInstanceOf(NoSuchElementException.class);
+        assertThatThrownBy(() -> reference.airline("ZZ")).isInstanceOf(NoSuchElementException.class);
     }
 
     private ZoneOffset offset(String iata, LocalDateTime localTime) {
