@@ -51,9 +51,9 @@ public final class PriceModel {
     public BigDecimal price(LegKey leg, Provider provider, Instant at) {
         double distanceKm = reference.airport(leg.origin()).distanceKmTo(reference.airport(leg.destination()));
         double price = (BASE_FARE_EUR + FARE_PER_KM_EUR * distanceKm)
-                * factor(MIN_LEG_LEVEL, MAX_LEG_LEVEL, "level", identity(leg))
-                * factor(MIN_PROVIDER_MARGIN, MAX_PROVIDER_MARGIN, "margin", identity(leg), provider.name())
-                * factor(MIN_DRIFT, MAX_DRIFT, "drift", identity(leg), provider.name(), bucketOf(at));
+                * factor(MIN_LEG_LEVEL, MAX_LEG_LEVEL, "level", leg.toString())
+                * factor(MIN_PROVIDER_MARGIN, MAX_PROVIDER_MARGIN, "margin", leg.toString(), provider.name())
+                * factor(MIN_DRIFT, MAX_DRIFT, "drift", leg.toString(), provider.name(), bucketOf(at));
         return BigDecimal.valueOf(price).setScale(2, RoundingMode.HALF_UP);
     }
 
@@ -64,9 +64,5 @@ public final class PriceModel {
 
     private String bucketOf(Instant at) {
         return String.valueOf(Math.floorDiv(at.getEpochSecond(), bucket.toSeconds()));
-    }
-
-    private static String identity(LegKey leg) {
-        return leg.airline() + leg.flightNumber() + leg.origin() + leg.destination() + leg.departure();
     }
 }

@@ -22,6 +22,11 @@ class LegTest {
     }
 
     @Test
+    void theKeyReadsLikeAFlightOnABoardingPass() {
+        assertThat(new LegKey("IB", 3170, "MAD", "LHR", DEPARTURE.toInstant())).hasToString("IB3170 MAD-LHR 2026-11-20T07:15:00Z");
+    }
+
+    @Test
     void rejectsAnArrivalThatIsNotAfterTheDeparture() {
         assertThatThrownBy(() -> new Leg("IB", 3170, "MAD", "LHR", DEPARTURE, DEPARTURE, new BigDecimal("10.00"), Provider.ALPHA))
                 .isInstanceOf(IllegalArgumentException.class);
