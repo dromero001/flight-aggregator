@@ -18,7 +18,7 @@ class ItineraryTest {
   private static final Leg LHR_JFK =
       leg("BA117", "LHR-JFK", "2026-11-20T11:10+00:00", "2026-11-20T14:20-05:00");
   private static final Leg JFK_BOG =
-      leg("AV245", "JFK-BOG", "2026-11-20T21:00-05:00", "2026-11-21T00:30-05:00");
+      leg("AV245", "JFK-BOG", "2026-11-20T21:00-05:00", "2026-11-21T02:30-05:00");
   private static final Leg BOG_LIM =
       leg("AV9", "BOG-LIM", "2026-11-21T04:00-05:00", "2026-11-21T07:00-05:00");
 
@@ -122,5 +122,14 @@ class ItineraryTest {
     legs.add(JFK_BOG);
 
     assertThat(itinerary.legs()).containsExactly(MAD_LHR, LHR_JFK);
+  }
+
+  @Test
+  void acceptsThreeConnectingLegs() {
+    Itinerary itinerary = new Itinerary(List.of(MAD_LHR, LHR_JFK, JFK_BOG));
+
+    assertThat(itinerary.origin()).isEqualTo(new Airport("MAD"));
+    assertThat(itinerary.destination()).isEqualTo(new Airport("BOG"));
+    assertThat(itinerary.legs()).hasSize(3);
   }
 }
