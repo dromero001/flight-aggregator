@@ -19,157 +19,201 @@ import org.junit.jupiter.api.Test;
 
 class FlightScheduleTest {
 
-    private static final long SEED = 42;
-    private static final LocalDate FIRST_DAY = LocalDate.of(2026, 11, 13);
+  private static final long SEED = 42;
+  private static final LocalDate FIRST_DAY = LocalDate.of(2026, 11, 13);
 
-    private final List<Route> routes = RouteNetwork.build(ReferenceData.standard());
+  private final List<Route> routes = RouteNetwork.build(ReferenceData.standard());
 
-    @Test
-    void departureAndArrivalCarryTheRealOffsetOfTheirAirports() {
-        var flights = schedule(SEED, 1.0).flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(3));
+  @Test
+  void departureAndArrivalCarryTheRealOffsetOfTheirAirports() {
+    var flights = schedule(SEED, 1.0).flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(3));
 
-        assertThat(flights).isNotEmpty().allSatisfy(flight -> {
-            var route = flight.scheduledFlight().route();
-            assertThat(flight.departure().getOffset())
-                    .isEqualTo(route.origin().zone().getRules().getOffset(flight.departure().toInstant()));
-            assertThat(flight.arrival().getOffset())
-                    .isEqualTo(route.destination().zone().getRules().getOffset(flight.arrival().toInstant()));
-            assertThat(Duration.between(flight.departure(), flight.arrival())).isEqualTo(route.blockTime());
-        });
-    }
+    assertThat(flights)
+        .isNotEmpty()
+        .allSatisfy(
+            flight -> {
+              var route = flight.scheduledFlight().route();
+              assertThat(flight.departure().getOffset())
+                  .isEqualTo(
+                      route.origin().zone().getRules().getOffset(flight.departure().toInstant()));
+              assertThat(flight.arrival().getOffset())
+                  .isEqualTo(
+                      route
+                          .destination()
+                          .zone()
+                          .getRules()
+                          .getOffset(flight.arrival().toInstant()));
+              assertThat(Duration.between(flight.departure(), flight.arrival()))
+                  .isEqualTo(route.blockTime());
+            });
+  }
 
-    @Test
-    void departuresFallOnTheRequestedLocalDatesBetweenSixAndElevenPm() {
-        var flights = schedule(SEED, 1.0).flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(2));
+  @Test
+  void departuresFallOnTheRequestedLocalDatesBetweenSixAndElevenPm() {
+    var flights = schedule(SEED, 1.0).flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(2));
 
-        assertThat(flights).allSatisfy(flight -> {
-            assertThat(flight.departure().toLocalDate()).isBetween(FIRST_DAY, FIRST_DAY.plusDays(1));
-            assertThat(flight.departure().toLocalTime()).isBetween(LocalTime.of(6, 0), LocalTime.of(23, 0));
-        });
-    }
+    assertThat(flights)
+        .allSatisfy(
+            flight -> {
+              assertThat(flight.departure().toLocalDate())
+                  .isBetween(FIRST_DAY, FIRST_DAY.plusDays(1));
+              assertThat(flight.departure().toLocalTime())
+                  .isBetween(LocalTime.of(6, 0), LocalTime.of(23, 0));
+            });
+  }
 
-    @Test
-    void offsetsFollowDaylightSavingChangesInsideTheWindow() {
-        var europeanDstEnd = LocalDate.of(2026, 10, 25);
-        var flights = schedule(SEED, 1.0).flightsBetween(europeanDstEnd.minusDays(1), europeanDstEnd.plusDays(2));
+  @Test
+  void offsetsFollowDaylightSavingChangesInsideTheWindow() {
+    var europeanDstEnd = LocalDate.of(2026, 10, 25);
+    var flights =
+        schedule(SEED, 1.0).flightsBetween(europeanDstEnd.minusDays(1), europeanDstEnd.plusDays(2));
 
-        var madridOffsets = flights.stream()
-                .filter(flight -> flight.scheduledFlight().route().origin().iata().equals("MAD"))
-                .collect(Collectors.groupingBy(flight -> flight.departure().toLocalDate(),
-                        Collectors.mapping(flight -> flight.departure().getOffset(), Collectors.toSet())));
+    var madridOffsets =
+        flights.stream()
+            .filter(flight -> flight.scheduledFlight().route().origin().iata().equals("MAD"))
+            .collect(
+                Collectors.groupingBy(
+                    flight -> flight.departure().toLocalDate(),
+                    Collectors.mapping(
+                        flight -> flight.departure().getOffset(), Collectors.toSet())));
 
-        assertThat(madridOffsets.get(europeanDstEnd.minusDays(1))).containsExactly(ZoneOffset.ofHours(2));
-        assertThat(madridOffsets.get(europeanDstEnd.plusDays(1))).containsExactly(ZoneOffset.ofHours(1));
-    }
+    assertThat(madridOffsets.get(europeanDstEnd.minusDays(1)))
+        .containsExactly(ZoneOffset.ofHours(2));
+    assertThat(madridOffsets.get(europeanDstEnd.plusDays(1)))
+        .containsExactly(ZoneOffset.ofHours(1));
+  }
 
-    @Test
-    void everyScheduledFlightHasAUniqueFlightNumberWithinItsAirline() {
-        var scheduledFlights = schedule(SEED, 1.0).scheduledFlights();
+  @Test
+  void everyScheduledFlightHasAUniqueFlightNumberWithinItsAirline() {
+    var scheduledFlights = schedule(SEED, 1.0).scheduledFlights();
 
-        assertThat(scheduledFlights)
-                .extracting(flight -> flight.route().airline().code() + flight.flightNumber())
-                .doesNotHaveDuplicates();
-        assertThat(scheduledFlights).extracting(ScheduledFlight::flightNumber).allMatch(number -> number >= 1 && number <= 9999);
-    }
+    assertThat(scheduledFlights)
+        .extracting(flight -> flight.route().airline().code() + flight.flightNumber())
+        .doesNotHaveDuplicates();
+    assertThat(scheduledFlights)
+        .extracting(ScheduledFlight::flightNumber)
+        .allMatch(number -> number >= 1 && number <= 9999);
+  }
 
-    @Test
-    void everyRouteHasAtLeastOneScheduledFlight() {
-        var scheduledRoutes = schedule(SEED, 1.0).scheduledFlights().stream().map(ScheduledFlight::route).distinct().toList();
+  @Test
+  void everyRouteHasAtLeastOneScheduledFlight() {
+    var scheduledRoutes =
+        schedule(SEED, 1.0).scheduledFlights().stream()
+            .map(ScheduledFlight::route)
+            .distinct()
+            .toList();
 
-        assertThat(scheduledRoutes).containsExactlyInAnyOrderElementsOf(routes);
-    }
+    assertThat(scheduledRoutes).containsExactlyInAnyOrderElementsOf(routes);
+  }
 
-    @Test
-    void routesToOrFromAHubAndTheOtherRoutesReachTheirOwnMaximumOfDailyFlights() {
-        var flightsPerRoute = FlightSchedule.build(routes, new ScheduleParameters(SEED, 2, 4, 1.0)).scheduledFlights()
-                .stream().collect(Collectors.groupingBy(ScheduledFlight::route, Collectors.counting()));
+  @Test
+  void routesToOrFromAHubAndTheOtherRoutesReachTheirOwnMaximumOfDailyFlights() {
+    var flightsPerRoute =
+        FlightSchedule.build(routes, new ScheduleParameters(SEED, 2, 4, 1.0))
+            .scheduledFlights()
+            .stream()
+            .collect(Collectors.groupingBy(ScheduledFlight::route, Collectors.counting()));
 
-        var busiestRouteByWhetherItServesAHub = flightsPerRoute.entrySet().stream().collect(Collectors.partitioningBy(
-                entry -> servesAHub(entry.getKey()),
-                Collectors.mapping(Map.Entry::getValue, Collectors.reducing(0L, Long::max))));
+    var busiestRouteByWhetherItServesAHub =
+        flightsPerRoute.entrySet().stream()
+            .collect(
+                Collectors.partitioningBy(
+                    entry -> servesAHub(entry.getKey()),
+                    Collectors.mapping(Map.Entry::getValue, Collectors.reducing(0L, Long::max))));
 
-        assertThat(busiestRouteByWhetherItServesAHub).containsExactlyInAnyOrderEntriesOf(Map.of(true, 2L, false, 4L));
-    }
+    assertThat(busiestRouteByWhetherItServesAHub)
+        .containsExactlyInAnyOrderEntriesOf(Map.of(true, 2L, false, 4L));
+  }
 
-    @Test
-    void flightsOperateOnAboutTheConfiguredShareOfDays() {
-        var schedule = schedule(SEED, 0.5);
-        int days = 30;
+  @Test
+  void flightsOperateOnAboutTheConfiguredShareOfDays() {
+    var schedule = schedule(SEED, 0.5);
+    int days = 30;
 
-        double operated = schedule.flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(days)).size();
-        double possible = (double) schedule.scheduledFlights().size() * days;
+    double operated = schedule.flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(days)).size();
+    double possible = (double) schedule.scheduledFlights().size() * days;
 
-        assertThat(operated / possible).isCloseTo(0.5, within(0.03));
-    }
+    assertThat(operated / possible).isCloseTo(0.5, within(0.03));
+  }
 
-    @Test
-    void theSameSeedProducesTheSameFlights() {
-        assertThat(schedule(SEED, 0.7).flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(5)))
-                .isEqualTo(schedule(SEED, 0.7).flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(5)));
-    }
+  @Test
+  void theSameSeedProducesTheSameFlights() {
+    assertThat(schedule(SEED, 0.7).flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(5)))
+        .isEqualTo(schedule(SEED, 0.7).flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(5)));
+  }
 
-    @Test
-    void aDifferentSeedProducesDifferentFlights() {
-        assertThat(schedule(SEED, 0.7).flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(5)))
-                .isNotEqualTo(schedule(SEED + 1, 0.7).flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(5)));
-    }
+  @Test
+  void aDifferentSeedProducesDifferentFlights() {
+    assertThat(schedule(SEED, 0.7).flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(5)))
+        .isNotEqualTo(schedule(SEED + 1, 0.7).flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(5)));
+  }
 
-    @Test
-    void theFlightsOfADayDoNotDependOnTheWindowTheyAreRequestedIn() {
-        var schedule = schedule(SEED, 0.7);
-        var overlapDay = FIRST_DAY.plusDays(3);
+  @Test
+  void theFlightsOfADayDoNotDependOnTheWindowTheyAreRequestedIn() {
+    var schedule = schedule(SEED, 0.7);
+    var overlapDay = FIRST_DAY.plusDays(3);
 
-        var fromEarlierWindow = schedule.flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(10)).stream()
-                .filter(flight -> flight.departure().toLocalDate().equals(overlapDay)).toList();
-        var fromLaterWindow = schedule.flightsBetween(overlapDay, overlapDay.plusDays(10)).stream()
-                .filter(flight -> flight.departure().toLocalDate().equals(overlapDay)).toList();
+    var fromEarlierWindow =
+        schedule.flightsBetween(FIRST_DAY, FIRST_DAY.plusDays(10)).stream()
+            .filter(flight -> flight.departure().toLocalDate().equals(overlapDay))
+            .toList();
+    var fromLaterWindow =
+        schedule.flightsBetween(overlapDay, overlapDay.plusDays(10)).stream()
+            .filter(flight -> flight.departure().toLocalDate().equals(overlapDay))
+            .toList();
 
-        assertThat(fromEarlierWindow).isNotEmpty().isEqualTo(fromLaterWindow);
-    }
+    assertThat(fromEarlierWindow).isNotEmpty().isEqualTo(fromLaterWindow);
+  }
 
-    @Test
-    void aRouteGetsTheSameDepartureTimesWhicheverOtherRoutesAreScheduled() {
-        var parameters = parameters(SEED, 1.0);
-        var fullSchedule = FlightSchedule.build(routes, parameters);
+  @Test
+  void aRouteGetsTheSameDepartureTimesWhicheverOtherRoutesAreScheduled() {
+    var parameters = parameters(SEED, 1.0);
+    var fullSchedule = FlightSchedule.build(routes, parameters);
 
-        assertThat(routes).allSatisfy(route -> {
-            var scheduledAlone = FlightSchedule.build(List.of(route), parameters);
-            assertThat(departureTimesOf(route, scheduledAlone)).as(route.toString())
-                    .isEqualTo(departureTimesOf(route, fullSchedule));
-        });
-    }
+    assertThat(routes)
+        .allSatisfy(
+            route -> {
+              var scheduledAlone = FlightSchedule.build(List.of(route), parameters);
+              assertThat(departureTimesOf(route, scheduledAlone))
+                  .as(route.toString())
+                  .isEqualTo(departureTimesOf(route, fullSchedule));
+            });
+  }
 
-    @Test
-    void reorderingTheRoutesDoesNotChangeTheSchedule() {
-        var parameters = parameters(SEED, 1.0);
+  @Test
+  void reorderingTheRoutesDoesNotChangeTheSchedule() {
+    var parameters = parameters(SEED, 1.0);
 
-        assertThat(FlightSchedule.build(routes.reversed(), parameters).scheduledFlights())
-                .containsExactlyInAnyOrderElementsOf(FlightSchedule.build(routes, parameters).scheduledFlights());
-    }
+    assertThat(FlightSchedule.build(routes.reversed(), parameters).scheduledFlights())
+        .containsExactlyInAnyOrderElementsOf(
+            FlightSchedule.build(routes, parameters).scheduledFlights());
+  }
 
-    @Test
-    void refusesASizeThatWouldNeedFlightNumbersAboveFourDigits() {
-        assertThatThrownBy(() -> FlightSchedule.build(routes, new ScheduleParameters(SEED, 2000, 2000, 1.0)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("flight numbers");
-    }
+  @Test
+  void refusesASizeThatWouldNeedFlightNumbersAboveFourDigits() {
+    assertThatThrownBy(
+            () -> FlightSchedule.build(routes, new ScheduleParameters(SEED, 2000, 2000, 1.0)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("flight numbers");
+  }
 
-    private static boolean servesAHub(Route route) {
-        return route.origin().role() == AirportRole.HUB || route.destination().role() == AirportRole.HUB;
-    }
+  private static boolean servesAHub(Route route) {
+    return route.origin().role() == AirportRole.HUB
+        || route.destination().role() == AirportRole.HUB;
+  }
 
-    private static List<LocalTime> departureTimesOf(Route route, FlightSchedule schedule) {
-        return schedule.scheduledFlights().stream()
-                .filter(flight -> flight.route().equals(route))
-                .map(ScheduledFlight::departureTime)
-                .toList();
-    }
+  private static List<LocalTime> departureTimesOf(Route route, FlightSchedule schedule) {
+    return schedule.scheduledFlights().stream()
+        .filter(flight -> flight.route().equals(route))
+        .map(ScheduledFlight::departureTime)
+        .toList();
+  }
 
-    private FlightSchedule schedule(long seed, double operatingProbability) {
-        return FlightSchedule.build(routes, parameters(seed, operatingProbability));
-    }
+  private FlightSchedule schedule(long seed, double operatingProbability) {
+    return FlightSchedule.build(routes, parameters(seed, operatingProbability));
+  }
 
-    private static ScheduleParameters parameters(long seed, double operatingProbability) {
-        return new ScheduleParameters(seed, 3, 3, operatingProbability);
-    }
+  private static ScheduleParameters parameters(long seed, double operatingProbability) {
+    return new ScheduleParameters(seed, 3, 3, operatingProbability);
+  }
 }

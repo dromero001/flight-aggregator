@@ -10,12 +10,13 @@ import java.util.Objects;
  */
 public record LowCostCarrier(String code, String name, List<String> bases) implements Airline {
 
-    public LowCostCarrier {
-        Objects.requireNonNull(code);
-        Objects.requireNonNull(name);
-        bases = List.copyOf(bases);
-        if (bases.size() < 2) {
-            throw new IllegalArgumentException(code + " needs at least two bases to fly point-to-point: " + bases);
-        }
+  public LowCostCarrier {
+    Objects.requireNonNull(code);
+    Objects.requireNonNull(name);
+    bases = List.copyOf(bases);
+    if (bases.size() < 2) {
+      throw new IllegalArgumentException(
+          code + " needs at least two bases to fly point-to-point: " + bases);
     }
+  }
 }
