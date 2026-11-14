@@ -88,6 +88,13 @@ class HexagonalRulesTest {
     assertThat(violations(result)).contains("bootstrapleak.bootstrap.Wiring");
   }
 
+  @Test
+  void aClassOutsideTheLayerPackagesIsAViolation() {
+    EvaluationResult result = evaluate("layertypo", HexagonalRules::everyClassResidesInALayer);
+
+    assertThat(violations(result)).contains("layertypo.adapters.web.Controller");
+  }
+
   static Stream<Arguments> rulesForTheCleanFixture() {
     return HexagonalRules.forRoot(FIXTURES + "clean").stream()
         .map(rule -> argumentSet(rule.getDescription(), rule));

@@ -27,8 +27,8 @@ class HexagonalArchitectureTest {
   }
 
   // The modules hold only package-info, so no rule matches a class yet. allowEmptyShould(true)
-  // goes rule by rule as the layers get classes: rules 1 and 5 with plan 2's first domain class,
-  // rules 2-4 when the first application and adapter classes land (plan 4).
+  // goes rule by rule as the layers get classes: rules 1, 5 and 6 with plan 2's first domain
+  // class, rules 2-4 when the first application and adapter classes land (plan 4).
   @ParameterizedTest
   @MethodSource("rules")
   void productionClassesFollowTheRule(ArchRule rule) {

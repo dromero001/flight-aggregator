@@ -61,12 +61,33 @@ final class HexagonalRules {
         .resideInAPackage(rootPackage + ".bootstrap..");
   }
 
+  // Every other rule selects classes by layer package, so a class elsewhere (adapters.web instead
+  // of adapter.web, say) would escape them all. mock-gds and the architecture tests are not layers.
+  static ArchRule everyClassResidesInALayer(String rootPackage) {
+    return classes()
+        .that()
+        .resideInAPackage(rootPackage + "..")
+        .and()
+        .resideOutsideOfPackages(rootPackage + ".mockgds..", rootPackage + ".architecture..")
+        .should()
+        .resideInAnyPackage(
+            rootPackage + ".domain..",
+            rootPackage + ".application.port.in..",
+            rootPackage + ".application.port.out..",
+            rootPackage + ".application.service..",
+            rootPackage + ".adapter.provider..",
+            rootPackage + ".adapter.persistence..",
+            rootPackage + ".adapter.web..",
+            rootPackage + ".bootstrap..");
+  }
+
   static List<ArchRule> forRoot(String rootPackage) {
     return List.of(
         domainDependsOnlyOnTheJdk(rootPackage),
         applicationDependsOnlyOnTheDomainAndSpring(rootPackage),
         adaptersUseOnlyPorts(rootPackage),
         adaptersAreIndependent(rootPackage),
-        nothingDependsOnBootstrap(rootPackage));
+        nothingDependsOnBootstrap(rootPackage),
+        everyClassResidesInALayer(rootPackage));
   }
 }

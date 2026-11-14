@@ -39,5 +39,6 @@ ArchUnit rules, in `HexagonalRules` (`architecture-tests`), run by `./gradlew bu
 3. `adaptersUseOnlyPorts`: adapters reach the application layer only through its ports (`application.port..`): never a service or any other application class.
 4. `adaptersAreIndependent`: no adapter depends on another adapter.
 5. `nothingDependsOnBootstrap`: nothing outside `bootstrap` depends on it.
+6. `everyClassResidesInALayer`: every class under `com.flightaggregator` (except `mockgds`) lives in one of the eight layer packages (`domain`, `application.port.in`, `application.port.out`, `application.service`, `adapter.provider`, `adapter.persistence`, `adapter.web`, `bootstrap`), so a misnamed package such as `adapters.web` cannot escape the other rules.
 
 Fixtures under `architecture-tests/src/test/java/.../fixture` check each rule against a tiny violating package tree (`HexagonalRulesTest`), so a rule that stopped detecting anything would fail the build.
