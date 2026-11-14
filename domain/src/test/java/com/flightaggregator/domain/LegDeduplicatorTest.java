@@ -57,4 +57,18 @@ class LegDeduplicatorTest {
     assertThat(LegDeduplicator.deduplicate(List.of(gamma, alpha))).containsExactly(alpha);
     assertThat(LegDeduplicator.deduplicate(List.of(alpha, gamma))).containsExactly(alpha);
   }
+
+  @Test
+  void prefersTheCheapestOfferOverTheLatestQuote() {
+    Leg alpha =
+        Legs.requoted(
+            offer("IB3170", "MAD-LHR", DEPARTURE, ARRIVAL, "99.90", Provider.ALPHA),
+            "99.90",
+            Provider.ALPHA,
+            Instant.parse("2026-11-19T10:00:00Z"));
+    Leg beta = Legs.requoted(alpha, "120.00", Provider.BETA, Instant.parse("2026-11-19T11:30:00Z"));
+
+    assertThat(LegDeduplicator.deduplicate(List.of(alpha, beta))).containsExactly(alpha);
+    assertThat(LegDeduplicator.deduplicate(List.of(beta, alpha))).containsExactly(alpha);
+  }
 }
