@@ -125,7 +125,7 @@ Keyset (seek) pagination with one composite index per supported sort order — p
 - **No total count:** the header shows "Showing N flights" (the rows loaded so far), because an exact total would need an expensive count.
 - **Not approved:** a "Best" sort order (an eDreams default that blends price and duration), which would need a scoring formula and another keyset index.
 
-## 6. Architecture (hexagonal / DDD) — proposal
+## 6. Architecture (hexagonal / DDD)
 
 ### 6.1 Technology stack (decided in the grill-me, Q1)
 
@@ -275,7 +275,7 @@ GitHub Actions on every push and pull request to `main`:
 
 **Approved extras:**
 - **Superseded runs are cancelled** (a concurrency group), and the README shows a build status badge.
-- **Dependabot** for Gradle, npm, GitHub Actions and Docker: weekly, grouped per ecosystem, with a cooldown before proposing a fresh release (it matches the "no recent releases" rule of §6.1).
+- **Dependabot** for Gradle, npm, GitHub Actions and Docker: weekly, grouped per ecosystem, with a **14-day cooldown** before proposing a fresh release (it matches the "no recent releases" rule of §6.1).
 - **Coverage gate with JaCoCo:** at least **90% of lines and 80% of branches**, over unit and integration tests of every backend module together. The Spring Boot entry point, configuration classes and generated code are excluded. Branches get a lower bar because 90% would force tests with no value for defensive and compiler-generated branches.
 - **Formatting gate with Spotless and google-java-format** (Google Java Style: 2-space indentation, 100 columns). `spotlessCheck` runs inside `./gradlew build`, so the gate also applies locally; `./gradlew spotlessApply` fixes it. The existing code is reformatted once, in a commit of its own.
 
@@ -283,10 +283,12 @@ GitHub Actions on every push and pull request to `main`:
 
 Modules (Gradle subprojects; the dependency direction is enforced with ArchUnit):
 
+**Ports (decided before the plans):** both sides of the hexagon are explicit. Every use case is an inbound port, an interface in `application.port.in`, implemented by a service in `application.service`; every external dependency is an outbound port in `application.port.out`. Driving adapters (web, the scheduler) depend only on inbound ports, driven adapters (providers, persistence) only implement outbound ports, adapters never depend on each other, and the domain depends on nothing but the JDK. ArchUnit checks each of these rules. The cost, one interface per use case with a single implementation, is accepted because it makes the hexagon visible and every rule checkable.
+
 | Module | Content | Depends on |
 |---|---|---|
 | `domain` | Leg, Itinerary, Money, Airport, Carrier; `ItineraryBuilder`, `ConnectionRules`, `LegDeduplicator`, `PricingPolicy` (markup). Pure Java, no frameworks | — |
-| `application` | Use cases: `IngestInventory`, `RefreshStaleRoute`, `SearchItineraries`. Ports: `FlightProvider`, `ItineraryRepository`, `SearchCache`, `Clock` | `domain` |
+| `application` | Inbound ports (`port.in`, one interface per use case): `IngestInventory`, `RefreshStaleRoute`, `SearchItineraries`, `RepriceItinerary`. Outbound ports (`port.out`): `FlightProvider`, `ItineraryRepository`, `SearchCache`, `Clock`. Services (`service`) implement the inbound ports | `domain` |
 | `adapters/providers` | Alpha (JSON), Beta (XML), Gamma (CSV) HTTP clients + parsers + mapping to `Leg`; Resilience4j (timeout, retry, circuit breaker, bulkhead) | `application` |
 | `adapters/persistence` | PostgreSQL (Flyway, keyset queries, indexes), Redis (cache) | `application` |
 | `adapters/web` | REST search API, cursor encoding, validation, auth, OpenAPI | `application` |

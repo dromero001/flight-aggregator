@@ -13,8 +13,10 @@ The documentation is split by what each part shows.
 
 ### 2. Planning — how the work was planned
 - [Design spec](docs/planning/design-spec.md): goals, domain rules, every design decision and its reasoning
+- [Roadmap](docs/planning/roadmap.md): the subsystem plans, their order and the schedule to the delivery
 - Implementation plans:
-  - [Mock dataset](docs/planning/plans/2026-11-13-mock-dataset.md)
+  - [0 — Mock dataset](docs/planning/plans/2026-11-13-mock-dataset.md)
+  - [1 — Foundations](docs/planning/plans/2026-11-14-foundations.md)
 - Progress reports:
   - [2026-11-13](docs/planning/progress/2026-11-13.md)
   - [2026-11-14](docs/planning/progress/2026-11-14.md)
