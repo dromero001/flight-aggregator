@@ -16,7 +16,7 @@ These rules apply to every AI agent (main session and subagents) working in this
 - Record the red → green evidence in the progress report of the day: the test, the failure message you saw, and what made it pass. Commits stay green (the full suite passes before every commit), so the evidence lives in the report, not in red commits.
 
 ## Before every commit
-1. `./gradlew build` (full suite) is green.
+1. `./gradlew build` (full suite) is green. If `spotlessCheck` fails, run `./gradlew spotlessApply` and build again.
 2. Review your own diff with the `thermo-nuclear-code-quality-review` skill and fix the findings. Look for an existing mechanism in the codebase or framework before adding a new one, and for anything that fails silently or leaves state non-atomic.
 3. Small commits with clear messages. **No AI attribution of any kind** in commits or PRs (no `Co-Authored-By`, no "Generated with").
 

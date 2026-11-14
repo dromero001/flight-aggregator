@@ -6,13 +6,13 @@
 
 **Architecture:** Six empty Gradle modules (`domain`, `application`, `adapters:providers`, `adapters:persistence`, `adapters:web`, `bootstrap`) whose `build.gradle.kts` dependencies encode the hexagon's direction, plus an `architecture-tests` module holding ArchUnit rules that check what Gradle cannot (ports only, no framework in the domain). Formatting and coverage are enforced by `./gradlew build` itself, so CI only runs the build.
 
-**Tech Stack:** Gradle 9.9.1 (Kotlin DSL, `buildSrc` convention plugin, version catalog), Java 25, Spotless 8.10.4 with google-java-format 1.37.0, ArchUnit 1.5.1 (`archunit-junit5`), JaCoCo 0.8.16 with Gradle's `jacoco-report-aggregation` plugin, GitHub Actions, Dependabot.
+**Tech Stack:** Gradle 9.9.1 (Kotlin DSL, `buildSrc` convention plugin, version catalog), Java 25, Spotless 8.10.4 with google-java-format 1.36.1, ArchUnit 1.5.1 (`archunit-junit5`), JaCoCo 0.8.16 with Gradle's `jacoco-report-aggregation` plugin, GitHub Actions, Dependabot.
 
 **Spec:** [design spec](../design-spec.md) — §6 (modules and ports), §6.1 (version policy), §6.11 (CI). Roadmap: [plan 1](../roadmap.md).
 
 ## Global Constraints
 
-- Versions: latest stable GA, no release candidates, no recent `.0` releases, verified at the primary source (§6.1). Pinned here: Spotless 8.10.4, google-java-format 1.37.0 (2.0.0 is a two-week-old major), ArchUnit 1.5.1, JaCoCo 0.8.16, `actions/checkout` v7.0.1, `actions/setup-java` v6.1.0 (v6.2.0 and v6.3.0 are under 14 days old), `gradle/actions` v6.4.1, `actions/upload-artifact` v7.0.2. Actions are pinned by commit SHA with the version in a trailing comment.
+- Versions: latest stable GA, no release candidates, no recent `.0` releases, verified at the primary source (§6.1). Pinned here: Spotless 8.10.4, google-java-format 1.36.1 (1.37.0 changed `JavaFormatterOptions.Style` from an enum to a record, which Spotless 8.10.4 cannot load; 2.0.0 is a two-week-old major), ArchUnit 1.5.1, JaCoCo 0.8.16, `actions/checkout` v7.0.1, `actions/setup-java` v6.1.0 (v6.2.0 and v6.3.0 are under 14 days old), `gradle/actions` v6.4.1, `actions/upload-artifact` v7.0.2. Actions are pinned by commit SHA with the version in a trailing comment.
 - Package root `com.flightaggregator`; ports in `application.port.in` and `application.port.out`, services in `application.service`, adapters in `adapter.provider`, `adapter.persistence`, `adapter.web`, wiring in `bootstrap` (§6, "Ports").
 - Coverage gate: **90% of lines and 80% of branches**, over all backend modules together; excluded: the Spring Boot entry point, configuration classes and generated code (§6.11).
 - Formatting: google-java-format (Google Java Style, 2-space indentation, 100 columns); `spotlessCheck` runs inside `./gradlew build`; the existing code is reformatted once, in a commit of its own (§6.11).
@@ -34,7 +34,7 @@
 ### Task 1: Spotless with google-java-format, and the one-off reformat
 
 **Files:**
-- Modify: `gradle/libs.versions.toml` (versions `spotless = "8.10.4"`, `google-java-format = "1.37.0"`; library `spotless-gradle-plugin = com.diffplug.spotless:spotless-plugin-gradle`)
+- Modify: `gradle/libs.versions.toml` (versions `spotless = "8.10.4"`, `google-java-format = "1.36.1"`; library `spotless-gradle-plugin = com.diffplug.spotless:spotless-plugin-gradle`)
 - Modify: `buildSrc/build.gradle.kts` (add `mavenCentral()` and `implementation(libs.spotless.gradle.plugin)`)
 - Modify: `buildSrc/src/main/kotlin/flightaggregator.java-conventions.gradle.kts` (apply `com.diffplug.spotless`; `java { googleJavaFormat(<version from catalog>); target("src/**/*.java") }`)
 - Modify: `CLAUDE.md` ("Before every commit": run `./gradlew spotlessApply` when `spotlessCheck` fails)
