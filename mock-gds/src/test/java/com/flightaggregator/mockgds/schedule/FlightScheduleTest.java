@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.within;
 
 import com.flightaggregator.mockgds.network.Route;
 import com.flightaggregator.mockgds.network.RouteNetwork;
+import com.flightaggregator.mockgds.reference.LowCostCarrier;
 import com.flightaggregator.mockgds.reference.ReferenceData;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -78,6 +79,19 @@ class FlightScheduleTest {
     }
 
     @Test
+    void lowCostRoutesGetUpToTheirOwnMaximumOfDailyFlights() {
+        var flightsPerRoute = FlightSchedule.build(routes, new ScheduleParameters(SEED, 1, 4, 1.0)).scheduledFlights()
+                .stream().collect(Collectors.groupingBy(ScheduledFlight::route, Collectors.counting()));
+
+        assertThat(flightsPerRoute).allSatisfy((route, flights) -> assertThat(flights).as(route.toString())
+                .isBetween(1L, route.airline() instanceof LowCostCarrier ? 4L : 1L));
+        assertThat(flightsPerRoute).anySatisfy((route, flights) -> {
+            assertThat(route.airline()).isInstanceOf(LowCostCarrier.class);
+            assertThat(flights).isGreaterThan(1L);
+        });
+    }
+
+    @Test
     void flightsOperateOnAboutTheConfiguredShareOfDays() {
         var schedule = schedule(SEED, 0.5);
         int days = 30;
@@ -115,12 +129,12 @@ class FlightScheduleTest {
 
     @Test
     void refusesASizeThatWouldNeedFlightNumbersAboveFourDigits() {
-        assertThatThrownBy(() -> FlightSchedule.build(routes, new ScheduleParameters(SEED, 2000, 1.0)))
+        assertThatThrownBy(() -> FlightSchedule.build(routes, new ScheduleParameters(SEED, 2000, 2000, 1.0)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("flight numbers");
     }
 
     private FlightSchedule schedule(long seed, double operatingProbability) {
-        return FlightSchedule.build(routes, new ScheduleParameters(seed, 3, operatingProbability));
+        return FlightSchedule.build(routes, new ScheduleParameters(seed, 3, 3, operatingProbability));
     }
 }

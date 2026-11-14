@@ -2,6 +2,8 @@ package com.flightaggregator.mockgds.schedule;
 
 import com.flightaggregator.mockgds.network.Route;
 import com.flightaggregator.mockgds.random.SeededRandom;
+import com.flightaggregator.mockgds.reference.LowCostCarrier;
+import com.flightaggregator.mockgds.reference.NetworkCarrier;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -38,7 +40,7 @@ public final class FlightSchedule {
         var lastFlightNumberByAirline = new HashMap<String, Integer>();
         var scheduledFlights = new ArrayList<ScheduledFlight>();
         for (var route : routes) {
-            int dailyFlights = random.nextInt(1, parameters.maxDailyFlightsPerRoute() + 1);
+            int dailyFlights = random.nextInt(1, maxDailyFlights(route, parameters) + 1);
             for (int i = 0; i < dailyFlights; i++) {
                 int flightNumber = nextFlightNumber(route, lastFlightNumberByAirline, random);
                 scheduledFlights.add(new ScheduledFlight(route, flightNumber, randomDepartureTime(random)));
@@ -70,12 +72,19 @@ public final class FlightSchedule {
         return random.nextDouble() < parameters.operatingProbability();
     }
 
+    private static int maxDailyFlights(Route route, ScheduleParameters parameters) {
+        return switch (route.airline()) {
+            case NetworkCarrier _ -> parameters.maxDailyFlightsPerNetworkRoute();
+            case LowCostCarrier _ -> parameters.maxDailyFlightsPerLowCostRoute();
+        };
+    }
+
     private static int nextFlightNumber(Route route, Map<String, Integer> lastByAirline, RandomGenerator random) {
         int next = lastByAirline.getOrDefault(route.airline().code(), FIRST_FLIGHT_NUMBER)
                 + random.nextInt(1, MAX_FLIGHT_NUMBER_GAP + 1);
         if (next > MAX_FLIGHT_NUMBER) {
             throw new IllegalArgumentException("Too many flights for " + route.airline().code()
-                    + ": flight numbers have at most four digits; lower maxDailyFlightsPerRoute");
+                    + ": flight numbers have at most four digits; lower the maximum of daily flights per route");
         }
         lastByAirline.put(route.airline().code(), next);
         return next;

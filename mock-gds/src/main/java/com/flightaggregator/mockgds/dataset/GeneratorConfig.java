@@ -48,7 +48,7 @@ public record GeneratorConfig(long seed, int windowDays, int maxDailyFlightsPerR
     }
 
     ScheduleParameters scheduleParameters() {
-        return new ScheduleParameters(seed, maxDailyFlightsPerRoute, operatingProbability);
+        return new ScheduleParameters(seed, maxDailyFlightsPerRoute, maxDailyFlightsPerRoute, operatingProbability);
     }
 
     private static void requireShare(String name, double share) {
