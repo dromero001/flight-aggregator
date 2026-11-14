@@ -3,7 +3,7 @@
 - **Date:** 2026-11-13
 - **Status:** every open decision of §10 closed in the grill-me (2026-11-14)
 - **Delivery:** Monday 2026-11-16, end of day — URL of the public repository `github.com/dromero001/flight-aggregator`
-- **Inputs:** the take-home brief, [session 01](../../ai-sessions/01-requirements-clarification.md) and the hiring team's answers received on 2026-11-13
+- **Inputs:** the take-home brief, [session 01](../ai/sessions/01-requirements-clarification.md) and the hiring team's answers received on 2026-11-13
 
 ## 1. Intent and why
 
@@ -26,7 +26,7 @@ Success means that:
 - Frontend dashboard to search as an end customer.
 - PostgreSQL + Redis, authentication, observability, CI.
 - Unit, integration and end-to-end tests, written test-first. Failure tests for 1, 2 and 3 providers down.
-- `SOLUTION.md`: architecture, AI usage (linking `docs/ai-sessions/`), modelling, pagination at 1M, assumptions, limitations.
+- `SOLUTION.md`: architecture, AI usage (linking `docs/ai/sessions/`), modelling, pagination at 1M, assumptions, limitations.
 
 **Non-goals:** load testing; date filter; round trips; currencies other than EUR; codeshare handling; more than 2 stops.
 
@@ -144,7 +144,7 @@ Keyset (seek) pagination with one composite index per supported sort order — p
 
 The frontend stack is still open (Q8).
 
-How the stack was chosen is part of the AI story: the agent's first proposal (Java 21 + Spring Boot 3) was outdated, and the review caught it. See [session 03](../../ai-sessions/03-grill-me-design-decisions.md).
+How the stack was chosen is part of the AI story: the agent's first proposal (Java 21 + Spring Boot 3) was outdated, and the review caught it. See [session 03](../ai/sessions/03-grill-me-design-decisions.md).
 
 ### 6.2 Caching strategy (decided in the grill-me, Q3)
 
@@ -296,7 +296,7 @@ Modules (Gradle subprojects; the dependency direction is enforced with ArchUnit)
 
 ## 7. Phases and definition of done
 
-Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight work (tedious, verifiable by tests). Every night ends with small commits and a `docs/progress/<date>.md` report. If a decision blocks the night's work, it is written down as pending, and the agent moves to another task instead of improvising.
+Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight work (tedious, verifiable by tests). Every night ends with small commits and a `docs/planning/progress/<date>.md` report. If a decision blocks the night's work, it is written down as pending, and the agent moves to another task instead of improvising.
 
 | When | Work | Definition of done |
 |---|---|---|
@@ -322,7 +322,7 @@ Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight wor
 - **Requirements and design:** Claude Code with persistent memory; brainstorming → grill-me (one question at a time, always with a recommendation) → `writing-plans`.
 - **Implementation:** TDD driven by the agent; subagents for independent tasks; overnight autonomous runs bounded by tests.
 - **Review:** thermo-nuclear code-quality review plus a correctness code review before the delivery.
-- **Traceability:** each relevant session documented in `docs/ai-sessions/` (only the prompts that add value); the agent configuration (`CLAUDE.md`, skills, subagents) versioned in the repo; `SOLUTION.md` links to both.
+- **Traceability:** each relevant session documented in `docs/ai/sessions/` (only the prompts that add value); the agent configuration (`CLAUDE.md`, skills, subagents) versioned in the repo; `SOLUTION.md` links to both.
 
 ## 10. Open decisions (for the grill-me)
 

@@ -6,13 +6,26 @@ Flight aggregation & cache optimization system: ingests itineraries from three l
 
 ## Documentation
 
-- [AI-assisted working sessions](docs/ai-sessions/)
-  - [01 — Requirements clarification](docs/ai-sessions/01-requirements-clarification.md)
-  - [02 — Hiring team's answers and project plan](docs/ai-sessions/02-team-answers-and-project-plan.md)
-  - [03 — Grill-me on the open design decisions](docs/ai-sessions/03-grill-me-design-decisions.md)
-  - [04 — Autonomous agent work and a TDD correction](docs/ai-sessions/04-autonomous-work-and-tdd.md)
+The documentation is split by what each part shows.
+
+### 1. Architecture — what is built
+- [Architecture overview](docs/architecture/README.md): hexagonal modules, flows and the domain glossary
+
+### 2. Planning — how the work was planned
+- [Design spec](docs/planning/design-spec.md): goals, domain rules, every design decision and its reasoning
+- Implementation plans:
+  - [Mock dataset](docs/planning/plans/2026-11-13-mock-dataset.md)
+- Progress reports:
+  - [2026-11-13](docs/planning/progress/2026-11-13.md)
+  - [2026-11-14](docs/planning/progress/2026-11-14.md)
+
+### 3. AI usage — how the agent was steered
+- [How this project uses AI](docs/ai/README.md): the process, the skills, plugins and hooks, and why each one
 - [Agent instructions (`CLAUDE.md`)](CLAUDE.md)
-- [Project plan draft](docs/superpowers/specs/2026-11-13-flight-aggregator-design.md)
-- [Implementation plan — mock dataset](docs/superpowers/plans/2026-11-13-mock-dataset.md)
-- [Progress report — 2026-11-13](docs/progress/2026-11-13.md)
-- [Progress report — 2026-11-14](docs/progress/2026-11-14.md)
+- [Working sessions](docs/ai/sessions/):
+  1. [Requirements clarification](docs/ai/sessions/01-requirements-clarification.md)
+  2. [Hiring team's answers and project plan](docs/ai/sessions/02-team-answers-and-project-plan.md)
+  3. [Grill-me on the open design decisions](docs/ai/sessions/03-grill-me-design-decisions.md)
+  4. [Autonomous agent work and a TDD correction](docs/ai/sessions/04-autonomous-work-and-tdd.md)
+  5. [A scope guard, the dashboard design and the agent's skills](docs/ai/sessions/05-scope-guard-and-agent-skills.md)
+  6. [Grill-me: observability, CI and pagination](docs/ai/sessions/06-grill-me-observability-ci-pagination.md)

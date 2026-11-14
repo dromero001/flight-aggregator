@@ -25,7 +25,7 @@
 
 ## 3. Output
 
-- [Project plan draft](../superpowers/specs/2026-11-13-flight-aggregator-design.md): intent, goals and anti-goals, confirmed domain rules, approaches considered, hexagonal modules, phases with definition of done, testing strategy, AI usage per phase, and the open decisions for the grill-me.
+- [Project plan draft](../../planning/design-spec.md): intent, goals and anti-goals, confirmed domain rules, approaches considered, hexagonal modules, phases with definition of done, testing strategy, AI usage per phase, and the open decisions for the grill-me.
 
 ## 4. Prompts that added value
 

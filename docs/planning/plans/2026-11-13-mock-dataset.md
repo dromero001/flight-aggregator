@@ -8,7 +8,7 @@
 
 **Tech Stack:** Java 25 (Gradle toolchain + foojay resolver), Gradle 9.9.1 Kotlin DSL with a `buildSrc` convention plugin and a version catalog, JUnit Jupiter (BOM 6.1.3), AssertJ 3.27.7.
 
-**Spec:** [docs/superpowers/specs/2026-11-13-flight-aggregator-design.md](../specs/2026-11-13-flight-aggregator-design.md) — §4, §4.1, §4.2, §6.1, §6.3, §6.7, §6.8, §8.
+**Spec:** [docs/planning/design-spec.md](../design-spec.md) — §4, §4.1, §4.2, §6.1, §6.3, §6.7, §6.8, §8.
 
 ## Global Constraints
 
@@ -72,4 +72,4 @@ Tests: duplicates by 2 and 3 providers exist with different prices; malformed sh
 
 ### Task 8: Review, docs, push
 
-Thermo-nuclear review of the module, fixes, `docs/progress/2026-11-13.md`, README links, `./gradlew build`, push after the `dromero001` check.
+Thermo-nuclear review of the module, fixes, `docs/planning/progress/2026-11-13.md`, README links, `./gradlew build`, push after the `dromero001` check.

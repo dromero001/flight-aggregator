@@ -13,8 +13,8 @@ The brief and the user's recorded decisions define the scope. Everything else is
 
 | Class | Source |
 |---|---|
-| **REQUIRED** | The brief, as summarised in the design spec (`docs/superpowers/specs/2026-11-13-flight-aggregator-design.md`) §2 Goals and §4 Domain, and `docs/ai-sessions/01-requirements-clarification.md` |
-| **AGREED** | Decisions recorded in the spec (§5, §6, sections marked "decided") and in `docs/ai-sessions/` |
+| **REQUIRED** | The brief, as summarised in the design spec (`docs/planning/design-spec.md`) §2 Goals and §4 Domain, and `docs/ai/sessions/01-requirements-clarification.md` |
+| **AGREED** | Decisions recorded in the spec (§5, §6, sections marked "decided") and in `docs/ai/sessions/` |
 | **IMPLIED** | Something a REQUIRED or AGREED item cannot work without at all (e.g. a `cursor` parameter for keyset pagination). If the item could ship without it, it is an EXTRA |
 | **NON-GOAL** | Spec §2 Non-goals (date filter, round trips, other currencies, codeshare, more than 2 stops, load testing). Never propose these |
 | **EXTRA** | Anything you cannot trace to one of the rows above, including details you consider standard practice |
@@ -33,7 +33,7 @@ The default for every extra is **out**. Do not build it, describe it as decided,
 ## When implementing (main session or subagent)
 
 - Build only REQUIRED, AGREED and IMPLIED items.
-- If you discover a worthwhile extra mid-task, write it as pending in the day's progress report (`docs/progress/<date>.md`) under "Extras for the user to decide", and carry on without it.
+- If you discover a worthwhile extra mid-task, write it as pending in the day's progress report (`docs/planning/progress/<date>.md`) under "Extras for the user to decide", and carry on without it.
 
 ## Quick reference
 

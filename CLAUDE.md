@@ -3,9 +3,10 @@
 These rules apply to every AI agent (main session and subagents) working in this repository. They are versioned on purpose: the way the agent is configured is part of the solution.
 
 ## Source of truth
-- Design: `docs/superpowers/specs/2026-11-13-flight-aggregator-design.md`. Do not take design decisions on your own: if one blocks you, write it down as pending in the progress report and move on.
-- Decision history: `docs/ai-sessions/`. Progress reports: `docs/progress/`.
-- Agent skills and plugins: `.claude/skills/README.md`.
+- Design: `docs/planning/design-spec.md`. Do not take design decisions on your own: if one blocks you, write it down as pending in the progress report and move on.
+- Decision history: `docs/ai/sessions/`. Implementation plans: `docs/planning/plans/`. Progress reports: `docs/planning/progress/`.
+- Documentation is split in three blocks, each indexed from `README.md`: `docs/architecture/` (what is built), `docs/planning/` (spec, plans, progress) and `docs/ai/` (how the agent is used). Add every new document to its block and to the README index.
+- How the agent is used, and its skills, plugins and hooks: `docs/ai/README.md`.
 - **Scope:** read `.claude/skills/brief-scope/SKILL.md` before proposing or building anything, and follow its output contract. Only what the brief requires or the user has decided goes in, each line with its source; every proposal ends with a "⚠ Extras — your call" section, and extras stay out until the user approves them.
 
 ## Test-driven development (non-negotiable)
@@ -29,7 +30,7 @@ The work moves between a Mac and a Windows PC, so nothing may live on only one o
 - **Windows:** the repository's scripts are bash; run them with Git Bash.
 
 ## Documenting AI usage
-- Every relevant working session gets a file in `docs/ai-sessions/` (numbered, in English): goal, what happened, decisions, lesson.
+- Every relevant working session gets a file in `docs/ai/sessions/` (numbered, in English): goal, what happened, decisions, lesson.
 - Each session ends with a **"Prompts that added value"** section, holding only the prompts (the user's, or the briefs given to subagents) that changed the outcome: a challenge that exposed a wrong assumption, a framing that reshaped the design, a brief that made delegated work verifiable. For each prompt, quote or paraphrase it faithfully and say what it changed.
 - Prompts are written in English. The working sessions were held in Spanish, so prompts are translated faithfully, keeping their meaning and tone.
 - Leave out routine instructions ("commit and push", "document it", "go on"), and never invent or embellish a prompt.

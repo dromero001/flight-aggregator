@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-13 (in progress)
 - **Tooling:** Claude Code (Claude Opus 5.5) with persistent memory; a "grill-me" skill (one question at a time, always with a recommendation); web search to verify release and support dates
-- **Goal:** settle the open decisions of the [plan draft](../superpowers/specs/2026-11-13-flight-aggregator-design.md) (§10) one by one, before writing the detailed implementation plan.
+- **Goal:** settle the open decisions of the [plan draft](../../planning/design-spec.md) (§10) one by one, before writing the detailed implementation plan.
 
 ## Q1 — Technology stack
 

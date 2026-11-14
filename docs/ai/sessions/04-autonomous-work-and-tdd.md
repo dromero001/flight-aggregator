@@ -6,7 +6,7 @@
 
 ## 1. What was delegated
 
-With about 9 hours of my own time until the deadline, I asked the agent to start the sample data early. It did not depend on the decisions still open. A background subagent built the Gradle skeleton and the deterministic generator of the mock providers' inventory. The brief told it to use strict TDD, review its code before each commit, and write a progress report. The result: [progress report](../progress/2026-11-13.md), 67 tests, and ~1M itineraries reachable from the generated legs.
+With about 9 hours of my own time until the deadline, I asked the agent to start the sample data early. It did not depend on the decisions still open. A background subagent built the Gradle skeleton and the deterministic generator of the mock providers' inventory. The brief told it to use strict TDD, review its code before each commit, and write a progress report. The result: [progress report](../../planning/progress/2026-11-13.md), 67 tests, and ~1M itineraries reachable from the generated legs.
 
 ## 2. What the review found
 
@@ -20,7 +20,7 @@ The generated data was sound. The process was not the one we had agreed.
 ## 3. The correction
 
 TDD is a core requirement of this project, so we made it enforceable instead of relying on a reminder in each prompt:
-- A versioned [`CLAUDE.md`](../../CLAUDE.md) at the repository root now binds every agent. It requires the TDD skill, one test at a time, confirming each test fails for the expected reason, a review before every commit, and the red → green evidence recorded in the progress report.
+- A versioned [`CLAUDE.md`](../../../CLAUDE.md) at the repository root now binds every agent. It requires the TDD skill, one test at a time, confirming each test fails for the expected reason, a review before every commit, and the red → green evidence recorded in the progress report.
 - Every brief to a subagent now names the TDD skill explicitly. The main session checks the work against these rules before accepting it.
 
 ## 4. Decisions raised by the dataset
