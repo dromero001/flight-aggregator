@@ -7,6 +7,7 @@ import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -24,44 +25,55 @@ class HexagonalArchitectureTest {
           .withImportOption(new ImportOption.DoNotIncludeTests())
           .importPackages(ROOT);
 
-  private static final List<ArchRule> RULES = HexagonalRules.forRoot(ROOT);
+  private static final List<ArchRule> ALL_RULES = HexagonalRules.forRoot(ROOT);
 
-  static Stream<Arguments> rulesOverPopulatedLayers() {
-    return Stream.of(RULES.get(0), RULES.get(4), RULES.get(5))
-        .map(HexagonalArchitectureTest::named);
+  // Rules 2, 3 and 4 still match no class: plan 4 moves them out of this list with the first
+  // application and adapter classes. They are picked by identity, so reordering forRoot changes
+  // nothing and a new rule is strict by default.
+  private static final List<ArchRule> LENIENT_RULES =
+      List.of(
+          HexagonalRules.applicationDependsOnlyOnTheDomainAndSpring(ROOT),
+          HexagonalRules.adaptersUseOnlyPorts(ROOT),
+          HexagonalRules.adaptersAreIndependent(ROOT));
+
+  private static final List<ArchRule> STRICT_RULES =
+      ALL_RULES.stream()
+          .filter(rule -> !descriptions(LENIENT_RULES).contains(rule.getDescription()))
+          .toList();
+
+  private static List<String> descriptions(List<ArchRule> rules) {
+    return rules.stream().map(ArchRule::getDescription).toList();
   }
 
-  // Rules 2, 3 and 4 still match no class: plan 4 moves them to rulesOverPopulatedLayers with the
-  // first application and adapter classes.
-  static Stream<Arguments> rulesOverEmptyLayers() {
-    return Stream.of(RULES.get(1), RULES.get(2), RULES.get(3))
-        .map(HexagonalArchitectureTest::named);
+  static Stream<Arguments> strictRules() {
+    return named(STRICT_RULES);
   }
 
-  private static Arguments named(ArchRule rule) {
-    return argumentSet(rule.getDescription(), rule);
+  static Stream<Arguments> lenientRules() {
+    return named(LENIENT_RULES);
+  }
+
+  private static Stream<Arguments> named(List<ArchRule> rules) {
+    return rules.stream().map(rule -> argumentSet(rule.getDescription(), rule));
   }
 
   @ParameterizedTest
-  @MethodSource("rulesOverPopulatedLayers")
+  @MethodSource("strictRules")
   void rulesOverPopulatedLayers(ArchRule rule) {
     rule.check(PRODUCTION);
   }
 
   @ParameterizedTest
-  @MethodSource("rulesOverEmptyLayers")
+  @MethodSource("lenientRules")
   void rulesOverEmptyLayers(ArchRule rule) {
     rule.allowEmptyShould(true).check(PRODUCTION);
   }
 
   @Test
   void everyRuleIsChecked() {
-    List<String> checked =
-        Stream.concat(rulesOverPopulatedLayers(), rulesOverEmptyLayers())
-            .map(arguments -> ((ArchRule) arguments.get()[0]).getDescription())
-            .toList();
+    List<String> checked = new ArrayList<>(descriptions(STRICT_RULES));
+    checked.addAll(descriptions(LENIENT_RULES));
 
-    assertThat(checked)
-        .containsExactlyInAnyOrderElementsOf(RULES.stream().map(ArchRule::getDescription).toList());
+    assertThat(checked).containsExactlyInAnyOrderElementsOf(descriptions(ALL_RULES));
   }
 }
