@@ -38,7 +38,7 @@ public record GeneratorConfig(long seed, int windowDays, int maxDailyFlightsPerR
         long seed = 20261116L;
         int windowDays = 30;
         int maxDailyFlightsPerRoute = 2;
-        double operatingProbability = 0.49;
+        double operatingProbability = 0.52;
         double twoProviderShare = 0.25;
         double threeProviderShare = 0.10;
         double malformedShare = 0.01;

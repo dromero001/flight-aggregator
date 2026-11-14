@@ -48,7 +48,6 @@ final class StandardCatalogue {
     static final List<Airline> AIRLINES = List.of(
             new NetworkCarrier("IB", "Iberia", "MAD"),
             new NetworkCarrier("UX", "Air Europa", "MAD"),
-            new NetworkCarrier("VY", "Vueling", "BCN"),
             new NetworkCarrier("BA", "British Airways", "LHR"),
             new NetworkCarrier("AF", "Air France", "CDG"),
             new NetworkCarrier("LH", "Lufthansa", "FRA"),
@@ -58,7 +57,8 @@ final class StandardCatalogue {
             new NetworkCarrier("LX", "Swiss", "ZRH"),
             new LowCostCarrier("FR", "Ryanair",
                     List.of("LPA", "MAN", "EDI", "EIN", "BER", "NAP", "FAO", "BOD", "OPO", "VCE", "HAM")),
-            new LowCostCarrier("U2", "easyJet", List.of("CDG", "AMS", "LIS", "GVA")));
+            new LowCostCarrier("U2", "easyJet", List.of("CDG", "AMS", "LIS", "GVA")),
+            new LowCostCarrier("VY", "Vueling", List.of("BCN", "PMI", "IBZ")));
 
     private StandardCatalogue() {
     }

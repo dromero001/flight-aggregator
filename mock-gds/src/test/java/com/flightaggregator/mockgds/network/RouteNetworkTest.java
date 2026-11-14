@@ -85,6 +85,12 @@ class RouteNetworkTest {
     }
 
     @Test
+    void vuelingFliesPointToPointBetweenBarcelonaAndTheBalearics() {
+        assertThat(routes).filteredOn(route -> route.airline().code().equals("VY")).extracting(Route::toString)
+                .containsExactlyInAnyOrder("VY BCN-PMI", "VY PMI-BCN", "VY BCN-IBZ", "VY IBZ-BCN", "VY PMI-IBZ", "VY IBZ-PMI");
+    }
+
+    @Test
     void blockTimeGrowsWithDistanceAndIsRoundedToFiveMinutes() {
         var shortHaul = route("MAD", "BCN");
         var longHaul = route("MAD", "JFK");
