@@ -49,33 +49,26 @@ public final class ItineraryBuilder {
     }
     Stream<Itinerary> longer =
         connectionsAfter(legs.getLast())
-            .filter(next -> !visits(legs, next.destination()))
+            .filter(next -> Itinerary.canFollow(legs, next))
             .flatMap(next -> extend(append(legs, next)));
     return Stream.concat(Stream.of(itinerary), longer);
   }
 
   /**
-   * The legs leaving the inbound leg's arrival airport inside the connection window of {@link
-   * ConnectionRules}, both ends inclusive.
+   * The legs leaving the inbound leg's arrival airport inside its connection window, both ends
+   * included: the candidates that {@link Itinerary#canFollow} then decides on.
    */
   private Stream<Leg> connectionsAfter(Leg inbound) {
-    Instant arrival = inbound.arrival().toInstant();
     return departures
         .getOrDefault(inbound.destination(), Collections.emptyNavigableMap())
         .subMap(
-            arrival.plus(ConnectionRules.MINIMUM_CONNECTION_TIME),
+            ConnectionRules.earliestOnwardDeparture(inbound),
             true,
-            arrival.plus(ConnectionRules.MAXIMUM_LAYOVER),
+            ConnectionRules.latestOnwardDeparture(inbound),
             true)
         .values()
         .stream()
         .flatMap(List::stream);
-  }
-
-  /** Whether these legs already pass through the airport, at their origin or at a stop. */
-  private static boolean visits(List<Leg> legs, Airport airport) {
-    return legs.getFirst().origin().equals(airport)
-        || legs.stream().anyMatch(leg -> leg.destination().equals(airport));
   }
 
   private static List<Leg> append(List<Leg> legs, Leg next) {

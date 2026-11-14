@@ -4,10 +4,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 /** A trip of one to three connecting legs. */
 public record Itinerary(List<Leg> legs) {
@@ -20,18 +18,22 @@ public record Itinerary(List<Leg> legs) {
       throw new IllegalArgumentException("An itinerary has 1 to 3 legs: " + legs.size());
     }
     for (int i = 1; i < legs.size(); i++) {
-      if (!ConnectionRules.connects(legs.get(i - 1), legs.get(i))) {
+      if (!canFollow(legs.subList(0, i), legs.get(i))) {
         throw new IllegalArgumentException(
-            "Legs do not connect: " + legs.get(i - 1).key() + " -> " + legs.get(i).key());
+            "Leg " + legs.get(i).key() + " cannot follow " + legs.get(i - 1).key());
       }
     }
-    Set<Airport> visited = new HashSet<>();
-    visited.add(legs.getFirst().origin());
-    for (Leg leg : legs) {
-      if (!visited.add(leg.destination())) {
-        throw new IllegalArgumentException("Airport visited twice: " + leg.destination().code());
-      }
-    }
+  }
+
+  /**
+   * Whether the next leg connects to the last of these legs and lands at an airport they have not
+   * visited, their origin included.
+   */
+  static boolean canFollow(List<Leg> legs, Leg next) {
+    Airport landing = next.destination();
+    return ConnectionRules.connects(legs.getLast(), next)
+        && !legs.getFirst().origin().equals(landing)
+        && legs.stream().noneMatch(leg -> leg.destination().equals(landing));
   }
 
   public Airport origin() {
