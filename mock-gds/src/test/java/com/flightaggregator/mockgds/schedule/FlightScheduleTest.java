@@ -129,7 +129,7 @@ class FlightScheduleTest {
 
     @Test
     void aRouteGetsTheSameDepartureTimesWhicheverOtherRoutesAreScheduled() {
-        var parameters = new ScheduleParameters(SEED, 3, 3, 1.0);
+        var parameters = parameters(SEED, 1.0);
         var fullSchedule = FlightSchedule.build(routes, parameters);
 
         assertThat(routes).allSatisfy(route -> {
@@ -137,6 +137,14 @@ class FlightScheduleTest {
             assertThat(departureTimesOf(route, scheduledAlone)).as(route.toString())
                     .isEqualTo(departureTimesOf(route, fullSchedule));
         });
+    }
+
+    @Test
+    void reorderingTheRoutesDoesNotChangeTheSchedule() {
+        var parameters = parameters(SEED, 1.0);
+
+        assertThat(FlightSchedule.build(routes.reversed(), parameters).scheduledFlights())
+                .containsExactlyInAnyOrderElementsOf(FlightSchedule.build(routes, parameters).scheduledFlights());
     }
 
     @Test
@@ -154,6 +162,10 @@ class FlightScheduleTest {
     }
 
     private FlightSchedule schedule(long seed, double operatingProbability) {
-        return FlightSchedule.build(routes, new ScheduleParameters(seed, 3, 3, operatingProbability));
+        return FlightSchedule.build(routes, parameters(seed, operatingProbability));
+    }
+
+    private static ScheduleParameters parameters(long seed, double operatingProbability) {
+        return new ScheduleParameters(seed, 3, 3, operatingProbability);
     }
 }

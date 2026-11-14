@@ -7,6 +7,7 @@ import com.flightaggregator.mockgds.reference.NetworkCarrier;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,10 @@ public final class FlightSchedule {
     private static final int FIRST_FLIGHT_NUMBER = 1000;
     private static final int MAX_FLIGHT_NUMBER_GAP = 7;
     private static final int MAX_FLIGHT_NUMBER = 9999;
+    /** Flight numbers are handed out in this order, so they do not depend on the order the routes are given in. */
+    private static final Comparator<Route> NUMBERING_ORDER = Comparator.comparing((Route route) -> route.airline().code())
+            .thenComparing(route -> route.origin().iata())
+            .thenComparing(route -> route.destination().iata());
 
     private final List<ScheduledFlight> scheduledFlights;
     private final ScheduleParameters parameters;
@@ -40,7 +45,7 @@ public final class FlightSchedule {
     public static FlightSchedule build(List<Route> routes, ScheduleParameters parameters) {
         var lastFlightNumberByAirline = new HashMap<String, Integer>();
         var scheduledFlights = new ArrayList<ScheduledFlight>();
-        for (var route : routes) {
+        for (var route : routes.stream().sorted(NUMBERING_ORDER).toList()) {
             var random = SeededRandom.derive(parameters.seed(), "schedule",
                     route.airline().code(), route.origin().iata(), route.destination().iata());
             int dailyFlights = random.nextInt(1, maxDailyFlights(route, parameters) + 1);
