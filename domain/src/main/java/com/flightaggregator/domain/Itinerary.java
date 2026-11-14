@@ -12,7 +12,7 @@ import java.util.Set;
 /** A trip of one to three connecting legs. */
 public record Itinerary(List<Leg> legs) {
 
-  private static final int MAXIMUM_LEGS = 3;
+  static final int MAXIMUM_LEGS = 3;
 
   public Itinerary {
     legs = List.copyOf(legs);

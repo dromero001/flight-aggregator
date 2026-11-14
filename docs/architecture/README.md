@@ -4,7 +4,7 @@ Technical documentation of the system, filled in as it is built:
 
 - **Hexagonal modules and their dependency rules** (Gradle enforces the module direction, ArchUnit the package rules), with Mermaid diagrams.
 - **The ingestion and search flows**, from the providers to the dashboard.
-- **The domain glossary** (ubiquitous language): leg, itinerary, dead leg, connection, interlining.
+- **The domain glossary** (ubiquitous language): leg, offer, itinerary, dead leg, connection, minimum connection time, interlining, markup.
 
 The reasoning behind each decision lives in the [design spec](../planning/design-spec.md); `SOLUTION.md`, at the repository root, summarises it for the reader.
 
@@ -42,3 +42,56 @@ ArchUnit rules, in `HexagonalRules` (`architecture-tests`), run by `./gradlew bu
 6. `everyClassResidesInALayer`: every class under `com.flightaggregator` (except `mockgds`) lives in one of the eight layer packages (`domain`, `application.port.in`, `application.port.out`, `application.service`, `adapter.provider`, `adapter.persistence`, `adapter.web`, `bootstrap`), so a misnamed package such as `adapters.web` cannot escape the other rules.
 
 Fixtures under `architecture-tests/src/test/java/.../fixture` check each rule against a tiny violating package tree (`HexagonalRulesTest`), so a rule that stopped detecting anything would fail the build.
+
+## Domain model
+
+The `domain` module is one flat package, `com.flightaggregator.domain`, of immutable records and stateless rule classes in plain Java (rule 1 above). It never reads a clock: every rule that depends on the time takes `now` as an `Instant`.
+
+Types:
+
+- `Airport` and `Carrier`: IATA codes, checked when created (three upper-case letters; two upper-case letters or digits).
+- `Money`: an amount of euros, kept in cents and never negative.
+- `Provider`: the closed set of mock providers, `ALPHA`, `BETA` and `GAMMA`.
+- `Leg`: one provider's offer of one flight (flight number 1 to 9999), with its price and the time it was quoted. `LegKey` is the flight's identity: carrier, flight number, origin, destination and departure instant.
+- `LegDeduplicator`: merges the offers of each flight into one leg.
+- `ConnectionRules`: when two legs connect, and when a leg can still be sold.
+- `PricingPolicy`: the final price of an itinerary.
+- `Itinerary`: one to three connecting legs, with the trip's origin, destination, times, duration, price, freshness and carrier. It refuses to exist if its legs break a rule. `ItineraryId` is its identity.
+- `ItineraryBuilder`: turns a set of offers into every sellable itinerary.
+
+Rules, where they are enforced, and the section of the [design spec](../planning/design-spec.md) that sets each one:
+
+| Rule | Where | Source |
+|---|---|---|
+| The same carrier, flight number, origin, destination and departure instant is the same flight. The cheapest offer wins; at the same price, the latest quote; at the same price and quote time, the provider declared first | `LegDeduplicator` | §4, leg deduplication |
+| A leg arrives after it departs (as instants), and does not start and end at the same airport | `Leg` | §4, itinerary, with the dead legs of [session 01](../ai/sessions/01-requirements-clarification.md); §4, no airport visited twice |
+| A leg departing at or before now is not sold | `ConnectionRules.isSellable` | §4, itinerary |
+| Two legs connect when the second leaves from the airport where the first lands, 45 min to 24 h after it lands, both ends included, measured between instants | `ConnectionRules.connects` | §4, itinerary; §4.2 |
+| An itinerary has 1 to 3 legs, so at most two stops | `Itinerary` | §4, itinerary |
+| No airport is visited twice, the origin included | `Itinerary`, `ItineraryBuilder` | §4, no airport visited twice |
+| A price with more than two decimals is rounded half-up to cents; a negative price is rejected, and so is a leg priced at zero | `Money`, `Leg` | §4, price |
+| An itinerary costs the sum of its legs plus a 5% markup, rounded to cents once, half-up | `PricingPolicy` | §4, price |
+| The id is a name-based UUID of the leg keys; price, provider and quote time are not part of it | `ItineraryId` | §4, itinerary identity |
+| An itinerary is as fresh as its oldest leg quote | `Itinerary.quotedAt` | §4, price freshness |
+| An itinerary belongs to a carrier only when that carrier operates every leg; mixing carriers and providers is valid | `Itinerary.singleCarrier` | §4, carrier filter and interlining |
+| The providers are a closed set: a fourth one adds a constant | `Provider` | §4, providers |
+
+`ItineraryBuilder.build(offers, now)` works in four steps, so its cost grows with the itineraries it produces rather than with every combination of legs (§5.3):
+
+1. It merges duplicate offers and drops the legs already departed.
+2. It indexes the remaining legs by origin airport, sorted by departure instant.
+3. It extends every leg depth-first, up to three legs. At the airport where the trip lands, the index jumps to the first departure at least 45 min after the arrival and reads on only up to 24 h after it, with the constants of `ConnectionRules`. A leg that would land at an airport already on the trip is skipped.
+4. It returns a lazy stream, one first leg at a time, so the ingestion can store the ~1M itineraries of the dataset (§4.1) in batches without holding them all in memory.
+
+Each itinerary is built exactly once: once the offers are merged, the only path to it is its own legs in order. `Itinerary` checks the leg count, the connections and the airports again when it is created, so a builder bug there fails loudly instead of producing an invalid itinerary.
+
+Glossary:
+
+- **Leg:** one flight between two airports with no stop, identified by its carrier, flight number, origin, destination and departure instant.
+- **Offer:** one provider's price for a leg, with the time it was quoted. Several providers can offer the same leg; deduplication keeps the best offer, and the domain's `Leg` type is that offer.
+- **Itinerary:** what a traveller buys: one to three legs flown one after the other. Providers sell legs; the aggregator builds the itineraries.
+- **Dead leg:** a leg that cannot be flown or sold: it has already departed, or it does not arrive after it departs. The builder drops departed legs; `Leg` rejects the others when it is created.
+- **Connection:** the change from one leg to the next at the same airport. It is valid when the next leg leaves at least the minimum connection time, and at most 24 hours, after the first one lands.
+- **Minimum connection time (MCT):** the shortest time in which a traveller can change planes: 45 minutes here, at every airport.
+- **Interlining:** one itinerary with legs of different airlines, or from different providers. It is valid, as at real online travel agencies; the Carrier filter still requires every leg to be operated by that carrier.
+- **Markup:** what the aggregator adds to the providers' prices: 5% of the sum of the legs, included in the final price.
