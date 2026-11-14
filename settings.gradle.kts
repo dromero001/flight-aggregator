@@ -4,6 +4,11 @@ plugins {
 
 rootProject.name = "flight-aggregator"
 
-// Modules from the design (§6). Each one is added when its first task starts:
-// domain, application, adapters:providers, adapters:persistence, adapters:web, bootstrap, frontend.
+// Hexagonal modules from the design (§6). The frontend is added when its first task starts.
 include("mock-gds")
+include("domain")
+include("application")
+include("adapters:providers")
+include("adapters:persistence")
+include("adapters:web")
+include("bootstrap")
