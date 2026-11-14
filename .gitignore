@@ -5,6 +5,9 @@
 .envrc
 .env
 
+# Local Claude Code settings (permission allowlists hold absolute paths)
+.claude/settings.local.json
+
 # Gradle
 .gradle/
 build/
@@ -13,4 +16,8 @@ build/
 # IDE
 .idea/
 *.iml
+
+# JVM crash logs and heap dumps (they record local paths and the user name)
+hs_err_pid*.log
+replay_pid*.log
 *.hprof

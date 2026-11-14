@@ -29,12 +29,13 @@ Three reviewer subagents, defined in `.claude/agents/`, each with one concern:
 
 ## Pushing
 - Only to the personal account: run `gh api user --jq .login` and push only if it prints `dromero001`. On a machine with direnv (the Mac), run it as `direnv exec . gh api user --jq .login`, because direnv selects the personal account there.
+- After every push, watch the CI run of the pushed head until it ends, and fix a red run before anything else: `gh run watch --exit-status <run id>`, with the id from `gh run list --workflow CI --commit <sha> --limit 1` (prefix both with `direnv exec .` on the Mac).
 
 ## Working from two machines
 The work moves between a Mac and a Windows PC, so nothing may live on only one of them.
-- **Start of a session:** `git pull --ff-only` before reading or changing anything.
+- **Start of a session:** `git pull --ff-only` before reading or changing anything, then `gh run list --workflow CI --branch main --limit 1` must show a green run before work starts; a red one is fixed first.
 - **End of a session, or before switching machines:** commit and push. The open question or next step goes into the spec's open decisions or the day's progress report, never only into the conversation.
-- **Windows:** the repository's scripts are bash; run them with Git Bash.
+- **Windows:** the repository's scripts are bash; run them with Git Bash. Install `jq` (`winget install jqlang.jq`): the hook tests need it, and the git guard reads the command more precisely with it than from the raw hook input.
 
 ## Documenting AI usage
 - Every relevant working session gets a file in `docs/ai/sessions/` (numbered, in English): goal, what happened, decisions, lesson.
