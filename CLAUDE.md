@@ -20,6 +20,13 @@ These rules apply to every AI agent (main session and subagents) working in this
 2. Review your own diff with the `thermo-nuclear-code-quality-review` skill and fix the findings. Look for an existing mechanism in the codebase or framework before adding a new one, and for anything that fails silently or leaves state non-atomic.
 3. Small commits with clear messages. **No AI attribution of any kind** in commits or PRs (no `Co-Authored-By`, no "Generated with").
 
+## Review protocol (plans executed with subagents)
+Three reviewer subagents, defined in `.claude/agents/`, each with one concern:
+- **After every task:** `functional-reviewer` (does it deliver what the brief, the spec and the plan ask, with no unapproved extras?) and `code-reviewer` (maintainability with the thermo-nuclear review, plus correctness).
+- **At the end of every plan:** all three on the whole plan's diff, adding `risk-reviewer` (security, data loss, silent failures, half-applied state, concurrency, resilience).
+- A task moves on only when both of its reviewers say `APPROVED`; a plan closes only when all three do. Findings are fixed, or the user decides to accept them; record which in the progress report.
+- Why this split: `docs/ai/README.md`, "Review protocol".
+
 ## Pushing
 - Only to the personal account: run `gh api user --jq .login` and push only if it prints `dromero001`. On a machine with direnv (the Mac), run it as `direnv exec . gh api user --jq .login`, because direnv selects the personal account there.
 

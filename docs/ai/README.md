@@ -13,6 +13,24 @@ The solution was built with an AI agent, Claude Code. The way the agent was stee
 | Review | A strict maintainability review of every diff before its commit, and a correctness review before delivery | `thermo-nuclear-code-quality-review`, `deslop` |
 | Traceability | Every relevant session is written up in [`sessions/`](sessions/), keeping only the prompts that changed the outcome | `CLAUDE.md` |
 
+## Review protocol
+
+Plans are executed by subagents, one per task, and reviewed by three reviewer subagents defined in [`.claude/agents/`](../../.claude/agents), each with a single concern:
+
+| Reviewer | Question it answers | When |
+|---|---|---|
+| [`functional-reviewer`](../../.claude/agents/functional-reviewer.md) | Does the change deliver what the brief, the spec and the plan ask, with nothing missing and no unapproved extra? | After every task, and on the whole plan |
+| [`code-reviewer`](../../.claude/agents/code-reviewer.md) | Is the code maintainable (thermo-nuclear review) and correct, and does it respect the hexagonal boundaries? | After every task, and on the whole plan |
+| [`risk-reviewer`](../../.claude/agents/risk-reviewer.md) | What can go wrong in production: security, data loss, silent failures, half-applied state, concurrency, resilience? | On the whole plan |
+
+**Why separate reviewers.** A single reviewer asked to check everything tends to stop at the first kind of problem it finds. Giving each reviewer one question and its own checklist makes each review thorough, and a reviewer that did not write the code is not anchored on the author's reasoning.
+
+**Why functional and code review after every task.** Both kinds of problem are local: a missing requirement or a poor abstraction is visible in the task's own diff, and it is cheapest to fix before the next task builds on it.
+
+**Why risk review once per plan.** Operational risks usually live *between* tasks: a write in one task and its rollback in another, a fallback whose log line is in a third. A reviewer that sees one task at a time misses them, so the risk reviewer reads the whole plan's diff. It also keeps the cost reasonable: for a seven-task plan, two reviewers per task plus three at the end make 17 reviews instead of 21, and most foundation tasks (formatting, Dependabot) carry little operational risk.
+
+A task moves on only when both of its reviewers approve; a plan closes only when all three do. Findings are fixed, or the user decides to accept them, and the progress report records which.
+
 ## Skills and plugins
 
 Project skills live in [`.claude/skills/`](../../.claude/skills); plugins are declared in [`.claude/settings.json`](../../.claude/settings.json), and Claude Code offers to install them when the repository is opened and trusted.

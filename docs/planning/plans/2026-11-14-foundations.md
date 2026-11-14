@@ -1,6 +1,6 @@
 # Foundations Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Every production change follows `superpowers:test-driven-development` and `CLAUDE.md`.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Every production change follows `superpowers:test-driven-development` and `CLAUDE.md`. Reviews follow the review protocol in `CLAUDE.md`: `functional-reviewer` and `code-reviewer` after every task, plus `risk-reviewer` on the whole plan at the end.
 
 **Goal:** Every later commit is born inside the hexagonal modules and already passes the architecture, formatting and coverage gates, locally and in CI.
 
@@ -84,7 +84,7 @@ Commits stay green (`CLAUDE.md`), so the reformat lands **before** the gate: fir
 ### Task 3: ArchUnit rules with meta-tests
 
 **Files:**
-- Create: `architecture-tests/build.gradle.kts` (conventions; `testImplementation` of every module from Task 2 and of `archunit-junit5`; add `archunit = "1.5.1"` and the library to the catalog)
+- Create: `architecture-tests/build.gradle.kts` (conventions; `testImplementation` of every module from Task 2 and of `archunit-junit5`; add `archunit = "1.5.1"` and the library to the catalog; for the Spring-allowed fixture, `testImplementation(platform(spring-boot-dependencies))` with `spring-boot = "4.1.2"` in the catalog, and `testImplementation("org.springframework:spring-context")`)
 - Create: `architecture-tests/src/test/java/com/flightaggregator/architecture/HexagonalRules.java`
 - Create: `architecture-tests/src/test/java/com/flightaggregator/architecture/HexagonalArchitectureTest.java`
 - Create: `architecture-tests/src/test/java/com/flightaggregator/architecture/HexagonalRulesTest.java`
@@ -94,7 +94,7 @@ Commits stay green (`CLAUDE.md`), so the reformat lands **before** the gate: fir
 **Interfaces:**
 - Produces: `final class HexagonalRules` with one `static ArchRule <name>(String rootPackage)` per rule, and `static List<ArchRule> forRoot(String rootPackage)` returning all five in this order:
   1. `domainDependsOnlyOnTheJdk` — classes in `<root>.domain..` depend only on `java..` and `<root>.domain..`
-  2. `applicationDependsOnlyOnTheDomain` — `<root>.application..` depends only on `java..`, `<root>.domain..` and `<root>.application..`
+  2. `applicationDependsOnlyOnTheDomainAndSpring` — `<root>.application..` depends only on `java..`, `org.springframework..`, `<root>.domain..` and `<root>.application..` (Spring is allowed in the application layer, spec §6 "Ports")
   3. `adaptersUseOnlyPorts` — `<root>.adapter..` do not depend on `<root>.application.service..`
   4. `adaptersAreIndependent` — the slices `<root>.adapter.(*)..` do not depend on each other
   5. `nothingDependsOnBootstrap` — no class outside `<root>.bootstrap..` depends on `<root>.bootstrap..`
@@ -114,7 +114,7 @@ Commits stay green (`CLAUDE.md`), so the reformat lands **before** the gate: fir
   with fixture `fixture/domainleak/domain/Leaky.java` referencing `fixture/domainleak/adapter/web/Controller.java`.
 - [ ] **Step 2: Run it and watch it fail:** `./gradlew :architecture-tests:test --tests '*HexagonalRulesTest*'` — Expected: FAIL, "cannot find symbol HexagonalRules".
 - [ ] **Step 3: Implement `static ArchRule domainDependsOnlyOnTheJdk(String root)`**, run, PASS.
-- [ ] **Steps 4–11: Repeat red → green, one meta-test at a time,** for rules 2–5. Each fixture holds exactly one violation: `applicationleak` (application → adapter), `serviceaccess` (adapter → `application.service`), `adaptercoupling` (`adapter.web` → `adapter.persistence`), `bootstrapleak` (`application` → `bootstrap`). Then one meta-test per rule asserting **no** violation on a fixture `clean/` that follows every rule.
+- [ ] **Steps 4–11: Repeat red → green, one meta-test at a time,** for rules 2–5. Each fixture holds exactly one violation: `applicationleak` (application → adapter; plus a second meta-test asserting that application → a Spring annotation is **not** a violation), `serviceaccess` (adapter → `application.service`), `adaptercoupling` (`adapter.web` → `adapter.persistence`), `bootstrapleak` (`application` → `bootstrap`). Then one meta-test per rule asserting **no** violation on a fixture `clean/` that follows every rule.
 - [ ] **Step 12: Add `forRoot` and `HexagonalArchitectureTest`** (one `@Test` per rule over `com.flightaggregator`), run `./gradlew build`, PASS.
 - [ ] **Step 13: Commit and push:** `git commit -m "Check the hexagonal rules with ArchUnit"`
 
@@ -175,5 +175,5 @@ Commits stay green (`CLAUDE.md`), so the reformat lands **before** the gate: fir
 - Modify: `docs/planning/roadmap.md` (plan 1 → Done)
 
 - [ ] **Step 1:** Write the report and update the indexes.
-- [ ] **Step 2:** `./gradlew build` green, thermo-nuclear review of the whole plan's diff, fixes.
+- [ ] **Step 2:** `./gradlew build` green; the three reviewers on the whole plan's diff (`git diff <plan base>..HEAD`); fix the findings or record the ones the user accepts.
 - [ ] **Step 3:** Commit and push: `git commit -m "Record the foundations run"`
