@@ -33,11 +33,14 @@ val coverageExclusions = listOf("**/*Application.class", "**/config/**", "**/gen
 val minimumLines = providers.gradleProperty("coverage.minimum.lines").orElse("0.90").map(::BigDecimal)
 val minimumBranches = providers.gradleProperty("coverage.minimum.branches").orElse("0.80").map(::BigDecimal)
 
-val report = tasks.named<JacocoReport>("testCodeCoverageReport")
+val report = tasks.named<JacocoReport>("testCodeCoverageReport") {
+    val allClasses = files(classDirectories.from.toList())
+    classDirectories.setFrom(allClasses.asFileTree.matching { exclude(coverageExclusions) })
+}
 
 val coverageVerification = tasks.register<JacocoCoverageVerification>("coverageVerification") {
     executionData.from(report.map { it.executionData })
-    classDirectories.from(report.map { it.classDirectories.asFileTree.matching { exclude(coverageExclusions) } })
+    classDirectories.from(report.map { it.classDirectories })
     sourceDirectories.from(report.map { it.sourceDirectories })
     violationRules {
         rule {
