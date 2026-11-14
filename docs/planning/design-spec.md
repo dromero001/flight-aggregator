@@ -129,7 +129,7 @@ Keyset (seek) pagination with one composite index per supported sort order — p
 
 ### 6.1 Technology stack (decided in the grill-me, Q1)
 
-**Version policy:** the latest **stable GA** of every component; no milestones, release candidates or `.0` releases published days before the delivery. With a fixed deadline, a framework bug that is not ours is a risk we cannot absorb. Exact patch versions are verified in Maven Central and on the official sites when the skeleton is created, and are pinned. Libraries managed by the Spring Boot BOM (Flyway, Testcontainers, Jackson, Micrometer, drivers) take the BOM version, so they are known to work together.
+**Version policy:** the latest **stable GA** of every component. A release counts as stable only once it is at least **14 days old**, the same cooldown Dependabot applies (§6.11) and the pinned GitHub Actions follow; milestones and release candidates never count. With a fixed deadline, a framework bug that is not ours is a risk we cannot absorb. Exact patch versions are verified in Maven Central and on the official sites when the skeleton is created, and are pinned. Libraries managed by the Spring Boot BOM (Flyway, Testcontainers, Jackson, Micrometer, drivers) take the BOM version, so they are known to work together.
 
 | Component | Choice | Why |
 |---|---|---|
@@ -139,7 +139,7 @@ Keyset (seek) pagination with one composite index per supported sort order — p
 | Circuit breaker and time limiter | **Resilience4j core modules** | Spring 7 has no circuit breaker. Resilience4j has no official Boot 4 starter yet, but its core is framework-agnostic; we wire it ourselves and bind its metrics to Micrometer |
 | Database | **PostgreSQL 18** | Latest GA. PostgreSQL 19 is a release candidate with GA planned after our delivery date. Native declarative partitioning covers §4.3 |
 | Cache | **Valkey 9** | BSD-licensed, Linux Foundation fork of Redis, protocol-compatible and the default engine in AWS ElastiCache. Redis 8 (AGPL) was considered; its native JSON and search modules are not needed here. Spring Data Redis works with both, so the choice is reversible |
-| Build | **Gradle 9.x (latest stable)**, multi-module, Kotlin DSL | Supports Java 25; modules enforce the hexagonal boundaries at compile time |
+| Build | **Gradle 9.x (latest stable: 9.8.2, since 9.9.x is under 14 days old)**, multi-module, Kotlin DSL | Supports Java 25; modules enforce the hexagonal boundaries at compile time |
 | Tests | JUnit 5, AssertJ, **Testcontainers**, WireMock, ArchUnit | Real PostgreSQL and Valkey in integration tests instead of in-memory fakes |
 
 The frontend stack is still open (Q8).

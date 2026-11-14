@@ -45,5 +45,5 @@ The work moves between a Mac and a Windows PC, so nothing may live on only one o
 
 ## Conventions
 - English everywhere: everything that is presented or documented (code, tests, logs, commit messages, docs, prompts, the dashboard and every user-facing text), even when the conversation with the agent happens in Spanish.
-- Dependencies: the latest **stable GA** release, verified against a primary source (Maven Central `maven-metadata.xml`, official release pages) before pinning. No milestones or release candidates. Libraries managed by the Spring Boot BOM take the BOM version.
+- Dependencies: the latest **stable GA** release, verified against a primary source (Maven Central `maven-metadata.xml`, official release pages) before pinning. A release counts as stable only once it is at least 14 days old (spec §6.1); no milestones or release candidates. Libraries managed by the Spring Boot BOM take the BOM version.
 - Hexagonal boundaries: no framework or persistence types in the domain.

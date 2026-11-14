@@ -20,7 +20,7 @@ dependencies {
 reporting {
     reports {
         register<JacocoCoverageReport>("testCodeCoverageReport") {
-            // Not redundant: Gradle 9.9.1 fails on an explicitly registered report without it.
+            // Not redundant: Gradle 9.8.2 fails on an explicitly registered report without it.
             testSuiteName = "test"
         }
     }

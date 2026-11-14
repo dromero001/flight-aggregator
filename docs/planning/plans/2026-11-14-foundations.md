@@ -6,7 +6,7 @@
 
 **Architecture:** Six empty Gradle modules (`domain`, `application`, `adapters:providers`, `adapters:persistence`, `adapters:web`, `bootstrap`) whose `build.gradle.kts` dependencies encode the hexagon's direction, plus an `architecture-tests` module holding ArchUnit rules that check what Gradle cannot (ports only, no framework in the domain). Formatting and coverage are enforced by `./gradlew build` itself, so CI only runs the build.
 
-**Tech Stack:** Gradle 9.9.1 (Kotlin DSL, `buildSrc` convention plugin, version catalog), Java 25, Spotless 8.10.4 with google-java-format 1.36.1, ArchUnit 1.5.1 (`archunit-junit5`), JaCoCo 0.8.16 with Gradle's `jacoco-report-aggregation` plugin, GitHub Actions, Dependabot.
+**Tech Stack:** Gradle 9.8.2 (Kotlin DSL, `buildSrc` convention plugin, version catalog; the plan ran on 9.9.1, and the final review moved back to 9.8.2 because 9.9.1 was days old), Java 25, Spotless 8.10.4 with google-java-format 1.36.1, ArchUnit 1.5.1 (`archunit-junit5`), JaCoCo 0.8.16 with Gradle's `jacoco-report-aggregation` plugin, GitHub Actions, Dependabot.
 
 **Spec:** [design spec](../design-spec.md) — §6 (modules and ports), §6.1 (version policy), §6.11 (CI). Roadmap: [plan 1](../roadmap.md).
 
