@@ -1,5 +1,7 @@
 # Flight Aggregator
 
+[![CI](https://github.com/dromero001/flight-aggregator/actions/workflows/ci.yml/badge.svg)](https://github.com/dromero001/flight-aggregator/actions/workflows/ci.yml)
+
 Flight aggregation & cache optimization system: ingests itineraries from three legacy GDS mocks (JSON, XML, CSV), deduplicates and prices them, and serves a keyset-paginated search API with a real-time dashboard.
 
 > Work in progress. Architecture, assumptions and trade-offs will be documented in `SOLUTION.md`.
