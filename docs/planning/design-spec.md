@@ -50,8 +50,11 @@ Success means that:
 - **Leg deduplication** across providers: same airline + flight number + origin/destination + departure time → the cheapest one wins.
 - **Itinerary:** 1 to 3 legs (max 2 stops — our assumption). Valid connection = arrival airport equals the next departure airport, chronological order, connection time ≥ 45 min (MCT) and ≤ 24 h, and no leg already departed.
 - **No airport visited twice** (decided after the dataset review): an itinerary such as MAD→LHR→MAD→BCN satisfies every connection rule but no traveller would buy it, and real search engines discard it. It is a domain rule of the itinerary builder, not a data filter.
-- **Price:** sum of the leg prices, then +5% markup (EUR, rounded to cents — rounding mode left to the builder, but documented).
+- **Price:** sum of the leg prices, then +5% markup, in EUR, rounded to cents **once, half-up** (decided before plan 2). Half-up is the commercial rounding a customer expects. Half-even only avoids a bias when many rounded amounts are added up, which never happens here: each itinerary is rounded once, and rounded prices are never summed.
 - **Itinerary deduplication:** with leg-level dedup in place, two itineraries with the same legs are the same itinerary by construction.
+- **Itinerary identity** (decided before plan 2): the id is derived from the itinerary's leg keys (a name-based UUID). The price is not part of it, so the same itinerary keeps its id across ingestions and re-prices, and a cursor or a re-price request made before a re-ingestion still points at it. Cost: a 16-byte key instead of an 8-byte sequence.
+- **Price freshness** (decided before plan 2): every leg records when its provider quoted it, and an itinerary's "updated X min ago" (§6.3) is its **oldest** leg quote. With a provider down, its legs are kept from the last good ingestion (§6.5), so an itinerary can mix fresh and old legs; its total price is only as recent as its oldest part.
+- **Unknown airports** (decided before plan 2): the aggregator keeps its own versioned airport catalogue, as an OTA keeps its reference data. A leg whose origin or destination is not in it is discarded at ingestion, counted and logged with its reason (§6.7). The mock's `ZZZ` destination has a valid IATA format, so only the catalogue can catch it.
 - **Carrier filter:** all legs of the itinerary are operated by that carrier (our assumption, no codeshare).
 - **Filters:** Origin, Destination, Max Price and Carrier are all optional and combinable.
 - **Interlining**: one itinerary may mix airlines and providers, as real OTAs do. Combining airlines that have no agreement between them (*virtual interlining*) is a known strength of eDreams. The Carrier filter still requires every leg to be operated by that carrier.
@@ -345,6 +348,6 @@ Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight wor
 ## 11. Left to the builder
 
 - Package names, class names below the module level, and the internal layout of each module.
-- Money rounding mode (documented in `SOLUTION.md`).
+- ~~Money rounding mode~~ — **decided**: half-up, once per itinerary (§4); documented in `SOLUTION.md`.
 - Concrete dataset contents, as long as every case in §4 is covered by at least one route.
 - Retry/backoff parameters within the ~2–3 s per-provider budget.
