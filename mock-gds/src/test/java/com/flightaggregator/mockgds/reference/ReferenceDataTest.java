@@ -54,18 +54,19 @@ class ReferenceDataTest {
     }
 
     @Test
-    void hubCarriersAreBasedAtExistingHubs() {
+    void networkCarriersAreBasedAtExistingHubs() {
         reference.airlines().stream()
-                .filter(airline -> airline.homeHub().isPresent())
-                .forEach(airline -> assertThat(reference.airport(airline.homeHub().orElseThrow()).role())
-                        .isEqualTo(AirportRole.HUB));
+                .filter(NetworkCarrier.class::isInstance)
+                .map(NetworkCarrier.class::cast)
+                .forEach(airline -> assertThat(reference.airport(airline.hub()).role()).isEqualTo(AirportRole.HUB));
     }
 
     @Test
     void everyHubHasAtLeastOneHomeCarrier() {
         reference.airports().stream()
                 .filter(airport -> airport.role() == AirportRole.HUB)
-                .forEach(hub -> assertThat(reference.carriersBasedAt(hub)).as(hub.iata()).isNotEmpty());
+                .forEach(hub -> assertThat(reference.airlines()).as(hub.iata())
+                        .anyMatch(airline -> airline.bases().contains(hub.iata())));
     }
 
     @Test
@@ -90,7 +91,7 @@ class ReferenceDataTest {
 
     @Test
     void looksUpAirportsAndAirlinesByCode() {
-        assertThat(reference.airline("IB").homeHub()).contains("MAD");
+        assertThat(reference.airline("IB").bases()).containsExactly("MAD");
         assertThat(reference.airport("LHR").zone().getId()).isEqualTo("Europe/London");
         assertThatThrownBy(() -> reference.airport("ZZZ")).isInstanceOf(NoSuchElementException.class);
         assertThatThrownBy(() -> reference.airline("ZZ")).isInstanceOf(NoSuchElementException.class);

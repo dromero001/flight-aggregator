@@ -12,7 +12,7 @@ import java.util.Objects;
  * @param latitude    degrees, used to derive flight durations and fares
  * @param longitude   degrees
  * @param role        position in the route network
- * @param gatewayHubs hubs this airport is connected to; empty for hubs, which connect to every other hub
+ * @param gatewayHubs hubs whose network carriers serve this airport; empty for hubs, which connect to every other hub
  */
 public record Airport(String iata, ZoneId zone, double latitude, double longitude, AirportRole role,
                       List<String> gatewayHubs) {

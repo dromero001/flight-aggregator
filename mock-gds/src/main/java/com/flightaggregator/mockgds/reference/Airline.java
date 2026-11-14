@@ -1,28 +1,16 @@
 package com.flightaggregator.mockgds.reference;
 
-import java.util.Objects;
-import java.util.Optional;
+import java.util.List;
 
-/**
- * An airline of the mock network.
- *
- * @param code    two-character IATA designator
- * @param name    display name
- * @param homeHub IATA code of the hub the airline flies from; empty for low-cost carriers without a hub
- */
-public record Airline(String code, String name, Optional<String> homeHub) {
+/** An airline of the mock network. Its business model decides which routes it flies. */
+public sealed interface Airline permits NetworkCarrier, LowCostCarrier {
 
-    public Airline {
-        Objects.requireNonNull(code);
-        Objects.requireNonNull(name);
-        Objects.requireNonNull(homeHub);
-    }
+    /** Two-character IATA designator. */
+    String code();
 
-    static Airline hubCarrier(String code, String name, String homeHub) {
-        return new Airline(code, name, Optional.of(homeHub));
-    }
+    /** Display name. */
+    String name();
 
-    static Airline lowCost(String code, String name) {
-        return new Airline(code, name, Optional.empty());
-    }
+    /** IATA codes of the airports the airline flies from. */
+    List<String> bases();
 }

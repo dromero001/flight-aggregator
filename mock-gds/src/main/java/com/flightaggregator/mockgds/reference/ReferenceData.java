@@ -46,10 +46,4 @@ public final class ReferenceData {
                 .findFirst()
                 .orElseThrow(() -> new NoSuchElementException("Unknown airline: " + code));
     }
-
-    public List<Airline> carriersBasedAt(Airport hub) {
-        return airlines.stream()
-                .filter(airline -> airline.homeHub().filter(hub.iata()::equals).isPresent())
-                .toList();
-    }
 }

@@ -1,7 +1,5 @@
 package com.flightaggregator.mockgds.reference;
 
-import static com.flightaggregator.mockgds.reference.Airline.hubCarrier;
-import static com.flightaggregator.mockgds.reference.Airline.lowCost;
 import static com.flightaggregator.mockgds.reference.Airport.hub;
 import static com.flightaggregator.mockgds.reference.Airport.longHaul;
 import static com.flightaggregator.mockgds.reference.Airport.spoke;
@@ -48,18 +46,19 @@ final class StandardCatalogue {
             longHaul("NRT", "Asia/Tokyo", 35.772, 140.393, "FRA", "CDG"));
 
     static final List<Airline> AIRLINES = List.of(
-            hubCarrier("IB", "Iberia", "MAD"),
-            hubCarrier("UX", "Air Europa", "MAD"),
-            hubCarrier("VY", "Vueling", "BCN"),
-            hubCarrier("BA", "British Airways", "LHR"),
-            hubCarrier("AF", "Air France", "CDG"),
-            hubCarrier("LH", "Lufthansa", "FRA"),
-            hubCarrier("KL", "KLM", "AMS"),
-            hubCarrier("TP", "TAP Air Portugal", "LIS"),
-            hubCarrier("AZ", "ITA Airways", "FCO"),
-            hubCarrier("LX", "Swiss", "ZRH"),
-            lowCost("FR", "Ryanair"),
-            lowCost("U2", "easyJet"));
+            new NetworkCarrier("IB", "Iberia", "MAD"),
+            new NetworkCarrier("UX", "Air Europa", "MAD"),
+            new NetworkCarrier("VY", "Vueling", "BCN"),
+            new NetworkCarrier("BA", "British Airways", "LHR"),
+            new NetworkCarrier("AF", "Air France", "CDG"),
+            new NetworkCarrier("LH", "Lufthansa", "FRA"),
+            new NetworkCarrier("KL", "KLM", "AMS"),
+            new NetworkCarrier("TP", "TAP Air Portugal", "LIS"),
+            new NetworkCarrier("AZ", "ITA Airways", "FCO"),
+            new NetworkCarrier("LX", "Swiss", "ZRH"),
+            new LowCostCarrier("FR", "Ryanair",
+                    List.of("LPA", "MAN", "EDI", "EIN", "BER", "NAP", "FAO", "BOD", "OPO", "VCE", "HAM")),
+            new LowCostCarrier("U2", "easyJet", List.of("CDG", "AMS", "LIS", "GVA")));
 
     private StandardCatalogue() {
     }

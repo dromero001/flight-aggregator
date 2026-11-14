@@ -3,86 +3,53 @@ package com.flightaggregator.mockgds.network;
 import com.flightaggregator.mockgds.reference.Airline;
 import com.flightaggregator.mockgds.reference.Airport;
 import com.flightaggregator.mockgds.reference.AirportRole;
+import com.flightaggregator.mockgds.reference.LowCostCarrier;
+import com.flightaggregator.mockgds.reference.NetworkCarrier;
 import com.flightaggregator.mockgds.reference.ReferenceData;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 /**
- * Derives the routes of the mock network from the reference data.
+ * Derives the routes of the mock network from the reference data: each airline flies the routes of its business
+ * model, in both directions.
  *
  * <ul>
- *   <li>every pair of hubs is flown by the carriers based at either end;</li>
- *   <li>spokes and long-haul airports are flown only to their gateway hubs, by the carriers based there,
- *       so two spokes of different hubs are reachable only with two stops;</li>
- *   <li>low-cost carriers fly a fixed list of hub pairs.</li>
+ *   <li>a network carrier flies from its hub to every other hub and to the spokes and long-haul airports the hub
+ *       gateways, so a spoke that no low-cost carrier serves reaches the spokes of other hubs only with two stops;</li>
+ *   <li>a low-cost carrier flies point-to-point between every pair of its bases.</li>
  * </ul>
- * Every connection is flown in both directions.
  */
 public final class RouteNetwork {
-
-    private record LowCostConnection(String airline, String airportA, String airportB) {
-    }
-
-    private record Connection(Airline airline, Airport airportA, Airport airportB) {
-
-        Stream<Route> bothDirections() {
-            return Stream.of(new Route(airline, airportA, airportB), new Route(airline, airportB, airportA));
-        }
-    }
-
-    private static final List<LowCostConnection> LOW_COST_CONNECTIONS = List.of(
-            new LowCostConnection("FR", "BCN", "FCO"),
-            new LowCostConnection("FR", "MAD", "FCO"),
-            new LowCostConnection("FR", "LIS", "BCN"),
-            new LowCostConnection("FR", "AMS", "FCO"),
-            new LowCostConnection("U2", "LHR", "ZRH"),
-            new LowCostConnection("U2", "LHR", "AMS"),
-            new LowCostConnection("U2", "CDG", "LIS"),
-            new LowCostConnection("U2", "BCN", "AMS"));
 
     private RouteNetwork() {
     }
 
     public static List<Route> build(ReferenceData reference) {
-        var connections = new LinkedHashSet<Connection>();
-        connections.addAll(hubToHub(reference));
-        connections.addAll(gatewayConnections(reference));
-        connections.addAll(lowCost(reference));
-        return connections.stream().flatMap(Connection::bothDirections).toList();
+        return reference.airlines().stream()
+                .flatMap(airline -> switch (airline) {
+                    case NetworkCarrier carrier -> fromHub(carrier, reference);
+                    case LowCostCarrier carrier -> betweenBases(carrier, reference);
+                })
+                .toList();
     }
 
-    private static List<Connection> hubToHub(ReferenceData reference) {
-        var hubs = reference.airports().stream().filter(airport -> airport.role() == AirportRole.HUB).toList();
-        var connections = new ArrayList<Connection>();
-        for (int i = 0; i < hubs.size(); i++) {
-            for (int j = i + 1; j < hubs.size(); j++) {
-                var hubA = hubs.get(i);
-                var hubB = hubs.get(j);
-                Stream.concat(reference.carriersBasedAt(hubA).stream(), reference.carriersBasedAt(hubB).stream())
-                        .forEach(airline -> connections.add(new Connection(airline, hubA, hubB)));
-            }
-        }
-        return connections;
-    }
-
-    private static List<Connection> gatewayConnections(ReferenceData reference) {
+    private static Stream<Route> fromHub(NetworkCarrier carrier, ReferenceData reference) {
+        var hub = reference.airport(carrier.hub());
         return reference.airports().stream()
-                .filter(airport -> airport.role() != AirportRole.HUB)
-                .flatMap(airport -> airport.gatewayHubs().stream()
-                        .map(reference::airport)
-                        .flatMap(hub -> reference.carriersBasedAt(hub).stream()
-                                .map(airline -> new Connection(airline, hub, airport))))
-                .toList();
+                .filter(airport -> !airport.equals(hub))
+                .filter(airport -> airport.role() == AirportRole.HUB || airport.gatewayHubs().contains(hub.iata()))
+                .flatMap(airport -> bothDirections(carrier, hub, airport));
     }
 
-    private static List<Connection> lowCost(ReferenceData reference) {
-        return LOW_COST_CONNECTIONS.stream()
-                .map(connection -> new Connection(
-                        reference.airline(connection.airline()),
-                        reference.airport(connection.airportA()),
-                        reference.airport(connection.airportB())))
-                .toList();
+    private static Stream<Route> betweenBases(LowCostCarrier carrier, ReferenceData reference) {
+        var bases = carrier.bases().stream().map(reference::airport).toList();
+        return IntStream.range(0, bases.size()).boxed()
+                .flatMap(i -> bases.subList(i + 1, bases.size()).stream()
+                        .flatMap(other -> bothDirections(carrier, bases.get(i), other)));
+    }
+
+    private static Stream<Route> bothDirections(Airline airline, Airport airportA, Airport airportB) {
+        return Stream.of(new Route(airline, airportA, airportB), new Route(airline, airportB, airportA));
     }
 }

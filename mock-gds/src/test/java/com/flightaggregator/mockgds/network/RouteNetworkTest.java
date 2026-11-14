@@ -4,8 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.flightaggregator.mockgds.reference.Airport;
 import com.flightaggregator.mockgds.reference.AirportRole;
+import com.flightaggregator.mockgds.reference.LowCostCarrier;
+import com.flightaggregator.mockgds.reference.NetworkCarrier;
 import com.flightaggregator.mockgds.reference.ReferenceData;
 import java.time.Duration;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -38,18 +41,17 @@ class RouteNetworkTest {
     }
 
     @Test
-    void spokesAndLongHaulAirportsAreServedOnlyFromTheirGatewayHubs() {
-        assertThat(routes).allSatisfy(route -> {
+    void networkCarriersServeSpokesAndLongHaulAirportsOnlyFromTheirGatewayHubs() {
+        assertThat(routes).filteredOn(route -> route.airline() instanceof NetworkCarrier).allSatisfy(route -> {
             assertServedFromGateway(route.origin(), route.destination());
             assertServedFromGateway(route.destination(), route.origin());
         });
     }
 
     @Test
-    void hubRoutesAreFlownByCarriersBasedAtOneOfTheirEndsOrByLowCostCarriers() {
-        assertThat(routes).allSatisfy(route -> assertThat(route.airline().homeHub()
-                .map(hub -> hub.equals(route.origin().iata()) || hub.equals(route.destination().iata()))
-                .orElse(true)).as(route.toString()).isTrue());
+    void everyRouteStartsOrEndsAtABaseOfItsAirline() {
+        assertThat(routes).allSatisfy(route -> assertThat(route.airline().bases()).as(route.toString())
+                .containsAnyOf(route.origin().iata(), route.destination().iata()));
     }
 
     @Test
@@ -72,6 +74,17 @@ class RouteNetworkTest {
     }
 
     @Test
+    void lowCostCarriersFlyPointToPointBetweenEveryPairOfTheirBases() {
+        var fixture = new ReferenceData(
+                List.of(airport("BCN", AirportRole.HUB, 41.297, 2.078), airport("PMI", AirportRole.SPOKE, 39.552, 2.739),
+                        airport("EIN", AirportRole.SPOKE, 51.450, 5.375), airport("NAP", AirportRole.SPOKE, 40.886, 14.291)),
+                List.of(new LowCostCarrier("FR", "Ryanair", List.of("PMI", "EIN", "NAP"))));
+
+        assertThat(RouteNetwork.build(fixture)).extracting(Route::toString).containsExactlyInAnyOrder(
+                "FR PMI-EIN", "FR EIN-PMI", "FR PMI-NAP", "FR NAP-PMI", "FR EIN-NAP", "FR NAP-EIN");
+    }
+
+    @Test
     void blockTimeGrowsWithDistanceAndIsRoundedToFiveMinutes() {
         var shortHaul = route("MAD", "BCN");
         var longHaul = route("MAD", "JFK");
@@ -79,6 +92,11 @@ class RouteNetworkTest {
         assertThat(shortHaul.blockTime()).isBetween(Duration.ofMinutes(60), Duration.ofMinutes(90));
         assertThat(longHaul.blockTime()).isBetween(Duration.ofHours(7), Duration.ofHours(8));
         assertThat(routes).allSatisfy(route -> assertThat(route.blockTime().toMinutes() % 5).isZero());
+    }
+
+    private static Airport airport(String iata, AirportRole role, double latitude, double longitude) {
+        var gatewayHubs = role == AirportRole.HUB ? List.<String>of() : List.of("BCN");
+        return new Airport(iata, ZoneId.of("Europe/Madrid"), latitude, longitude, role, gatewayHubs);
     }
 
     private void assertServedFromGateway(Airport airport, Airport otherEnd) {
