@@ -5,6 +5,7 @@ spotless = "8.10.4"
 google-java-format = "1.36.1"
 archunit = "1.5.1"
 spring-boot = "4.1.2"
+jacoco = "0.8.16"
 
 [libraries]
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }

@@ -1,6 +1,7 @@
 // Shared Java setup for every module: Java 25 toolchain, strict compilation, JUnit Platform.
 plugins {
     java
+    jacoco
     id("com.diffplug.spotless")
 }
 
@@ -38,4 +39,8 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+}
+
+jacoco {
+    toolVersion = libs.findVersion("jacoco").get().requiredVersion
 }
