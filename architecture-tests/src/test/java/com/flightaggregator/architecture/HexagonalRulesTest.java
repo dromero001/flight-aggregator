@@ -68,6 +68,13 @@ class HexagonalRulesTest {
   }
 
   @Test
+  void anAdapterDependingOnAnApplicationClassOutsideThePortsIsAViolation() {
+    EvaluationResult result = evaluate("supportaccess", HexagonalRules::adaptersUseOnlyPorts);
+
+    assertThat(violations(result)).contains("supportaccess.application.support.Coordinator");
+  }
+
+  @Test
   void anAdapterDependingOnAnotherAdapterIsAViolation() {
     EvaluationResult result = evaluate("adaptercoupling", HexagonalRules::adaptersAreIndependent);
 

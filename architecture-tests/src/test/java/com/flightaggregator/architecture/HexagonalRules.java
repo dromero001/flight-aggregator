@@ -1,5 +1,7 @@
 package com.flightaggregator.architecture;
 
+import static com.tngtech.archunit.base.DescribedPredicate.not;
+import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
@@ -35,13 +37,15 @@ final class HexagonalRules {
             rootPackage + ".application..");
   }
 
+  // Adapters reach the application only through its ports (design spec, section 6 "Ports").
   static ArchRule adaptersUseOnlyPorts(String rootPackage) {
     return noClasses()
         .that()
         .resideInAPackage(rootPackage + ".adapter..")
         .should()
-        .dependOnClassesThat()
-        .resideInAPackage(rootPackage + ".application.service..");
+        .dependOnClassesThat(
+            resideInAPackage(rootPackage + ".application..")
+                .and(not(resideInAPackage(rootPackage + ".application.port.."))));
   }
 
   static ArchRule adaptersAreIndependent(String rootPackage) {

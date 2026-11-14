@@ -36,7 +36,7 @@ ArchUnit rules, in `HexagonalRules` (`architecture-tests`), run by `./gradlew bu
 
 1. `domainDependsOnlyOnTheJdk`: the domain depends only on the JDK and itself.
 2. `applicationDependsOnlyOnTheDomainAndSpring`: the application layer depends only on the JDK, Spring, the domain and itself.
-3. `adaptersUseOnlyPorts`: adapters never depend on `application.service`, only on the ports.
+3. `adaptersUseOnlyPorts`: adapters reach the application layer only through its ports (`application.port..`): never a service or any other application class.
 4. `adaptersAreIndependent`: no adapter depends on another adapter.
 5. `nothingDependsOnBootstrap`: nothing outside `bootstrap` depends on it.
 
