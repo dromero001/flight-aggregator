@@ -19,6 +19,7 @@ The documentation is split by what each part shows.
 - Implementation plans:
   - [0 — Mock dataset](docs/planning/plans/2026-11-13-mock-dataset.md)
   - [1 — Foundations](docs/planning/plans/2026-11-14-foundations.md)
+  - [2 — Domain](docs/planning/plans/2026-11-14-domain.md)
 - Progress reports:
   - [2026-11-13](docs/planning/progress/2026-11-13.md)
   - [2026-11-14](docs/planning/progress/2026-11-14.md)
