@@ -17,6 +17,7 @@ import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeAll;
@@ -37,6 +38,7 @@ class DatasetCoverageTest {
     private Duration generationTime;
     private List<Leg> sellableLegs;
     private ItineraryCount itineraries;
+    private long rejectedForVisitingAnAirportTwice;
     private ConnectionCensus connections;
 
     @BeforeAll
@@ -46,14 +48,18 @@ class DatasetCoverageTest {
         dataset = generator.generate(Clock.fixed(NOW, ZoneOffset.UTC));
         generationTime = Duration.ofNanos(System.nanoTime() - start);
         sellableLegs = ItineraryEnumerator.sellableLegs(dataset.validLegs(), NOW);
-        itineraries = ItineraryCount.of(ItineraryEnumerator.of(dataset.validLegs(), NOW));
+        var enumerator = ItineraryEnumerator.of(dataset.validLegs(), NOW);
+        itineraries = ItineraryCount.of(enumerator);
+        var connectedSequences = new LongAdder();
+        enumerator.forEachConnectedSequence(sequence -> connectedSequences.increment());
+        rejectedForVisitingAnAirportTwice = connectedSequences.sum() - itineraries.total();
         connections = ConnectionCensus.of(sellableLegs);
         printStatistics();
     }
 
     @Test
     void yieldsAboutOneMillionItineraries() {
-        assertThat(itineraries.total()).isBetween(TARGET_ITINERARIES * 9 / 10, TARGET_ITINERARIES * 11 / 10);
+        assertThat(itineraries.total()).isBetween(TARGET_ITINERARIES * 95 / 100, TARGET_ITINERARIES * 105 / 100);
     }
 
     @Test
@@ -74,6 +80,11 @@ class DatasetCoverageTest {
         assertThat(connections.belowMinimumConnectionTime()).isPositive();
         assertThat(connections.layoverOverTwentyFourHours()).isPositive();
         assertThat(connections.differentAirport()).isPositive();
+    }
+
+    @Test
+    void containsConnectedLegsThatTheBuilderMustRejectForVisitingAnAirportTwice() {
+        assertThat(rejectedForVisitingAnAirportTwice).isPositive();
     }
 
     @Test
@@ -140,7 +151,7 @@ class DatasetCoverageTest {
         System.out.printf("Itineraries: direct=%d, oneStop=%d, twoStops=%d, total=%d%n",
                 itineraries.direct(), itineraries.oneStop(), itineraries.twoStops(), itineraries.total());
         System.out.println("Interlining itineraries: " + itineraries.interlining());
-        System.out.println("Itineraries visiting an airport twice: " + itineraries.revisitingAnAirport());
+        System.out.println("Rejected for visiting an airport twice: " + rejectedForVisitingAnAirportTwice);
         System.out.println("O-D pairs reachable only with two stops: " + itineraries.pairsReachableOnlyWithTwoStops().size());
     }
 }

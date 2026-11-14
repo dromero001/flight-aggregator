@@ -10,7 +10,6 @@ final class ItineraryCount {
 
     private final long[] byLegs = new long[4];
     private long interlining;
-    private long revisitingAnAirport;
     private final Set<String> directPairs = new HashSet<>();
     private final Set<String> oneStopPairs = new HashSet<>();
     private final Set<String> twoStopPairs = new HashSet<>();
@@ -25,12 +24,6 @@ final class ItineraryCount {
         byLegs[itinerary.size()]++;
         if (itinerary.stream().map(Leg::airline).distinct().count() > 1) {
             interlining++;
-        }
-        // Circular itineraries (e.g. MAD-LHR-MAD-JFK) are valid under §4 and counted above, but they would make
-        // a pair look reachable with fewer stops than a traveller would accept, so they are left out of the pair sets.
-        if (visitsAnAirportTwice(itinerary)) {
-            revisitingAnAirport++;
-            return;
         }
         var pair = itinerary.getFirst().origin() + "-" + itinerary.getLast().destination();
         switch (itinerary.size()) {
@@ -60,21 +53,11 @@ final class ItineraryCount {
         return interlining;
     }
 
-    long revisitingAnAirport() {
-        return revisitingAnAirport;
-    }
-
     /** Origin-destination pairs that the itineraries connect only with two stops. */
     Set<String> pairsReachableOnlyWithTwoStops() {
         var pairs = new HashSet<>(twoStopPairs);
         pairs.removeAll(directPairs);
         pairs.removeAll(oneStopPairs);
         return pairs;
-    }
-
-    private static boolean visitsAnAirportTwice(List<Leg> itinerary) {
-        var airports = new HashSet<String>();
-        airports.add(itinerary.getFirst().origin());
-        return !itinerary.stream().allMatch(leg -> airports.add(leg.destination()));
     }
 }

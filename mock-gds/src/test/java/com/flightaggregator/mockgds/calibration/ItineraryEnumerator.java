@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiPredicate;
 import java.util.function.BinaryOperator;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -14,7 +15,8 @@ import java.util.stream.Collectors;
 
 /**
  * Test-only stand-in for the future itinerary builder: enumerates every itinerary of one to three legs that §4 of the
- * design accepts, after cross-provider deduplication (cheapest offer wins) and without departed legs.
+ * design accepts, after cross-provider deduplication (cheapest offer wins), without departed legs and without
+ * visiting an airport twice.
  */
 final class ItineraryEnumerator {
 
@@ -44,19 +46,30 @@ final class ItineraryEnumerator {
     }
 
     void forEachItinerary(Consumer<List<Leg>> visitor) {
-        departuresByAirport.values().stream().flatMap(List::stream)
-                .forEach(first -> extend(List.of(first), visitor));
+        forEachSequence(ConnectionRules::extendsItinerary, visitor);
     }
 
-    private void extend(List<Leg> itinerary, Consumer<List<Leg>> visitor) {
-        visitor.accept(itinerary);
-        if (itinerary.size() == MAX_LEGS) {
+    /**
+     * Every sequence of one to three legs that satisfies the connection rules, including those that visit an airport
+     * twice: the candidates the no-revisit rule then rejects.
+     */
+    void forEachConnectedSequence(Consumer<List<Leg>> visitor) {
+        forEachSequence((sequence, next) -> ConnectionRules.connects(sequence.getLast(), next), visitor);
+    }
+
+    private void forEachSequence(BiPredicate<List<Leg>, Leg> extendsWith, Consumer<List<Leg>> visitor) {
+        departuresByAirport.values().stream().flatMap(List::stream)
+                .forEach(first -> extend(List.of(first), extendsWith, visitor));
+    }
+
+    private void extend(List<Leg> sequence, BiPredicate<List<Leg>, Leg> extendsWith, Consumer<List<Leg>> visitor) {
+        visitor.accept(sequence);
+        if (sequence.size() == MAX_LEGS) {
             return;
         }
-        var last = itinerary.getLast();
-        for (var next : departuresByAirport.getOrDefault(last.destination(), List.of())) {
-            if (ConnectionRules.connects(last, next)) {
-                extend(append(itinerary, next), visitor);
+        for (var next : departuresByAirport.getOrDefault(sequence.getLast().destination(), List.of())) {
+            if (extendsWith.test(sequence, next)) {
+                extend(append(sequence, next), extendsWith, visitor);
             }
         }
     }

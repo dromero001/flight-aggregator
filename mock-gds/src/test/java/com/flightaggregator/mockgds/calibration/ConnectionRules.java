@@ -2,10 +2,12 @@ package com.flightaggregator.mockgds.calibration;
 
 import com.flightaggregator.mockgds.model.Leg;
 import java.time.Duration;
+import java.util.List;
 
 /**
- * The connection rules of §4 of the design, restated for test-only calibration. The production rules will live in
- * the domain module; this copy only estimates how many itineraries the dataset yields.
+ * The connection rules of §4 of the design, restated for test-only calibration: how two legs connect, and the
+ * no-revisit rule for a whole itinerary. The production rules will live in the domain module; this copy only
+ * estimates how many itineraries the dataset yields.
  */
 final class ConnectionRules {
 
@@ -25,5 +27,15 @@ final class ConnectionRules {
         }
         var layover = layover(inbound, outbound);
         return layover.compareTo(MINIMUM_CONNECTION_TIME) >= 0 && layover.compareTo(MAXIMUM_LAYOVER) <= 0;
+    }
+
+    /** Whether {@code next} connects to the last leg of {@code itinerary} without returning to an airport on it. */
+    static boolean extendsItinerary(List<Leg> itinerary, Leg next) {
+        return connects(itinerary.getLast(), next) && !visits(itinerary, next.destination());
+    }
+
+    private static boolean visits(List<Leg> itinerary, String airport) {
+        return itinerary.getFirst().origin().equals(airport)
+                || itinerary.stream().anyMatch(leg -> leg.destination().equals(airport));
     }
 }
