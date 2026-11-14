@@ -1,22 +1,29 @@
 package com.flightaggregator.architecture;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.junit.jupiter.params.provider.Arguments.argumentSet;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.EvaluationResult;
 import java.util.function.Function;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class HexagonalRulesTest {
 
   private static final String FIXTURES = "com.flightaggregator.architecture.fixture.";
 
+  private static JavaClasses classesIn(String fixture) {
+    return new ClassFileImporter().importPackages(FIXTURES + fixture);
+  }
+
   private static EvaluationResult evaluate(String fixture, Function<String, ArchRule> rule) {
-    String root = FIXTURES + fixture;
-    return rule.apply(root).evaluate(new ClassFileImporter().importPackages(root));
+    return rule.apply(FIXTURES + fixture).evaluate(classesIn(fixture));
   }
 
   private static String violations(EvaluationResult result) {
@@ -74,63 +81,14 @@ class HexagonalRulesTest {
     assertThat(violations(result)).contains("bootstrapleak.bootstrap.Wiring");
   }
 
-  @Test
-  void aCleanDomainIsNotAViolation() {
-    String root = FIXTURES + "clean";
-    JavaClasses classes = new ClassFileImporter().importPackages(root);
-
-    assertThatCode(() -> HexagonalRules.domainDependsOnlyOnTheJdk(root).check(classes))
-        .doesNotThrowAnyException();
+  static Stream<Arguments> rulesForTheCleanFixture() {
+    return HexagonalRules.forRoot(FIXTURES + "clean").stream()
+        .map(rule -> argumentSet(rule.getDescription(), rule));
   }
 
-  @Test
-  void aCleanApplicationIsNotAViolation() {
-    String root = FIXTURES + "clean";
-    JavaClasses classes = new ClassFileImporter().importPackages(root);
-
-    assertThatCode(
-            () -> HexagonalRules.applicationDependsOnlyOnTheDomainAndSpring(root).check(classes))
-        .doesNotThrowAnyException();
-  }
-
-  @Test
-  void cleanAdaptersUseOnlyPorts() {
-    String root = FIXTURES + "clean";
-    JavaClasses classes = new ClassFileImporter().importPackages(root);
-
-    assertThatCode(() -> HexagonalRules.adaptersUseOnlyPorts(root).check(classes))
-        .doesNotThrowAnyException();
-  }
-
-  @Test
-  void cleanAdaptersAreIndependent() {
-    String root = FIXTURES + "clean";
-    JavaClasses classes = new ClassFileImporter().importPackages(root);
-
-    assertThatCode(() -> HexagonalRules.adaptersAreIndependent(root).check(classes))
-        .doesNotThrowAnyException();
-  }
-
-  @Test
-  void aCleanBootstrapIsNotAViolation() {
-    String root = FIXTURES + "clean";
-    JavaClasses classes = new ClassFileImporter().importPackages(root);
-
-    assertThatCode(() -> HexagonalRules.nothingDependsOnBootstrap(root).check(classes))
-        .doesNotThrowAnyException();
-  }
-
-  @Test
-  void forRootReturnsTheFiveRulesInOrder() {
-    String root = FIXTURES + "clean";
-
-    assertThat(HexagonalRules.forRoot(root))
-        .extracting(ArchRule::getDescription)
-        .containsExactly(
-            HexagonalRules.domainDependsOnlyOnTheJdk(root).getDescription(),
-            HexagonalRules.applicationDependsOnlyOnTheDomainAndSpring(root).getDescription(),
-            HexagonalRules.adaptersUseOnlyPorts(root).getDescription(),
-            HexagonalRules.adaptersAreIndependent(root).getDescription(),
-            HexagonalRules.nothingDependsOnBootstrap(root).getDescription());
+  @ParameterizedTest
+  @MethodSource("rulesForTheCleanFixture")
+  void theCleanFixtureSatisfiesTheRule(ArchRule rule) {
+    assertThat(rule.evaluate(classesIn("clean")).hasViolation()).isFalse();
   }
 }
