@@ -7,72 +7,71 @@ import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.EvaluationResult;
+import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 
 class HexagonalRulesTest {
 
   private static final String FIXTURES = "com.flightaggregator.architecture.fixture.";
 
+  private static EvaluationResult evaluate(String fixture, Function<String, ArchRule> rule) {
+    String root = FIXTURES + fixture;
+    return rule.apply(root).evaluate(new ClassFileImporter().importPackages(root));
+  }
+
+  private static String violations(EvaluationResult result) {
+    return String.join("\n", result.getFailureReport().getDetails());
+  }
+
   @Test
   void domainDependingOnAnAdapterIsAViolation() {
-    String root = FIXTURES + "domainleak";
-    JavaClasses classes = new ClassFileImporter().importPackages(root);
+    EvaluationResult result = evaluate("domainleak", HexagonalRules::domainDependsOnlyOnTheJdk);
 
-    EvaluationResult result = HexagonalRules.domainDependsOnlyOnTheJdk(root).evaluate(classes);
+    assertThat(violations(result)).contains("domainleak.adapter.web.Controller");
+  }
 
-    assertThat(result.hasViolation()).isTrue();
+  @Test
+  void domainUsingSpringIsAViolation() {
+    EvaluationResult result = evaluate("domainspring", HexagonalRules::domainDependsOnlyOnTheJdk);
+
+    assertThat(violations(result)).contains("org.springframework.stereotype.Component");
   }
 
   @Test
   void applicationDependingOnAnAdapterIsAViolation() {
-    String root = FIXTURES + "applicationleak";
-    JavaClasses classes = new ClassFileImporter().importPackages(root);
-
     EvaluationResult result =
-        HexagonalRules.applicationDependsOnlyOnTheDomainAndSpring(root).evaluate(classes);
+        evaluate("applicationleak", HexagonalRules::applicationDependsOnlyOnTheDomainAndSpring);
 
-    assertThat(result.hasViolation()).isTrue();
+    assertThat(violations(result)).contains("applicationleak.adapter.web.Controller");
   }
 
   @Test
   void applicationUsingSpringIsNotAViolation() {
-    String root = FIXTURES + "applicationspring";
-    JavaClasses classes = new ClassFileImporter().importPackages(root);
-
     EvaluationResult result =
-        HexagonalRules.applicationDependsOnlyOnTheDomainAndSpring(root).evaluate(classes);
+        evaluate("applicationspring", HexagonalRules::applicationDependsOnlyOnTheDomainAndSpring);
 
     assertThat(result.hasViolation()).isFalse();
   }
 
   @Test
   void anAdapterDependingOnAServiceIsAViolation() {
-    String root = FIXTURES + "serviceaccess";
-    JavaClasses classes = new ClassFileImporter().importPackages(root);
+    EvaluationResult result = evaluate("serviceaccess", HexagonalRules::adaptersUseOnlyPorts);
 
-    EvaluationResult result = HexagonalRules.adaptersUseOnlyPorts(root).evaluate(classes);
-
-    assertThat(result.hasViolation()).isTrue();
+    assertThat(violations(result)).contains("serviceaccess.application.service.Searcher");
   }
 
   @Test
   void anAdapterDependingOnAnotherAdapterIsAViolation() {
-    String root = FIXTURES + "adaptercoupling";
-    JavaClasses classes = new ClassFileImporter().importPackages(root);
+    EvaluationResult result = evaluate("adaptercoupling", HexagonalRules::adaptersAreIndependent);
 
-    EvaluationResult result = HexagonalRules.adaptersAreIndependent(root).evaluate(classes);
-
-    assertThat(result.hasViolation()).isTrue();
+    assertThat(violations(result)).contains("adaptercoupling.adapter.persistence.Repository");
   }
 
   @Test
   void dependingOnBootstrapIsAViolation() {
-    String root = FIXTURES + "bootstrapleak";
-    JavaClasses classes = new ClassFileImporter().importPackages(root);
+    EvaluationResult result = evaluate("bootstrapleak", HexagonalRules::nothingDependsOnBootstrap);
 
-    EvaluationResult result = HexagonalRules.nothingDependsOnBootstrap(root).evaluate(classes);
-
-    assertThat(result.hasViolation()).isTrue();
+    assertThat(violations(result)).contains("bootstrapleak.bootstrap.Wiring");
   }
 
   @Test
