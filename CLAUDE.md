@@ -5,6 +5,8 @@ These rules apply to every AI agent (main session and subagents) working in this
 ## Source of truth
 - Design: `docs/superpowers/specs/2026-11-13-flight-aggregator-design.md`. Do not take design decisions on your own: if one blocks you, write it down as pending in the progress report and move on.
 - Decision history: `docs/ai-sessions/`. Progress reports: `docs/progress/`.
+- Agent skills and plugins: `.claude/skills/README.md`.
+- **Scope:** read `.claude/skills/brief-scope/SKILL.md` before proposing or building anything, and follow its output contract. Only what the brief requires or the user has decided goes in, each line with its source; every proposal ends with a "⚠ Extras — your call" section, and extras stay out until the user approves them.
 
 ## Test-driven development (non-negotiable)
 - Use the `superpowers:test-driven-development` skill for every production change.
