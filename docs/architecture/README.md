@@ -10,7 +10,7 @@ The reasoning behind each decision lives in the [design spec](../planning/design
 
 ## Hexagonal modules
 
-Arrows point from a module to the modules it may depend on; Gradle enforces them, so a forbidden import does not compile.
+Arrows point from a module to the modules it may depend on. Gradle enforces only this module-level direction; the package rules below are enforced by ArchUnit.
 
 ```mermaid
 flowchart LR
@@ -31,3 +31,13 @@ Port rules:
 - Adapters implement or call ports and never depend on each other.
 - The domain depends on nothing, and the application layer may use Spring while the domain never does.
 - Only `bootstrap` wires adapters to the application.
+
+ArchUnit rules, in `HexagonalRules` (`architecture-tests`), run by `./gradlew build`:
+
+1. `domainDependsOnlyOnTheJdk`: the domain depends only on the JDK and itself.
+2. `applicationDependsOnlyOnTheDomainAndSpring`: the application layer depends only on the JDK, Spring, the domain and itself.
+3. `adaptersUseOnlyPorts`: adapters never depend on `application.service`, only on the ports.
+4. `adaptersAreIndependent`: no adapter depends on another adapter.
+5. `nothingDependsOnBootstrap`: nothing outside `bootstrap` depends on it.
+
+Fixtures under `architecture-tests/src/test/java/.../fixture` check each rule against a tiny violating package tree (`HexagonalRulesTest`), so a rule that stopped detecting anything would fail the build.
