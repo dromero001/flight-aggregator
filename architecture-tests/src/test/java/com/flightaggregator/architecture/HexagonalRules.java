@@ -5,9 +5,11 @@ import static com.tngtech.archunit.core.domain.JavaCall.Predicates.target;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.assignableTo;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.belongToAnyOf;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage;
+import static com.tngtech.archunit.core.domain.JavaConstructor.CONSTRUCTOR_NAME;
 import static com.tngtech.archunit.core.domain.properties.HasName.Predicates.name;
 import static com.tngtech.archunit.core.domain.properties.HasOwner.Predicates.With.owner;
-import static com.tngtech.archunit.lang.conditions.ArchConditions.callMethodWhere;
+import static com.tngtech.archunit.core.domain.properties.HasParameterTypes.Predicates.rawParameterTypes;
+import static com.tngtech.archunit.lang.conditions.ArchConditions.callCodeUnitWhere;
 import static com.tngtech.archunit.lang.conditions.ArchConditions.dependOnClassesThat;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
@@ -19,6 +21,9 @@ import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.lang.ArchRule;
 import java.time.Clock;
 import java.time.InstantSource;
+import java.util.Calendar;
+import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Random;
 import java.util.SplittableRandom;
@@ -108,13 +113,16 @@ final class HexagonalRules {
         .that()
         .resideInAPackage(rootPackage + ".domain..")
         .should(
-            callMethodWhere(
+            callCodeUnitWhere(
                     callToNowOfAJavaTimeClass()
                         .or(callTo(System.class, "currentTimeMillis"))
                         .or(callTo(System.class, "nanoTime"))
                         .or(callTo(Math.class, "random"))
                         .or(callTo(StrictMath.class, "random"))
-                        .or(callTo(UUID.class, "randomUUID")))
+                        .or(callTo(UUID.class, "randomUUID"))
+                        .or(callTo(Calendar.class, "getInstance"))
+                        .or(callWithParameters(Collections.class, "shuffle", List.class))
+                        .or(callWithParameters(Date.class, CONSTRUCTOR_NAME)))
                 .or(dependOnClassesThat(CLOCK_AND_RANDOM_TYPES))
                 .as("read the clock or randomness"));
   }
@@ -123,8 +131,14 @@ final class HexagonalRules {
     return target(owner(resideInAPackage("java.time.."))).and(target(name("now")));
   }
 
-  private static DescribedPredicate<JavaCall<?>> callTo(Class<?> owner, String method) {
-    return target(owner(belongToAnyOf(owner))).and(target(name(method)));
+  private static DescribedPredicate<JavaCall<?>> callTo(Class<?> ownerClass, String codeUnit) {
+    return target(owner(belongToAnyOf(ownerClass))).and(target(name(codeUnit)));
+  }
+
+  // Exactly these parameter types: new Date() reads the clock, new Date(long) is a plain value.
+  private static DescribedPredicate<JavaCall<?>> callWithParameters(
+      Class<?> ownerClass, String codeUnit, Class<?>... parameterTypes) {
+    return callTo(ownerClass, codeUnit).and(target(rawParameterTypes(parameterTypes)));
   }
 
   static List<ArchRule> forRoot(String rootPackage) {

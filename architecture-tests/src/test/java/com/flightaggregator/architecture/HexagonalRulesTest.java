@@ -135,6 +135,38 @@ class HexagonalRulesTest {
     assertThat(violations(result)).contains("calls method <java.lang.System.currentTimeMillis()>");
   }
 
+  static Stream<Arguments> otherClockAndRandomnessReads() {
+    return Stream.of(
+        argumentSet("localnow", "localnow", "calls method <java.time.LocalDateTime.now()>"),
+        argumentSet("nanoread", "nanoread", "calls method <java.lang.System.nanoTime()>"),
+        argumentSet("mathrandom", "mathrandom", "calls method <java.lang.Math.random()>"),
+        argumentSet("strictrandom", "strictrandom", "calls method <java.lang.StrictMath.random()>"),
+        argumentSet("instantsource", "instantsource", "has type <java.time.InstantSource>"),
+        argumentSet("splittable", "splittable", "has type <java.util.SplittableRandom>"),
+        argumentSet("securerandom", "securerandom", "has type <java.security.SecureRandom>"),
+        argumentSet("newdate", "newdate", "calls constructor <java.util.Date.<init>()>"),
+        argumentSet("calendar", "calendar", "calls method <java.util.Calendar.getInstance()>"),
+        argumentSet(
+            "shuffle", "shuffle", "calls method <java.util.Collections.shuffle(java.util.List)>"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("otherClockAndRandomnessReads")
+  void everyOtherClockOrRandomnessReadIsAViolation(String fixture, String violation) {
+    EvaluationResult result =
+        evaluate(fixture, HexagonalRules::domainNeverReadsTheClockOrRandomness);
+
+    assertThat(violations(result)).contains(violation);
+  }
+
+  @Test
+  void aDateBuiltFromAnExplicitInstantIsNotAViolation() {
+    EvaluationResult result =
+        evaluate("datevalue", HexagonalRules::domainNeverReadsTheClockOrRandomness);
+
+    assertThat(result.hasViolation()).isFalse();
+  }
+
   static Stream<Arguments> rulesForTheCleanFixture() {
     return HexagonalRules.forRoot(FIXTURES + "clean").stream()
         .map(rule -> argumentSet(rule.getDescription(), rule));
