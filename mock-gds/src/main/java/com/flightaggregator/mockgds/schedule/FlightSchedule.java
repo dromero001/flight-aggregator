@@ -15,8 +15,10 @@ import java.util.random.RandomGenerator;
 /**
  * The timetable of the mock network: which flights exist and on which dates they operate.
  *
- * <p>Whether a flight operates on a date depends only on the seed, the flight and the date, so the flights of a day
- * are the same whichever window they are requested in. This keeps the inventory stable while the window rolls.
+ * <p>How many daily flights a route gets and when they depart depend only on the seed and the route, never on the
+ * other routes. Whether a flight operates on a date depends only on the seed, the flight and the date, so the flights
+ * of a day are the same whichever window they are requested in. This keeps the inventory stable while the window
+ * rolls.
  */
 public final class FlightSchedule {
 
@@ -36,10 +38,11 @@ public final class FlightSchedule {
     }
 
     public static FlightSchedule build(List<Route> routes, ScheduleParameters parameters) {
-        var random = SeededRandom.derive(parameters.seed(), "schedule");
         var lastFlightNumberByAirline = new HashMap<String, Integer>();
         var scheduledFlights = new ArrayList<ScheduledFlight>();
         for (var route : routes) {
+            var random = SeededRandom.derive(parameters.seed(), "schedule",
+                    route.airline().code(), route.origin().iata(), route.destination().iata());
             int dailyFlights = random.nextInt(1, maxDailyFlights(route, parameters) + 1);
             for (int i = 0; i < dailyFlights; i++) {
                 int flightNumber = nextFlightNumber(route, lastFlightNumberByAirline, random);

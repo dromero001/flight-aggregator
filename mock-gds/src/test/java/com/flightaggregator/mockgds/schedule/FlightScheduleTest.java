@@ -128,10 +128,29 @@ class FlightScheduleTest {
     }
 
     @Test
+    void aRouteGetsTheSameDepartureTimesWhicheverOtherRoutesAreScheduled() {
+        var parameters = new ScheduleParameters(SEED, 3, 3, 1.0);
+        var fullSchedule = FlightSchedule.build(routes, parameters);
+
+        assertThat(routes).allSatisfy(route -> {
+            var scheduledAlone = FlightSchedule.build(List.of(route), parameters);
+            assertThat(departureTimesOf(route, scheduledAlone)).as(route.toString())
+                    .isEqualTo(departureTimesOf(route, fullSchedule));
+        });
+    }
+
+    @Test
     void refusesASizeThatWouldNeedFlightNumbersAboveFourDigits() {
         assertThatThrownBy(() -> FlightSchedule.build(routes, new ScheduleParameters(SEED, 2000, 2000, 1.0)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("flight numbers");
+    }
+
+    private static List<LocalTime> departureTimesOf(Route route, FlightSchedule schedule) {
+        return schedule.scheduledFlights().stream()
+                .filter(flight -> flight.route().equals(route))
+                .map(ScheduledFlight::departureTime)
+                .toList();
     }
 
     private FlightSchedule schedule(long seed, double operatingProbability) {
