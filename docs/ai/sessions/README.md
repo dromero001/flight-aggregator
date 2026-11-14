@@ -10,3 +10,4 @@ The sessions were held in Spanish. Every prompt quoted here has been translated 
 4. [Autonomous agent work and a TDD correction](04-autonomous-work-and-tdd.md)
 5. [A scope guard, the dashboard design and the agent's skills](05-scope-guard-and-agent-skills.md)
 6. [Grill-me: observability, CI and pagination](06-grill-me-observability-ci-pagination.md)
+7. [Plans, a review protocol and the foundations run](07-plans-review-protocol-and-foundations.md)
