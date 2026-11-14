@@ -35,3 +35,4 @@ The documentation is split by what each part shows.
   5. [A scope guard, the dashboard design and the agent's skills](docs/ai/sessions/05-scope-guard-and-agent-skills.md)
   6. [Grill-me: observability, CI and pagination](docs/ai/sessions/06-grill-me-observability-ci-pagination.md)
   7. [Plans, a review protocol and the foundations run](docs/ai/sessions/07-plans-review-protocol-and-foundations.md)
+  8. [The domain plan, its review and its run](docs/ai/sessions/08-domain-plan-and-run.md)

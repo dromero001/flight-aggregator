@@ -50,7 +50,7 @@ The `domain` module is one flat package, `com.flightaggregator.domain`, of immut
 Types:
 
 - `Airport` and `Carrier`: IATA codes, checked when created (three upper-case letters; two upper-case letters or digits).
-- `Money`: an amount of euros, kept in cents, never negative and under one billion.
+- `Money`: an amount of euros, kept in cents, never negative and rejected from one billion upwards (checked before rounding).
 - `Provider`: the closed set of mock providers, `ALPHA`, `BETA` and `GAMMA`.
 - `Leg`: one provider's offer of one flight (flight number 1 to 9999), with its price and the time it was quoted. `LegKey` is the flight's identity: carrier, flight number, origin, destination and departure instant.
 - `LegDeduplicator`: merges the offers of each flight into one leg.
