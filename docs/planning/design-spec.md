@@ -274,7 +274,7 @@ GitHub Actions on every push and pull request to `main`:
 6. Test reports are uploaded as artefacts when a job fails.
 
 **Approved extras:**
-- **Superseded runs are cancelled** (a concurrency group), and the README shows a build status badge.
+- **Superseded runs are cancelled on branches and pull requests** (a concurrency group); on main every commit keeps its own result, so a red commit cannot be hidden by the next push, and the README shows a build status badge.
 - **Dependabot** for Gradle, npm, GitHub Actions and Docker: weekly, grouped per ecosystem, with a **14-day cooldown** before proposing a fresh release (it matches the "no recent releases" rule of §6.1).
 - **Coverage gate with JaCoCo:** at least **90% of lines and 80% of branches**, over unit and integration tests of every backend module together. The Spring Boot entry point, configuration classes and generated code are excluded. Branches get a lower bar because 90% would force tests with no value for defensive and compiler-generated branches.
 - **Formatting gate with Spotless and google-java-format** (Google Java Style: 2-space indentation, 100 columns). `spotlessCheck` runs inside `./gradlew build`, so the gate also applies locally; `./gradlew spotlessApply` fixes it. The existing code is reformatted once, in a commit of its own.

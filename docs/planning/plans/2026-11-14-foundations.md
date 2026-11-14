@@ -147,9 +147,9 @@ Commits stay green (`CLAUDE.md`), so the reformat lands **before** the gate: fir
 
 - [ ] **Step 1: Write `ci.yml`:**
   - `on: push` and `pull_request` to `main`;
-  - `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }`;
+  - `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: ${{ github.ref != 'refs/heads/main' }} }` (every commit on main keeps its own result);
   - `permissions: contents: read`;
-  - job `backend` on `ubuntu-latest`: checkout → setup-java (`distribution: temurin`, `java-version: 25`) → `gradle/actions/setup-gradle` → `./gradlew build` → on `failure()`, upload `**/build/reports/` and `**/build/test-results/` with `actions/upload-artifact`, name `backend-reports`;
+  - job `backend` on `ubuntu-latest` with `timeout-minutes: 30`: checkout → setup-java (`distribution: temurin`, `java-version: 25`) → `gradle/actions/setup-gradle` → `./gradlew build` → on `failure()`, upload `**/build/reports/` and `**/build/test-results/` with `actions/upload-artifact`, name `backend-reports`;
   - every action pinned by commit SHA, with its version from Global Constraints in a comment.
 - [ ] **Step 2: Push and watch the run:** `gh run watch --exit-status` — Expected: the `backend` job succeeds.
 - [ ] **Step 3: Prove a red build is reported:** push a throwaway branch `ci-red-check` (never merged) with one failing assertion, `gh run watch --exit-status` exits non-zero and the run lists the `backend-reports` artefact; delete the branch locally and on the remote (`git push origin --delete ci-red-check`).
