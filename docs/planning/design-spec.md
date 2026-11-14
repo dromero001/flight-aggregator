@@ -34,7 +34,7 @@ Success means that:
 - A big ball of mud: framework or persistence details leaking into the domain.
 - Silent failures: a provider error that disappears without a log, metric or fallback.
 - Features documented as "future work" instead of being built.
-- Code or text copied from lastminute material.
+- Code or text copied from the author's other personal projects instead of being written for this one.
 - A repository whose AI usage is invisible or undocumented.
 
 ## 3. Constraints
@@ -271,17 +271,19 @@ GitHub Actions on every push and pull request to `main`:
 3. **Contract drift:** regenerate the OpenAPI specification and the TypeScript types, and fail if they differ from the committed ones (§6.8).
 4. **Images:** build the backend, `mock-gds` and frontend images, without pushing them.
 5. **End-to-end:** `docker compose up --build`, wait for health, then Playwright with axe against the stack (§6.8).
-6. Test reports are uploaded as artefacts when a job fails.
+6. Test reports are uploaded as artefacts when a job fails or is cancelled (a job that exceeds its timeout is cancelled).
 
 **Approved extras:**
-- **Superseded runs are cancelled on branches and pull requests** (a concurrency group; on main each commit has a group of its own), so every commit on main keeps its own result, so a red commit cannot be hidden by the next push, and the README shows a build status badge.
+- **Superseded runs are cancelled on branches and pull requests** (a concurrency group). On main every pushed head has a group of its own and is never cancelled, so every push to main keeps its own result and a red push cannot be hidden by the next one; the commits in between rely on the local build that `CLAUDE.md` requires before every commit.
+- **Build status badge** in the README.
+- **A GitHub ruleset on `main` that blocks only force pushes and deletion** ("Protect main from force pushes and deletion": rules `non_fast_forward` and `deletion`, no bypass actors). It is the server-side backstop for the git hook ([`docs/ai/README.md`](../ai/README.md), "Hook"): GitHub refuses a force push to `main` or its deletion even when the hook is bypassed, while normal pushes stay allowed.
 - **Dependabot** for Gradle, npm, GitHub Actions and Docker: weekly, grouped per ecosystem, with a **14-day cooldown** before proposing a fresh release (it matches the "no recent releases" rule of §6.1).
 - **Coverage gate with JaCoCo:** at least **90% of lines and 80% of branches**, over unit and integration tests of every backend module together. The Spring Boot entry point, configuration classes and generated code are excluded. Branches get a lower bar because 90% would force tests with no value for defensive and compiler-generated branches.
 - **Formatting gate with Spotless and google-java-format** (Google Java Style: 2-space indentation, 100 columns). `spotlessCheck` runs inside `./gradlew build`, so the gate also applies locally; `./gradlew spotlessApply` fixes it. The existing code is reformatted once, in a commit of its own.
 
-**Rejected:** publishing images to GHCR, CodeQL / Trivy scans, branch protection (it would block the agents' direct pushes to `main`). **Not approved:** frontend coverage gate, mutation testing with PIT.
+**Rejected:** publishing images to GHCR, CodeQL / Trivy scans, and full branch protection with required pull requests or status checks (it would block the agents' direct pushes to `main`; the ruleset above blocks only force pushes and deletion). **Not approved:** frontend coverage gate, mutation testing with PIT.
 
-Modules (Gradle subprojects; the dependency direction is enforced with ArchUnit):
+Modules (Gradle subprojects). Gradle enforces the direction between modules; ArchUnit enforces the package rules below, including the ports:
 
 **Ports (decided before the plans):** both sides of the hexagon are explicit. Every use case is an inbound port, an interface in `application.port.in`, implemented by a service in `application.service`; every external dependency is an outbound port in `application.port.out`. Driving adapters (web, the scheduler) depend only on inbound ports, driven adapters (providers, persistence) only implement outbound ports, adapters never depend on each other, and the domain depends on nothing but the JDK. The application layer may use Spring (`@Service`, `@Transactional`, Spring's retry): the user chose idiomatic, modern Spring Boot over a framework-free core, so services are plain annotated classes and need no hand-written wiring. ArchUnit checks each of these rules. The cost, one interface per use case with a single implementation, is accepted because it makes the hexagon visible and every rule checkable.
 

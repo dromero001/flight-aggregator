@@ -2,7 +2,7 @@
 
 Technical documentation of the system, filled in as it is built:
 
-- **Hexagonal modules and their dependency rules** (enforced with ArchUnit), with Mermaid diagrams.
+- **Hexagonal modules and their dependency rules** (Gradle enforces the module direction, ArchUnit the package rules), with Mermaid diagrams.
 - **The ingestion and search flows**, from the providers to the dashboard.
 - **The domain glossary** (ubiquitous language): leg, itinerary, dead leg, connection, interlining.
 

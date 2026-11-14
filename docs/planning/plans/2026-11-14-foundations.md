@@ -6,7 +6,7 @@
 
 **Architecture:** Six empty Gradle modules (`domain`, `application`, `adapters:providers`, `adapters:persistence`, `adapters:web`, `bootstrap`) whose `build.gradle.kts` dependencies encode the hexagon's direction, plus an `architecture-tests` module holding ArchUnit rules that check what Gradle cannot (ports only, no framework in the domain). Formatting and coverage are enforced by `./gradlew build` itself, so CI only runs the build.
 
-**Tech Stack:** Gradle 9.8.2 (Kotlin DSL, `buildSrc` convention plugin, version catalog; the plan ran on 9.9.1, and the final review moved back to 9.8.2 because 9.9.1 was days old), Java 25, Spotless 8.10.4 with google-java-format 1.36.1, ArchUnit 1.5.1 (`archunit-junit5`), JaCoCo 0.8.16 with Gradle's `jacoco-report-aggregation` plugin, GitHub Actions, Dependabot.
+**Tech Stack:** Gradle 9.8.2 (Kotlin DSL, `buildSrc` convention plugin, version catalog; the plan ran on 9.9.1, and the final review moved back to 9.8.2 because 9.9.1 was days old), Java 25, Spotless 8.10.4 with google-java-format 1.36.1, ArchUnit 1.5.1 (the `archunit` core artifact since the final review; the plan used `archunit-junit5`, whose engine is not used), JaCoCo 0.8.16 with Gradle's `jacoco-report-aggregation` plugin, GitHub Actions, Dependabot.
 
 **Spec:** [design spec](../design-spec.md) — §6 (modules and ports), §6.1 (version policy), §6.11 (CI). Roadmap: [plan 1](../roadmap.md).
 
@@ -84,7 +84,7 @@ Commits stay green (`CLAUDE.md`), so the reformat lands **before** the gate: fir
 ### Task 3: ArchUnit rules with meta-tests
 
 **Files:**
-- Create: `architecture-tests/build.gradle.kts` (conventions; `testImplementation` of every module from Task 2 and of `archunit-junit5`; add `archunit = "1.5.1"` and the library to the catalog; for the Spring-allowed fixture, `testImplementation(platform(spring-boot-dependencies))` with `spring-boot = "4.1.2"` in the catalog, and `testImplementation("org.springframework:spring-context")`)
+- Create: `architecture-tests/build.gradle.kts` (conventions; `testImplementation` of every module from Task 2 and of `archunit-junit5`, replaced in the final review by `testRuntimeOnly(project(":bootstrap"))`, which brings every module, and the `archunit` core artifact; add `archunit = "1.5.1"` and the library to the catalog; for the Spring-allowed fixture, `testImplementation(platform(spring-boot-dependencies))` with `spring-boot = "4.1.2"` in the catalog, and `testImplementation("org.springframework:spring-context")`)
 - Create: `architecture-tests/src/test/java/com/flightaggregator/architecture/HexagonalRules.java`
 - Create: `architecture-tests/src/test/java/com/flightaggregator/architecture/HexagonalArchitectureTest.java`
 - Create: `architecture-tests/src/test/java/com/flightaggregator/architecture/HexagonalRulesTest.java`
@@ -92,13 +92,14 @@ Commits stay green (`CLAUDE.md`), so the reformat lands **before** the gate: fir
 - Modify: `settings.gradle.kts` (include `architecture-tests`)
 
 **Interfaces:**
-- Produces: `final class HexagonalRules` with one `static ArchRule <name>(String rootPackage)` per rule, and `static List<ArchRule> forRoot(String rootPackage)` returning all five in this order:
+- Produces: `final class HexagonalRules` with one `static ArchRule <name>(String rootPackage)` per rule, and `static List<ArchRule> forRoot(String rootPackage)` returning all of them in this order (five in the plan; the final review added the sixth):
   1. `domainDependsOnlyOnTheJdk` — classes in `<root>.domain..` depend only on `java..` and `<root>.domain..`
   2. `applicationDependsOnlyOnTheDomainAndSpring` — `<root>.application..` depends only on `java..`, `org.springframework..`, `<root>.domain..` and `<root>.application..` (Spring is allowed in the application layer, spec §6 "Ports")
-  3. `adaptersUseOnlyPorts` — `<root>.adapter..` do not depend on `<root>.application.service..`
+  3. `adaptersUseOnlyPorts` — `<root>.adapter..` do not depend on `<root>.application.service..` (final review: on any `<root>.application..` class outside `<root>.application.port..`, as spec §6 "Ports" requires)
   4. `adaptersAreIndependent` — the slices `<root>.adapter.(*)..` do not depend on each other
   5. `nothingDependsOnBootstrap` — no class outside `<root>.bootstrap..` depends on `<root>.bootstrap..`
-  The rules keep ArchUnit's default `failOnEmptyShould`, so a rule over a mistyped package fails. Only `HexagonalArchitectureTest`, which evaluates `forRoot("com.flightaggregator")` against the production classes, calls `.allowEmptyShould(true)`, because the modules hold nothing but `package-info` until plan 2; a comment says so and names plan 2 as the point where it is removed.
+  6. `everyClassResidesInALayer` (added in the final review) — every class under `<root>..`, outside `<root>.mockgds..` and `<root>.architecture..`, resides in one of the eight layer packages, so a misnamed package such as `adapters.web` cannot escape rules 1–5
+  The rules keep ArchUnit's default `failOnEmptyShould`, so a rule over a mistyped package fails. Only `HexagonalArchitectureTest`, which evaluates `forRoot("com.flightaggregator")` against the production classes in one parameterised test, calls `.allowEmptyShould(true)`, because the modules hold nothing but `package-info` until plan 2; a comment says so and names the removal points: rules 1, 5 and 6 with plan 2's first domain class, rules 2–4 when the first application and adapter classes land (plan 4).
 
 - [ ] **Step 1: Write the first failing meta-test**
   ```java
@@ -114,15 +115,15 @@ Commits stay green (`CLAUDE.md`), so the reformat lands **before** the gate: fir
   with fixture `fixture/domainleak/domain/Leaky.java` referencing `fixture/domainleak/adapter/web/Controller.java`.
 - [ ] **Step 2: Run it and watch it fail:** `./gradlew :architecture-tests:test --tests '*HexagonalRulesTest*'` — Expected: FAIL, "cannot find symbol HexagonalRules".
 - [ ] **Step 3: Implement `static ArchRule domainDependsOnlyOnTheJdk(String root)`**, run, PASS.
-- [ ] **Steps 4–11: Repeat red → green, one meta-test at a time,** for rules 2–5. Each fixture holds exactly one violation: `applicationleak` (application → adapter; plus a second meta-test asserting that application → a Spring annotation is **not** a violation), `serviceaccess` (adapter → `application.service`), `adaptercoupling` (`adapter.web` → `adapter.persistence`), `bootstrapleak` (`application` → `bootstrap`). Then one meta-test per rule asserting **no** violation on a fixture `clean/` that follows every rule.
-- [ ] **Step 12: Add `forRoot` and `HexagonalArchitectureTest`** (one `@Test` per rule over `com.flightaggregator`), run `./gradlew build`, PASS.
+- [ ] **Steps 4–11: Repeat red → green, one meta-test at a time,** for rules 2–5. Each fixture holds exactly one violation: `applicationleak` (application → adapter; plus a second meta-test asserting that application → a Spring annotation is **not** a violation), `serviceaccess` (adapter → `application.service`), `adaptercoupling` (`adapter.web` → `adapter.persistence`), `bootstrapleak` (`application` → `bootstrap`). Then one meta-test per rule asserting **no** violation on a fixture `clean/` that follows every rule. Ruling of the fix round: each violation meta-test asserts the offending dependency (the class it names in the report), not only `hasViolation()`, and a further fixture `domainspring` proves that domain → Spring is a violation. Final review: the clean meta-tests became one parameterised test over `forRoot` on `clean/`, and two fixtures were added, `supportaccess` (adapter → `application.support`, rule 3) and `layertypo` (`adapters.web`, rule 6).
+- [ ] **Step 12: Add `forRoot` and `HexagonalArchitectureTest`** (one `@Test` per rule over `com.flightaggregator`; one parameterised test over `forRoot` since the final review), run `./gradlew build`, PASS.
 - [ ] **Step 13: Commit and push:** `git commit -m "Check the hexagonal rules with ArchUnit"`
 
 ### Task 4: Aggregated JaCoCo coverage gate
 
 **Files:**
 - Modify: `buildSrc/src/main/kotlin/flightaggregator.java-conventions.gradle.kts` (apply `jacoco`, `toolVersion` from the catalog: `jacoco = "0.8.16"`)
-- Create: `coverage/build.gradle.kts` (plugins `base`, `jacoco-report-aggregation`; `jacocoAggregation(project(...))` for `mock-gds` and every module of Task 2; a `JacocoCoverageVerification` task `coverageVerification` that takes its `executionData`, `classDirectories` and `sourceDirectories` from the `testCodeCoverageReport` task, minus the exclusions; `check` depends on it)
+- Create: `coverage/build.gradle.kts` (plugins `base`, `jacoco-report-aggregation`; `jacocoAggregation(project(...))` for `mock-gds` and every module of Task 2, since the final review `mock-gds` and `bootstrap`, which brings every module of Task 2; JaCoCo `toolVersion` from the catalog, like the modules' agents; a `JacocoCoverageVerification` task `coverageVerification` that takes its `executionData`, `classDirectories` and `sourceDirectories` from the `testCodeCoverageReport` task, minus the exclusions; `check` depends on it)
 - Modify: `settings.gradle.kts` (include `coverage`)
 
 **Interfaces:**
@@ -130,7 +131,7 @@ Commits stay green (`CLAUDE.md`), so the reformat lands **before** the gate: fir
 
 - [ ] **Step 1: Prove the gate fails before trusting it passes**
   Run: `./gradlew build -Pcoverage.minimum.lines=1.0`
-  Expected: FAIL in `:coverage:coverageVerification`, "lines covered ratio is 0.99, but expected minimum is 1.00" (today `mock-gds` is at 99% lines / 93% branches).
+  Expected: FAIL in `:coverage:coverageVerification`, "lines covered ratio is 0.99, but expected minimum is 1.00" (today `mock-gds` is at 99% lines / 93% branches). Actual: "lines covered ratio is 0.9, but expected minimum is 1.0", because JaCoCo prints the ratio with the precision of the minimum; the ruling is that any `coverageVerification` failure on the line ratio counts.
 - [ ] **Step 2: Run with the defaults:** `./gradlew build` — Expected: BUILD SUCCESSFUL.
 - [ ] **Step 3: Check the report is not vacuous:** `coverage/build/reports/jacoco/testCodeCoverageReport/testCodeCoverageReport.xml` contains a `<package name="com/flightaggregator/mockgds/schedule"` element.
 - [ ] **Step 4: Check the configuration cache:** run `./gradlew build` twice; the second run prints "Reusing configuration cache."
@@ -147,9 +148,9 @@ Commits stay green (`CLAUDE.md`), so the reformat lands **before** the gate: fir
 
 - [ ] **Step 1: Write `ci.yml`:**
   - `on: push` and `pull_request` to `main`;
-  - `concurrency: { group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}, cancel-in-progress: ${{ github.ref != 'refs/heads/main' }} }` (every commit on main keeps its own result);
+  - `concurrency: { group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}, cancel-in-progress: ${{ github.ref != 'refs/heads/main' }} }` (every push to main keeps its own result; intermediate commits rely on the local build required by `CLAUDE.md`);
   - `permissions: contents: read`;
-  - job `backend` on `ubuntu-latest` with `timeout-minutes: 30`: checkout → setup-java (`distribution: temurin`, `java-version: 25`) → `gradle/actions/setup-gradle` → `./gradlew build` → on `failure()`, upload `**/build/reports/` and `**/build/test-results/` with `actions/upload-artifact`, name `backend-reports`;
+  - job `backend` on `ubuntu-latest` with `timeout-minutes: 30`: checkout → setup-java (`distribution: temurin`, `java-version: 25`) → `gradle/actions/setup-gradle` → `./gradlew build` → on `failure()` (`failure() || cancelled()` since the final review, so a timed-out job also leaves them), upload `**/build/reports/` and `**/build/test-results/` with `actions/upload-artifact`, name `backend-reports`;
   - every action pinned by commit SHA, with its version from Global Constraints in a comment.
 - [ ] **Step 2: Push and watch the run:** `gh run watch --exit-status` — Expected: the `backend` job succeeds.
 - [ ] **Step 3: Prove a red build is reported:** push a throwaway branch `ci-red-check` (never merged) with one failing assertion, `gh run watch --exit-status` exits non-zero and the run lists the `backend-reports` artefact; delete the branch locally and on the remote (`git push origin --delete ci-red-check`).
