@@ -70,7 +70,7 @@ class HexagonalArchitectureTest {
   }
 
   @Test
-  void everyRuleIsChecked() {
+  void lenientRulesAreInForRootAndHideNoStrictRule() {
     List<String> checked = new ArrayList<>(descriptions(STRICT_RULES));
     checked.addAll(descriptions(LENIENT_RULES));
 

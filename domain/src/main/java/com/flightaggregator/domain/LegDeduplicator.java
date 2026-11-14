@@ -18,7 +18,9 @@ public final class LegDeduplicator {
 
   /**
    * One leg per flight: the cheapest offer, then the latest quote, then the provider declared
-   * first.
+   * first. Two offers from the same provider at the same price and quote time are a full tie, even
+   * when they differ outside the flight's key, for example in the arrival: the first one seen is
+   * kept, so the winner depends on the input order. That tie-break is for the user to decide.
    */
   public static List<Leg> deduplicate(Collection<Leg> offers) {
     Map<LegKey, Leg> best = new LinkedHashMap<>();
