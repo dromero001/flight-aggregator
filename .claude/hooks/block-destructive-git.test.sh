@@ -13,7 +13,7 @@ check() {
   fi
 }
 
-# Allowed: everyday work, including a normal push.
+# Allowed: everyday work, including a normal push and deleting a remote branch other than main.
 check 0 "git push"
 check 0 "git push origin main"
 check 0 "git push -u origin feature/x"
@@ -23,13 +23,20 @@ check 0 "git branch -d merged-branch"
 check 0 "git checkout main"
 check 0 "git restore --staged README.md"
 check 0 "./gradlew build"
+check 0 "git push origin --delete feature/x"
+check 0 "git push origin -d feature/x"
+check 0 "git push origin :feature/x"
+check 0 "git push origin -d feature/main-fix"
 
-# Blocked: anything that rewrites remote history or throws away work.
+# Blocked: anything that rewrites remote history, deletes main or throws away work.
 check 2 "git push --force"
 check 2 "git push -f origin main"
 check 2 "git push --force-with-lease origin main"
 check 2 "git push origin +main"
-check 2 "git push origin --delete feature/x"
+check 2 "git push origin --delete main"
+check 2 "git push origin -d main"
+check 2 "git push origin :main"
+check 2 "git push --delete origin main"
 check 2 "git reset --hard origin/main"
 check 2 "git clean -fd"
 check 2 "git branch -D feature/x"

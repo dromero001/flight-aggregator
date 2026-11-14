@@ -1,6 +1,6 @@
 #!/bin/bash
-# PreToolUse hook: blocks git commands that rewrite remote history or throw away work.
-# A normal `git push` stays allowed, because agents push their green commits to main.
+# PreToolUse hook: blocks git commands that rewrite remote history, delete main or throw away work.
+# A normal `git push` and deleting other remote branches stay allowed: agents push their green commits to main and clean up their own branches.
 # Adapted from Matt Pocock's git-guardrails-claude-code skill (MIT).
 
 if ! command -v jq > /dev/null; then
@@ -12,7 +12,8 @@ fi
 COMMAND=$(jq -r '.tool_input.command // empty')
 
 DESTRUCTIVE_PATTERNS=(
-  'git[[:space:]]+push\b.*[[:space:]](--force|--force-with-lease|-f\b|--delete|-d\b|\+[^[:space:]])'
+  'git[[:space:]]+push\b.*[[:space:]](--force|--force-with-lease|-f\b|\+[^[:space:]])'
+  'git[[:space:]]+push\b.*([[:space:]](--delete|-d)[[:space:]](.*[[:space:]])?|[[:space:]]:)(refs/heads/)?main([[:space:]]|$)'
   'git[[:space:]]+reset[[:space:]]+(.*[[:space:]])?--hard'
   'git[[:space:]]+clean[[:space:]]+(.*[[:space:]])?-[a-zA-Z]*f'
   'git[[:space:]]+branch[[:space:]]+(.*[[:space:]])?-D\b'
