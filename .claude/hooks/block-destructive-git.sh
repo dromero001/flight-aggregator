@@ -11,6 +11,14 @@ else
   COMMAND=$(cat)
 fi
 
+# Join a command split over several lines, which grep would match one line at a time: a backslash
+# continuation becomes a space, and so does every other line break. The raw JSON (no jq) spells a
+# line break as the two characters \n and a backslash as \\.
+COMMAND=${COMMAND//\\$'\n'/ }
+COMMAND=${COMMAND//$'\n'/ }
+COMMAND=${COMMAND//\\\\\\n/ }
+COMMAND=${COMMAND//\\n/ }
+
 # Where a ref or path word ends: at any character that cannot continue it (a space, a quote, `;`,
 # the JSON's closing quote), or at the end of the line. So `main` matches, but `main-fix` does not.
 END='([^[:alnum:]_./-]|$)'

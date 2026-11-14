@@ -45,6 +45,8 @@ check 0 "git push --follow-tags"
 check 0 "gh api repos/o/r/git/refs/heads/main"
 check 0 "gh api -X DELETE repos/o/r/git/refs/heads/feature/x"
 check 0 "git update-ref -d refs/heads/feature/x"
+check 0 $'git push origin main \\\n  --follow-tags'
+check 0 $'git status\ngit log --oneline'
 
 # Blocked: anything that rewrites remote history, deletes main or throws away work.
 check 2 "git push --force"
@@ -80,5 +82,9 @@ check 2 "git branch -df x"
 check 2 "gh api -X DELETE repos/o/r/git/refs/heads/main"
 check 2 "gh api repos/o/r/git/refs/heads/main --method DELETE"
 check 2 "git update-ref -d refs/heads/main"
+check 2 $'git push origin main \\\n  --force'
+check 2 $'git reset \\\n  --hard origin/main'
+check 2 $'git push origin main\n--force'
+check 2 $'git reset\n--hard'
 
 if [ "$failures" -eq 0 ]; then echo "All hook tests passed"; else exit 1; fi
