@@ -13,6 +13,6 @@ The agent configuration is part of the solution, so the skills the agent relies 
 | `writing-clearly-and-concisely` | plugin `elements-of-style` | [obra/elements-of-style](https://github.com/obra/elements-of-style), public domain | Clear prose in `SOLUTION.md`, the README, commit messages and user-facing text |
 | `frontend-design` | plugin | Anthropic's official plugins | A dashboard that does not look generic |
 
-The PreToolUse hook in `../hooks/block-destructive-git.sh`, adapted from Matt Pocock's `git-guardrails-claude-code`, blocks only destructive git commands (force push, remote branch deletion, `reset --hard`, `clean -f`, `branch -D`, `checkout .`, `restore .`). A normal `git push` stays allowed. Its tests: `bash .claude/hooks/block-destructive-git.test.sh`.
+The PreToolUse hook in `../hooks/block-destructive-git.sh`, adapted from Matt Pocock's `git-guardrails-claude-code`, blocks only destructive git commands (force push, remote branch deletion, `reset --hard`, `clean -f`, `branch -D`, `checkout .`, `restore .`). A normal `git push` stays allowed. It guards both the Bash and the PowerShell tools, so it also applies on Windows. Its tests: `bash .claude/hooks/block-destructive-git.test.sh`.
 
 The MIT licence of Matt Pocock's skills is in `LICENSE-mattpocock-skills.txt`.

@@ -20,7 +20,13 @@ These rules apply to every AI agent (main session and subagents) working in this
 3. Small commits with clear messages. **No AI attribution of any kind** in commits or PRs (no `Co-Authored-By`, no "Generated with").
 
 ## Pushing
-- Only to the personal account: run `direnv exec . gh api user --jq .login` and push only if it prints `dromero001`.
+- Only to the personal account: run `gh api user --jq .login` and push only if it prints `dromero001`. On a machine with direnv (the Mac), run it as `direnv exec . gh api user --jq .login`, because direnv selects the personal account there.
+
+## Working from two machines
+The work moves between a Mac and a Windows PC, so nothing may live on only one of them.
+- **Start of a session:** `git pull --ff-only` before reading or changing anything.
+- **End of a session, or before switching machines:** commit and push. The open question or next step goes into the spec's open decisions or the day's progress report, never only into the conversation.
+- **Windows:** the repository's scripts are bash; run them with Git Bash.
 
 ## Documenting AI usage
 - Every relevant working session gets a file in `docs/ai-sessions/` (numbered, in English): goal, what happened, decisions, lesson.

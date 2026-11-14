@@ -1,0 +1,5 @@
+# The repository is worked on from macOS and Windows. Line endings stay LF on both,
+# because the shell scripts (gradlew, the agent hooks) do not run with CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
