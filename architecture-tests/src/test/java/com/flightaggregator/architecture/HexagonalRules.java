@@ -1,18 +1,38 @@
 package com.flightaggregator.architecture;
 
 import static com.tngtech.archunit.base.DescribedPredicate.not;
+import static com.tngtech.archunit.core.domain.JavaCall.Predicates.target;
+import static com.tngtech.archunit.core.domain.JavaClass.Predicates.assignableTo;
+import static com.tngtech.archunit.core.domain.JavaClass.Predicates.belongToAnyOf;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage;
+import static com.tngtech.archunit.core.domain.properties.HasName.Predicates.name;
+import static com.tngtech.archunit.core.domain.properties.HasOwner.Predicates.With.owner;
+import static com.tngtech.archunit.lang.conditions.ArchConditions.callMethodWhere;
+import static com.tngtech.archunit.lang.conditions.ArchConditions.dependOnClassesThat;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
+import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.JavaCall;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.lang.ArchRule;
+import java.time.Clock;
+import java.time.InstantSource;
 import java.util.List;
+import java.util.Random;
+import java.util.SplittableRandom;
+import java.util.UUID;
 
 /** The dependency rules of the hexagonal architecture, parameterised by the root package. */
 final class HexagonalRules {
 
   private HexagonalRules() {}
+
+  private static final DescribedPredicate<JavaClass> CLOCK_AND_RANDOM_TYPES =
+      belongToAnyOf(Clock.class, InstantSource.class, SplittableRandom.class)
+          .or(assignableTo(Random.class))
+          .or(resideInAPackage("java.util.random.."));
 
   static ArchRule domainDependsOnlyOnTheJdk(String rootPackage) {
     return classes()
@@ -81,6 +101,32 @@ final class HexagonalRules {
             rootPackage + ".bootstrap..");
   }
 
+  // Same inventory, same itineraries, whatever day or hour the tests run (plan 2, global
+  // constraints). Rule 1 allows every java.* type, so only this rule keeps the clock out.
+  static ArchRule domainNeverReadsTheClockOrRandomness(String rootPackage) {
+    return noClasses()
+        .that()
+        .resideInAPackage(rootPackage + ".domain..")
+        .should(
+            callMethodWhere(
+                    callToNowOfAJavaTimeClass()
+                        .or(callTo(System.class, "currentTimeMillis"))
+                        .or(callTo(System.class, "nanoTime"))
+                        .or(callTo(Math.class, "random"))
+                        .or(callTo(StrictMath.class, "random"))
+                        .or(callTo(UUID.class, "randomUUID")))
+                .or(dependOnClassesThat(CLOCK_AND_RANDOM_TYPES))
+                .as("read the clock or randomness"));
+  }
+
+  private static DescribedPredicate<JavaCall<?>> callToNowOfAJavaTimeClass() {
+    return target(owner(resideInAPackage("java.time.."))).and(target(name("now")));
+  }
+
+  private static DescribedPredicate<JavaCall<?>> callTo(Class<?> owner, String method) {
+    return target(owner(belongToAnyOf(owner))).and(target(name(method)));
+  }
+
   static List<ArchRule> forRoot(String rootPackage) {
     return List.of(
         domainDependsOnlyOnTheJdk(rootPackage),
@@ -88,6 +134,7 @@ final class HexagonalRules {
         adaptersUseOnlyPorts(rootPackage),
         adaptersAreIndependent(rootPackage),
         nothingDependsOnBootstrap(rootPackage),
-        everyClassResidesInALayer(rootPackage));
+        everyClassResidesInALayer(rootPackage),
+        domainNeverReadsTheClockOrRandomness(rootPackage));
   }
 }

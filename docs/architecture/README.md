@@ -32,7 +32,7 @@ Port rules:
 - The domain depends on nothing, and the application layer may use Spring while the domain never does.
 - Only `bootstrap` wires adapters to the application.
 
-ArchUnit rules, in `HexagonalRules` (`architecture-tests`), run by `./gradlew build`. Rules 1, 5 and 6 are checked against real classes since the domain has them (they fail if they match none); rules 2, 3 and 4 still run with `allowEmptyShould(true)` until the application and adapter layers have classes (plan 4). The strict group is `forRoot` minus the lenient rules, matched by description, so a new rule is strict by default; a meta-test fails if a lenient rule is not in `forRoot`, or if another rule shares its description and would drop out of the strict group with it:
+ArchUnit rules, in `HexagonalRules` (`architecture-tests`), run by `./gradlew build`. Rules 1, 5, 6 and 7 are checked against real classes since the domain has them (they fail if they match none); rules 2, 3 and 4 still run with `allowEmptyShould(true)` until the application and adapter layers have classes (plan 4). The strict group is `forRoot` minus the lenient rules, matched by description, so a new rule is strict by default; a meta-test fails if a lenient rule is not in `forRoot`, or if another rule shares its description and would drop out of the strict group with it:
 
 1. `domainDependsOnlyOnTheJdk`: the domain depends only on the JDK and itself.
 2. `applicationDependsOnlyOnTheDomainAndSpring`: the application layer depends only on the JDK, Spring, the domain and itself.
@@ -40,6 +40,7 @@ ArchUnit rules, in `HexagonalRules` (`architecture-tests`), run by `./gradlew bu
 4. `adaptersAreIndependent`: no adapter depends on another adapter.
 5. `nothingDependsOnBootstrap`: nothing outside `bootstrap` depends on it.
 6. `everyClassResidesInALayer`: every class under `com.flightaggregator` (except `mockgds`) lives in one of the eight layer packages (`domain`, `application.port.in`, `application.port.out`, `application.service`, `adapter.provider`, `adapter.persistence`, `adapter.web`, `bootstrap`), so a misnamed package such as `adapters.web` cannot escape the other rules.
+7. `domainNeverReadsTheClockOrRandomness`: the domain never calls a `now(..)` method of a `java.time` class, `System.currentTimeMillis()`, `System.nanoTime()`, `Math.random()`, `StrictMath.random()` or `UUID.randomUUID()`, and never depends on `Clock`, `InstantSource`, `Random` (and subclasses), `SplittableRandom` or `java.util.random..`. Rule 1 allows every `java.*` type, so this one keeps the same inventory building the same itineraries, and the tests independent of the day they run. `UUID.nameUUIDFromBytes` (the itinerary id) stays allowed.
 
 Fixtures under `architecture-tests/src/test/java/.../fixture` check each rule against a tiny violating package tree (`HexagonalRulesTest`), so a rule that stopped detecting anything would fail the build.
 

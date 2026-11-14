@@ -95,6 +95,46 @@ class HexagonalRulesTest {
     assertThat(violations(result)).contains("layertypo.adapters.web.Controller");
   }
 
+  @Test
+  void aDomainClassReadingTheClockIsAViolation() {
+    EvaluationResult result =
+        evaluate("clockread", HexagonalRules::domainNeverReadsTheClockOrRandomness);
+
+    assertThat(violations(result)).contains("calls method <java.time.Instant.now()>");
+  }
+
+  @Test
+  void aDomainClassDrawingARandomUuidIsAViolation() {
+    EvaluationResult result =
+        evaluate("randomread", HexagonalRules::domainNeverReadsTheClockOrRandomness);
+
+    assertThat(violations(result)).contains("calls method <java.util.UUID.randomUUID()>");
+  }
+
+  @Test
+  void aDomainClassDependingOnAClockIsAViolation() {
+    EvaluationResult result =
+        evaluate("clockfield", HexagonalRules::domainNeverReadsTheClockOrRandomness);
+
+    assertThat(violations(result)).contains("has type <java.time.Clock>");
+  }
+
+  @Test
+  void aDomainClassUsingARandomGeneratorIsAViolation() {
+    EvaluationResult result =
+        evaluate("randomtype", HexagonalRules::domainNeverReadsTheClockOrRandomness);
+
+    assertThat(violations(result)).contains("has type <java.util.random.RandomGenerator>");
+  }
+
+  @Test
+  void aDomainClassReadingTheSystemMillisIsAViolation() {
+    EvaluationResult result =
+        evaluate("millisread", HexagonalRules::domainNeverReadsTheClockOrRandomness);
+
+    assertThat(violations(result)).contains("calls method <java.lang.System.currentTimeMillis()>");
+  }
+
   static Stream<Arguments> rulesForTheCleanFixture() {
     return HexagonalRules.forRoot(FIXTURES + "clean").stream()
         .map(rule -> argumentSet(rule.getDescription(), rule));
