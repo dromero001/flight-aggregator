@@ -147,7 +147,7 @@ Commits stay green (`CLAUDE.md`), so the reformat lands **before** the gate: fir
 
 - [ ] **Step 1: Write `ci.yml`:**
   - `on: push` and `pull_request` to `main`;
-  - `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: ${{ github.ref != 'refs/heads/main' }} }` (every commit on main keeps its own result);
+  - `concurrency: { group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}, cancel-in-progress: ${{ github.ref != 'refs/heads/main' }} }` (every commit on main keeps its own result);
   - `permissions: contents: read`;
   - job `backend` on `ubuntu-latest` with `timeout-minutes: 30`: checkout → setup-java (`distribution: temurin`, `java-version: 25`) → `gradle/actions/setup-gradle` → `./gradlew build` → on `failure()`, upload `**/build/reports/` and `**/build/test-results/` with `actions/upload-artifact`, name `backend-reports`;
   - every action pinned by commit SHA, with its version from Global Constraints in a comment.
