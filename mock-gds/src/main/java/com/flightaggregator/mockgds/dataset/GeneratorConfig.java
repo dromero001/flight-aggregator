@@ -40,9 +40,9 @@ public record GeneratorConfig(long seed, int windowDays, int maxDailyFlightsPerH
     public static GeneratorConfig defaults() {
         long seed = 20261116L;
         int windowDays = 30;
-        int maxDailyFlightsPerHubRoute = 2;
-        int maxDailyFlightsPerNonHubRoute = 5;
-        double operatingProbability = 0.43;
+        int maxDailyFlightsPerHubRoute = 4;
+        int maxDailyFlightsPerNonHubRoute = 2;
+        double operatingProbability = 0.345;
         double twoProviderShare = 0.25;
         double threeProviderShare = 0.10;
         double malformedShare = 0.01;

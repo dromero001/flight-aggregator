@@ -8,7 +8,9 @@ import com.flightaggregator.mockgds.dataset.Defect;
 import com.flightaggregator.mockgds.dataset.GeneratorConfig;
 import com.flightaggregator.mockgds.dataset.MalformedLeg;
 import com.flightaggregator.mockgds.model.Leg;
+import com.flightaggregator.mockgds.model.LegKey;
 import com.flightaggregator.mockgds.model.Provider;
+import com.flightaggregator.mockgds.reference.AirportRole;
 import com.flightaggregator.mockgds.reference.ReferenceData;
 import java.time.Clock;
 import java.time.Duration;
@@ -18,6 +20,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -27,13 +30,15 @@ import org.junit.jupiter.api.TestInstance;
 
 /**
  * Checks that the default dataset covers every case of §4 of the design and yields about one million itineraries,
- * about 40% of them on a single airline, and prints the statistics recorded in the progress report.
+ * with about 40% of the direct and one-stop ones on a single airline, and prints the statistics recorded in the
+ * progress report.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class DatasetCoverageTest {
 
     private static final Instant NOW = Instant.parse("2026-11-13T12:00:00Z");
     private static final long TARGET_ITINERARIES = 1_000_000;
+    private static final ReferenceData REFERENCE = ReferenceData.standard();
 
     private Dataset dataset;
     private Duration generationTime;
@@ -44,7 +49,7 @@ class DatasetCoverageTest {
 
     @BeforeAll
     void generateAndAnalyse() {
-        var generator = new DatasetGenerator(GeneratorConfig.defaults(), ReferenceData.standard());
+        var generator = new DatasetGenerator(GeneratorConfig.defaults(), REFERENCE);
         long start = System.nanoTime();
         dataset = generator.generate(Clock.fixed(NOW, ZoneOffset.UTC));
         generationTime = Duration.ofNanos(System.nanoTime() - start);
@@ -89,8 +94,16 @@ class DatasetCoverageTest {
     }
 
     @Test
-    void aboutFortyPercentOfItinerariesAreOperatedByASingleAirline() {
-        assertThat(itineraries.singleAirlineShare()).isBetween(0.35, 0.45);
+    void aboutFortyPercentOfDirectAndOneStopItinerariesAreOperatedByASingleAirline() {
+        assertThat(itineraries.singleAirlineShareUpToOneStop()).isBetween(0.35, 0.45);
+    }
+
+    @Test
+    void routesToOrFromAHubFlyMoreOftenThanTheOtherRoutes() {
+        var averageFlightsPerRoute = averageFlightsPerRouteByWhetherItServesAHub();
+
+        assertThat(averageFlightsPerRoute.get(true)).as("average flights per route to or from a hub")
+                .isGreaterThan(averageFlightsPerRoute.get(false));
     }
 
     @Test
@@ -119,6 +132,27 @@ class DatasetCoverageTest {
     void containsMalformedRecordsOfEveryDefectForEveryProvider() {
         Arrays.stream(Provider.values()).forEach(provider -> assertThat(defectsOf(provider).keySet())
                 .as(provider.name()).containsExactlyInAnyOrder(Defect.values()));
+    }
+
+    /** Average number of flights in the window per route, for routes to or from a hub (true) and the others. */
+    private Map<Boolean, Double> averageFlightsPerRouteByWhetherItServesAHub() {
+        var flightsPerRoute = flights().stream().collect(Collectors.groupingBy(FlownRoute::new, Collectors.counting()));
+        return flightsPerRoute.entrySet().stream().collect(Collectors.partitioningBy(
+                entry -> isHub(entry.getKey().origin()) || isHub(entry.getKey().destination()),
+                Collectors.averagingLong(Map.Entry::getValue)));
+    }
+
+    private static boolean isHub(String iata) {
+        return REFERENCE.airport(iata).role() == AirportRole.HUB;
+    }
+
+    /** Every flight in the window, whichever providers sell it and whether their records are valid. */
+    private List<LegKey> flights() {
+        return Arrays.stream(Provider.values())
+                .flatMap(provider -> dataset.recordsFor(provider).stream())
+                .map(record -> record.leg().key())
+                .distinct()
+                .toList();
     }
 
     private long departedLegs() {
@@ -159,7 +193,23 @@ class DatasetCoverageTest {
         System.out.println("Interlining itineraries: " + itineraries.interlining());
         System.out.printf(Locale.ROOT, "Single-airline itineraries: %.1f%% %s%n", 100 * itineraries.singleAirlineShare(),
                 itineraries.singleAirlineByCarrier());
+        System.out.printf(Locale.ROOT, "Single-airline direct and one-stop itineraries: %.1f%% %s%n",
+                100 * itineraries.singleAirlineShareUpToOneStop(), itineraries.singleAirlineUpToOneStopByCarrier());
+        var flights = flights();
+        System.out.println("Flights in the window: " + flights.size() + " "
+                + flights.stream().collect(Collectors.groupingBy(LegKey::airline, TreeMap::new, Collectors.counting())));
+        var averageFlightsPerRoute = averageFlightsPerRouteByWhetherItServesAHub();
+        System.out.printf(Locale.ROOT, "Average flights per route in the window: to or from a hub %.1f, others %.1f%n",
+                averageFlightsPerRoute.get(true), averageFlightsPerRoute.get(false));
         System.out.println("Rejected for visiting an airport twice: " + rejectedForVisitingAnAirportTwice);
         System.out.println("O-D pairs reachable only with two stops: " + itineraries.pairsReachableOnlyWithTwoStops().size());
+    }
+
+    /** A route as the flights in the dataset identify it. */
+    private record FlownRoute(String airline, String origin, String destination) {
+
+        FlownRoute(LegKey flight) {
+            this(flight.airline(), flight.origin(), flight.destination());
+        }
     }
 }

@@ -1,18 +1,22 @@
 package com.flightaggregator.mockgds.calibration;
 
 import com.flightaggregator.mockgds.model.Leg;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.IntPredicate;
+import java.util.stream.Collectors;
 
 /** Counts of the itineraries an {@link ItineraryEnumerator} yields, by number of stops and by shape. */
 final class ItineraryCount {
 
+    private static final int ONE_STOP_LEGS = 2;
+
     private final long[] byLegs = new long[4];
-    private final Map<String, Long> singleAirlineByCarrier = new TreeMap<>();
+    /** Single-airline itineraries by number of legs, then by airline code. */
+    private final Map<Integer, Map<String, Long>> singleAirlineByLegs = new TreeMap<>();
     private final Set<String> directPairs = new HashSet<>();
     private final Set<String> oneStopPairs = new HashSet<>();
     private final Set<String> twoStopPairs = new HashSet<>();
@@ -26,7 +30,8 @@ final class ItineraryCount {
     private void add(List<Leg> itinerary) {
         byLegs[itinerary.size()]++;
         if (itinerary.stream().map(Leg::airline).distinct().count() == 1) {
-            singleAirlineByCarrier.merge(itinerary.getFirst().airline(), 1L, Long::sum);
+            singleAirlineByLegs.computeIfAbsent(itinerary.size(), legs -> new TreeMap<>())
+                    .merge(itinerary.getFirst().airline(), 1L, Long::sum);
         }
         var pair = itinerary.getFirst().origin() + "-" + itinerary.getLast().destination();
         switch (itinerary.size()) {
@@ -58,17 +63,38 @@ final class ItineraryCount {
     }
 
     long singleAirline() {
-        return singleAirlineByCarrier.values().stream().mapToLong(Long::longValue).sum();
+        return sum(singleAirlineByCarrier());
     }
 
     /** Itineraries whose legs are all operated by the same airline, by airline code. */
     Map<String, Long> singleAirlineByCarrier() {
-        return Collections.unmodifiableMap(singleAirlineByCarrier);
+        return singleAirlineByCarrier(legs -> true);
+    }
+
+    /** Direct and one-stop itineraries whose legs are all operated by the same airline, by airline code. */
+    Map<String, Long> singleAirlineUpToOneStopByCarrier() {
+        return singleAirlineByCarrier(legs -> legs <= ONE_STOP_LEGS);
     }
 
     /** Share of the itineraries whose legs are all operated by the same airline. */
     double singleAirlineShare() {
         return (double) singleAirline() / total();
+    }
+
+    /** Share of the direct and one-stop itineraries whose legs are all operated by the same airline. */
+    double singleAirlineShareUpToOneStop() {
+        return (double) sum(singleAirlineUpToOneStopByCarrier()) / (direct() + oneStop());
+    }
+
+    private Map<String, Long> singleAirlineByCarrier(IntPredicate legs) {
+        return singleAirlineByLegs.entrySet().stream()
+                .filter(countsOfLegs -> legs.test(countsOfLegs.getKey()))
+                .flatMap(countsOfLegs -> countsOfLegs.getValue().entrySet().stream())
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, Long::sum, TreeMap::new));
+    }
+
+    private static long sum(Map<String, Long> countsByCarrier) {
+        return countsByCarrier.values().stream().mapToLong(Long::longValue).sum();
     }
 
     /** Origin-destination pairs that the itineraries connect only with two stops. */
