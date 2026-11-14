@@ -15,3 +15,4 @@ Flight aggregation & cache optimization system: ingests itineraries from three l
 - [Project plan draft](docs/superpowers/specs/2026-11-13-flight-aggregator-design.md)
 - [Implementation plan — mock dataset](docs/superpowers/plans/2026-11-13-mock-dataset.md)
 - [Progress report — 2026-11-13](docs/progress/2026-11-13.md)
+- [Progress report — 2026-11-14](docs/progress/2026-11-14.md)

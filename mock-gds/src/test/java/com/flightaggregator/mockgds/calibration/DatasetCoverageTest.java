@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
@@ -26,7 +27,7 @@ import org.junit.jupiter.api.TestInstance;
 
 /**
  * Checks that the default dataset covers every case of §4 of the design and yields about one million itineraries,
- * and prints the statistics recorded in the progress report.
+ * about 40% of them on a single airline, and prints the statistics recorded in the progress report.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class DatasetCoverageTest {
@@ -85,6 +86,11 @@ class DatasetCoverageTest {
     @Test
     void containsConnectedLegsThatTheBuilderMustRejectForVisitingAnAirportTwice() {
         assertThat(rejectedForVisitingAnAirportTwice).isPositive();
+    }
+
+    @Test
+    void aboutFortyPercentOfItinerariesAreOperatedByASingleAirline() {
+        assertThat(itineraries.singleAirlineShare()).isBetween(0.35, 0.45);
     }
 
     @Test
@@ -151,6 +157,8 @@ class DatasetCoverageTest {
         System.out.printf("Itineraries: direct=%d, oneStop=%d, twoStops=%d, total=%d%n",
                 itineraries.direct(), itineraries.oneStop(), itineraries.twoStops(), itineraries.total());
         System.out.println("Interlining itineraries: " + itineraries.interlining());
+        System.out.printf(Locale.ROOT, "Single-airline itineraries: %.1f%% %s%n", 100 * itineraries.singleAirlineShare(),
+                itineraries.singleAirlineByCarrier());
         System.out.println("Rejected for visiting an airport twice: " + rejectedForVisitingAnAirportTwice);
         System.out.println("O-D pairs reachable only with two stops: " + itineraries.pairsReachableOnlyWithTwoStops().size());
     }

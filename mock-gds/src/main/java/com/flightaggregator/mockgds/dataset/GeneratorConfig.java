@@ -7,16 +7,18 @@ import java.util.Objects;
 /**
  * Size and shape of the generated dataset.
  *
- * @param seed                    seed of every random decision
- * @param windowDays              length of the rolling window, starting on the clock's UTC date
- * @param maxDailyFlightsPerRoute each route gets between one and this many flights a day
- * @param operatingProbability    probability that a scheduled flight operates on a given date
- * @param twoProviderShare        share of legs sold by exactly two providers
- * @param threeProviderShare      share of legs sold by all three providers
- * @param malformedShare          share of each provider's records served malformed instead of valid
- * @param priceBucket             how long a quoted price stays the same before it drifts
+ * @param seed                           seed of every random decision
+ * @param windowDays                     length of the rolling window, starting on the clock's UTC date
+ * @param maxDailyFlightsPerNetworkRoute each network carrier's route gets between one and this many flights a day
+ * @param maxDailyFlightsPerLowCostRoute each low-cost carrier's route gets between one and this many flights a day
+ * @param operatingProbability           probability that a scheduled flight operates on a given date
+ * @param twoProviderShare               share of legs sold by exactly two providers
+ * @param threeProviderShare             share of legs sold by all three providers
+ * @param malformedShare                 share of each provider's records served malformed instead of valid
+ * @param priceBucket                    how long a quoted price stays the same before it drifts
  */
-public record GeneratorConfig(long seed, int windowDays, int maxDailyFlightsPerRoute, double operatingProbability,
+public record GeneratorConfig(long seed, int windowDays, int maxDailyFlightsPerNetworkRoute,
+                              int maxDailyFlightsPerLowCostRoute, double operatingProbability,
                               double twoProviderShare, double threeProviderShare, double malformedShare,
                               Duration priceBucket) {
 
@@ -37,18 +39,20 @@ public record GeneratorConfig(long seed, int windowDays, int maxDailyFlightsPerR
     public static GeneratorConfig defaults() {
         long seed = 20261116L;
         int windowDays = 30;
-        int maxDailyFlightsPerRoute = 2;
-        double operatingProbability = 0.52;
+        int maxDailyFlightsPerNetworkRoute = 2;
+        int maxDailyFlightsPerLowCostRoute = 5;
+        double operatingProbability = 0.42;
         double twoProviderShare = 0.25;
         double threeProviderShare = 0.10;
         double malformedShare = 0.01;
         var priceBucket = Duration.ofMinutes(15);
-        return new GeneratorConfig(seed, windowDays, maxDailyFlightsPerRoute, operatingProbability,
-                twoProviderShare, threeProviderShare, malformedShare, priceBucket);
+        return new GeneratorConfig(seed, windowDays, maxDailyFlightsPerNetworkRoute, maxDailyFlightsPerLowCostRoute,
+                operatingProbability, twoProviderShare, threeProviderShare, malformedShare, priceBucket);
     }
 
     ScheduleParameters scheduleParameters() {
-        return new ScheduleParameters(seed, maxDailyFlightsPerRoute, maxDailyFlightsPerRoute, operatingProbability);
+        return new ScheduleParameters(seed, maxDailyFlightsPerNetworkRoute, maxDailyFlightsPerLowCostRoute,
+                operatingProbability);
     }
 
     private static void requireShare(String name, double share) {
