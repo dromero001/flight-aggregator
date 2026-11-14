@@ -55,7 +55,7 @@ Success means that:
 - **Carrier filter:** all legs of the itinerary are operated by that carrier (our assumption, no codeshare).
 - **Filters:** Origin, Destination, Max Price and Carrier are all optional and combinable.
 - **Interlining**: one itinerary may mix airlines and providers, as real OTAs do. Combining airlines that have no agreement between them (*virtual interlining*) is a known strength of eDreams. The Carrier filter still requires every leg to be operated by that carrier.
-- **Realistic airline network** (decided after the dataset review): each airline concentrates its flights on its hubs (Iberia at MAD, Lufthansa at FRA, Air France at CDG…), as in reality. Target: about 40% of itineraries operated by a single airline and 60% mixed, so the Carrier filter returns meaningful results.
+- **Realistic airline network** (decided after the dataset review): each airline concentrates its flights on its hubs (Iberia at MAD, Lufthansa at FRA, Air France at CDG…), as in reality. Target: about 40% of **direct and 1-stop** itineraries operated by a single airline, so the Carrier filter returns meaningful results. 2-stop itineraries are mostly interline, as in reality: a one-hub airline cannot fly a 2-stop trip on its own without revisiting its hub. Measuring the target over all itineraries pushed the generator to inflate point-to-point low-cost carriers, so it was moved (decided after the second dataset review). Hub routes are the most frequent ones, and each route draws its schedule from its own seed, so reordering routes does not change the data.
 
 ### 4.1 Inventory, time and volume (decided after the builder check)
 
@@ -234,7 +234,10 @@ Production-like choices (agent's calls, made to that goal):
 - **Quality:** TypeScript in strict mode, ESLint + Prettier, Vitest + React Testing Library + Mock Service Worker for components, and Playwright for end-to-end tests against docker compose. All of them run in CI.
 - **Dependencies:** the latest stable versions, verified like the backend's (§6.1); light styling with no heavy component library.
 
-Still open: the visual design (a sketch to approve before building).
+**Visual design (approved in the grill-me, Q8.1–Q8.3).** Two screens:
+
+1. **Search (public).** A top bar with exactly the four filters of the brief (From, To, Airline, Max price), all optional, and the sort order (price, departure, duration). No side panel, no date or stops filter. Each result card shows the departure date, local departure and arrival times, total duration, number of stops with the connecting airports and layover times, the airlines and flight numbers, and the final price with the markup. Mixed-airline itineraries carry a "Multiple airlines" notice. The provider is never shown. Clicking a card expands its legs and re-prices it: unchanged price → a "Select" button that goes no further (booking is out of scope); "Price changed" with the new price; or "Provider unavailable" on a 503. Results end with "Load more" (keyset). On a phone the filters stack.
+2. **Provider status (admin, Keycloak login).** The active inventory generation and when it was published, the time to the next ingestion, and one row per provider with its health (UP / DEGRADED / DOWN), circuit-breaker state, last successful ingestion, legs and discarded records, marking a provider whose legs are kept from the last good data as stale. A **"Run ingestion now"** button calls the manual ingestion trigger of §6.6 (approved as an extra, so the live session can show the system reacting without waiting 30 minutes).
 
 ### 6.9 Language
 
@@ -292,7 +295,7 @@ Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight wor
 5. ~~**All three providers down**~~ — **decided**, see §6.5.
 6. ~~**Authentication**~~ — **decided**, see §6.6.
 7. ~~**Payload schemas**~~ — **decided**, see §6.7.
-8. **Dashboard** — stack **decided** (§6.8); visual design pending (sketch to approve).
+8. ~~**Dashboard**~~ — **decided**: stack and visual design, see §6.8.
 9. **Observability** — metrics, traces, logs; which stack in docker compose.
 10. **CI** — GitHub Actions scope (build, tests, image build).
 11. **Pagination UX** — load more vs page numbers, after checking eDreams' website.

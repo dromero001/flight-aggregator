@@ -8,3 +8,4 @@ The sessions were held in Spanish. Every prompt quoted here has been translated 
 2. [Hiring team's answers and project plan](02-team-answers-and-project-plan.md)
 3. [Grill-me on the open design decisions](03-grill-me-design-decisions.md)
 4. [Autonomous agent work and a TDD correction](04-autonomous-work-and-tdd.md)
+5. [A scope guard, the dashboard design and the agent's skills](05-scope-guard-and-agent-skills.md)
