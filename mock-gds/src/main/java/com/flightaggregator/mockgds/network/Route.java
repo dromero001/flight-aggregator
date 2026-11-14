@@ -2,6 +2,7 @@ package com.flightaggregator.mockgds.network;
 
 import com.flightaggregator.mockgds.reference.Airline;
 import com.flightaggregator.mockgds.reference.Airport;
+import com.flightaggregator.mockgds.reference.AirportRole;
 import java.time.Duration;
 import java.util.Objects;
 
@@ -19,6 +20,11 @@ public record Route(Airline airline, Airport origin, Airport destination) {
         if (origin.equals(destination)) {
             throw new IllegalArgumentException("A route needs two different airports: " + origin.iata());
         }
+    }
+
+    /** Whether the route starts or ends at a hub. */
+    public boolean servesHub() {
+        return origin.role() == AirportRole.HUB || destination.role() == AirportRole.HUB;
     }
 
     public double distanceKm() {

@@ -6,13 +6,14 @@ import static org.assertj.core.api.Assertions.within;
 
 import com.flightaggregator.mockgds.network.Route;
 import com.flightaggregator.mockgds.network.RouteNetwork;
-import com.flightaggregator.mockgds.reference.LowCostCarrier;
+import com.flightaggregator.mockgds.reference.AirportRole;
 import com.flightaggregator.mockgds.reference.ReferenceData;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
@@ -79,16 +80,15 @@ class FlightScheduleTest {
     }
 
     @Test
-    void lowCostRoutesGetUpToTheirOwnMaximumOfDailyFlights() {
-        var flightsPerRoute = FlightSchedule.build(routes, new ScheduleParameters(SEED, 1, 4, 1.0)).scheduledFlights()
+    void routesToOrFromAHubAndTheOtherRoutesReachTheirOwnMaximumOfDailyFlights() {
+        var flightsPerRoute = FlightSchedule.build(routes, new ScheduleParameters(SEED, 2, 4, 1.0)).scheduledFlights()
                 .stream().collect(Collectors.groupingBy(ScheduledFlight::route, Collectors.counting()));
 
-        assertThat(flightsPerRoute).allSatisfy((route, flights) -> assertThat(flights).as(route.toString())
-                .isBetween(1L, route.airline() instanceof LowCostCarrier ? 4L : 1L));
-        assertThat(flightsPerRoute).anySatisfy((route, flights) -> {
-            assertThat(route.airline()).isInstanceOf(LowCostCarrier.class);
-            assertThat(flights).isGreaterThan(1L);
-        });
+        var busiestRouteByWhetherItServesAHub = flightsPerRoute.entrySet().stream().collect(Collectors.partitioningBy(
+                entry -> servesAHub(entry.getKey()),
+                Collectors.mapping(Map.Entry::getValue, Collectors.reducing(0L, Long::max))));
+
+        assertThat(busiestRouteByWhetherItServesAHub).containsExactlyInAnyOrderEntriesOf(Map.of(true, 2L, false, 4L));
     }
 
     @Test
@@ -152,6 +152,10 @@ class FlightScheduleTest {
         assertThatThrownBy(() -> FlightSchedule.build(routes, new ScheduleParameters(SEED, 2000, 2000, 1.0)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("flight numbers");
+    }
+
+    private static boolean servesAHub(Route route) {
+        return route.origin().role() == AirportRole.HUB || route.destination().role() == AirportRole.HUB;
     }
 
     private static List<LocalTime> departureTimesOf(Route route, FlightSchedule schedule) {

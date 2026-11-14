@@ -7,9 +7,9 @@ import org.junit.jupiter.api.Test;
 class ScheduleParametersTest {
 
     @Test
-    void rejectsLowCostRoutesWithoutDailyFlights() {
+    void rejectsNonHubRoutesWithoutDailyFlights() {
         assertThatThrownBy(() -> new ScheduleParameters(1, 2, 0, 0.5))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("maxDailyFlightsPerLowCostRoute");
+                .hasMessageContaining("maxDailyFlightsPerNonHubRoute");
     }
 }

@@ -2,8 +2,6 @@ package com.flightaggregator.mockgds.schedule;
 
 import com.flightaggregator.mockgds.network.Route;
 import com.flightaggregator.mockgds.random.SeededRandom;
-import com.flightaggregator.mockgds.reference.LowCostCarrier;
-import com.flightaggregator.mockgds.reference.NetworkCarrier;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -30,9 +28,10 @@ public final class FlightSchedule {
     private static final int MAX_FLIGHT_NUMBER_GAP = 7;
     private static final int MAX_FLIGHT_NUMBER = 9999;
     /** Flight numbers are handed out in this order, so they do not depend on the order the routes are given in. */
-    private static final Comparator<Route> NUMBERING_ORDER = Comparator.comparing((Route route) -> route.airline().code())
-            .thenComparing(route -> route.origin().iata())
-            .thenComparing(route -> route.destination().iata());
+    private static final Comparator<Route> NUMBERING_ORDER =
+            Comparator.comparing((Route route) -> route.airline().code())
+                    .thenComparing(route -> route.origin().iata())
+                    .thenComparing(route -> route.destination().iata());
 
     private final List<ScheduledFlight> scheduledFlights;
     private final ScheduleParameters parameters;
@@ -48,7 +47,7 @@ public final class FlightSchedule {
         for (var route : routes.stream().sorted(NUMBERING_ORDER).toList()) {
             var random = SeededRandom.derive(parameters.seed(), "schedule",
                     route.airline().code(), route.origin().iata(), route.destination().iata());
-            int dailyFlights = random.nextInt(1, maxDailyFlights(route, parameters) + 1);
+            int dailyFlights = random.nextInt(1, parameters.maxDailyFlights(route) + 1);
             for (int i = 0; i < dailyFlights; i++) {
                 int flightNumber = nextFlightNumber(route, lastFlightNumberByAirline, random);
                 scheduledFlights.add(new ScheduledFlight(route, flightNumber, randomDepartureTime(random)));
@@ -78,13 +77,6 @@ public final class FlightSchedule {
         var random = SeededRandom.derive(parameters.seed(), "operates",
                 flight.route().airline().code(), String.valueOf(flight.flightNumber()), date.toString());
         return random.nextDouble() < parameters.operatingProbability();
-    }
-
-    private static int maxDailyFlights(Route route, ScheduleParameters parameters) {
-        return switch (route.airline()) {
-            case NetworkCarrier _ -> parameters.maxDailyFlightsPerNetworkRoute();
-            case LowCostCarrier _ -> parameters.maxDailyFlightsPerLowCostRoute();
-        };
     }
 
     private static int nextFlightNumber(Route route, Map<String, Integer> lastByAirline, RandomGenerator random) {
