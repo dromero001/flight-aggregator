@@ -1,7 +1,7 @@
 # Flight Aggregator — Project Plan Draft (Design)
 
 - **Date:** 2026-11-13
-- **Status:** draft, pending the grill-me session on the open decisions (§10)
+- **Status:** every open decision of §10 closed in the grill-me (2026-11-14)
 - **Delivery:** Monday 2026-11-16, end of day — URL of the public repository `github.com/dromero001/flight-aggregator`
 - **Inputs:** the take-home brief, [session 01](../../ai-sessions/01-requirements-clarification.md) and the hiring team's answers received on 2026-11-13
 
@@ -116,7 +116,14 @@ Recommendation: **A**, because the brief's "pagination up to 1,000,000 rows" onl
 
 ### 5.4 Pagination
 
-Keyset (seek) pagination with one composite index per supported sort order — price (default), departure time, duration — and the itinerary id as tie-breaker. The cursor is opaque (encoded sort key + id). Offset pagination is rejected because its cost grows with the page depth. Pending: check how eDreams' own website paginates (load more vs page numbers), to justify the UX choice in `SOLUTION.md`.
+Keyset (seek) pagination with one composite index per supported sort order — price (default), departure time, duration — and the itinerary id as tie-breaker. The cursor is opaque (encoded sort key + id). Offset pagination is rejected because its cost grows with the page depth.
+
+**UX (decided in the grill-me, Q11): a "Load more" button**, with no page numbers and no infinite scroll.
+- **It is what eDreams does:** a "Load more deals" button at the bottom of the results, with sort tabs ([travel blog](https://travelwithbender.com/travel-thoughts/travel-tips/cheap-flights-edreams), [eDreams help centre](https://help.edreams.co.uk/hc/en-gb/articles/34070010833938-Ranking-Criteria-and-Information-on-Prices)). eDreams also asks the user to reload expired results, like our "results updated, reload" notice (§6.3).
+- **It fits keyset:** the cursor only knows "the next page". Page numbers would need offset and a count over ~1M rows.
+- **Over infinite scroll:** the user decides when to load more, the footer stays reachable, and it works with the keyboard and screen readers (axe, §6.8).
+- **No total count:** the header shows "Showing N flights" (the rows loaded so far), because an exact total would need an expensive count.
+- **Not approved:** a "Best" sort order (an eDreams default that blends price and duration), which would need a scoring formula and another keyset index.
 
 ## 6. Architecture (hexagonal / DDD) — proposal
 
@@ -236,7 +243,7 @@ Production-like choices (agent's calls, made to that goal):
 
 **Visual design (approved in the grill-me, Q8.1–Q8.3).** Two screens:
 
-1. **Search (public).** A top bar with exactly the four filters of the brief (From, To, Airline, Max price), all optional, and the sort order (price, departure, duration). No side panel, no date or stops filter. Each result card shows the departure date, local departure and arrival times, total duration, number of stops with the connecting airports and layover times, the airlines and flight numbers, and the final price with the markup. Mixed-airline itineraries carry a "Multiple airlines" notice. The provider is never shown. Clicking a card expands its legs and re-prices it: unchanged price → a "Select" button that goes no further (booking is out of scope); "Price changed" with the new price; or "Provider unavailable" on a 503. Results end with "Load more" (keyset). On a phone the filters stack.
+1. **Search (public).** A top bar with exactly the four filters of the brief (From, To, Airline, Max price), all optional, and the sort order (price, departure, duration). No side panel, no date or stops filter. Each result card shows the departure date, local departure and arrival times, total duration, number of stops with the connecting airports and layover times, the airlines and flight numbers, and the final price with the markup. Mixed-airline itineraries carry a "Multiple airlines" notice. The provider is never shown. Clicking a card expands its legs and re-prices it: unchanged price → a "Select" button that goes no further (booking is out of scope); "Price changed" with the new price; or "Provider unavailable" on a 503. Results end with "Load more" and the header shows "Showing N flights" (§5.4). On a phone the filters stack.
 2. **Provider status (admin, Keycloak login).** The active inventory generation and when it was published, the time to the next ingestion, and one row per provider with its health (UP / DEGRADED / DOWN), circuit-breaker state, last successful ingestion, legs and discarded records, marking a provider whose legs are kept from the last good data as stale. A **"Run ingestion now"** button calls the manual ingestion trigger of §6.6 (approved as an extra, so the live session can show the system reacting without waiting 30 minutes).
 
 ### 6.9 Language
@@ -329,7 +336,7 @@ Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight wor
 8. ~~**Dashboard**~~ — **decided**: stack and visual design, see §6.8.
 9. ~~**Observability**~~ — **decided**, see §6.10.
 10. ~~**CI**~~ — **decided**, see §6.11.
-11. **Pagination UX** — load more vs page numbers, after checking eDreams' website.
+11. ~~**Pagination UX**~~ — **decided**: "Load more", see §5.4.
 
 ## 11. Left to the builder
 
