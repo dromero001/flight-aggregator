@@ -1,4 +1,6 @@
-// Shared Java setup for every module: Java 25 toolchain, strict compilation, JUnit Platform.
+// Shared setup for every Java module: Java 25 toolchain, strict compilation, JUnit Platform with
+// JUnit and AssertJ, google-java-format through Spotless, and the JaCoCo agent. Repositories are
+// declared once, in settings.gradle.kts.
 plugins {
     java
     jacoco
@@ -7,10 +9,7 @@ plugins {
 
 val libs = versionCatalogs.named("libs")
 fun library(alias: String) = libs.findLibrary(alias).get()
-
-repositories {
-    mavenCentral()
-}
+fun versionOf(alias: String) = library(alias).get().versionConstraint.requiredVersion
 
 java {
     toolchain {
@@ -21,7 +20,7 @@ java {
 spotless {
     java {
         target("src/**/*.java")
-        googleJavaFormat(libs.findVersion("google-java-format").get().requiredVersion)
+        googleJavaFormat(versionOf("google-java-format"))
     }
 }
 
@@ -42,5 +41,5 @@ tasks.withType<Test>().configureEach {
 }
 
 jacoco {
-    toolVersion = libs.findVersion("jacoco").get().requiredVersion
+    toolVersion = versionOf("jacoco-agent")
 }

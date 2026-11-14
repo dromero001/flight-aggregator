@@ -4,7 +4,16 @@ plugins {
 
 rootProject.name = "flight-aggregator"
 
-// Hexagonal modules from the design (§6). The frontend is added when its first task starts.
+// The only place that declares repositories: a module that declares its own fails the build.
+dependencyResolutionManagement {
+    repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
+    repositories {
+        mavenCentral()
+    }
+}
+
+// The mock providers, the hexagonal modules from the design (§6), and the architecture and coverage
+// gates. The frontend is added when its first task starts.
 include("mock-gds")
 include("domain")
 include("application")

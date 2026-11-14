@@ -1,27 +1,26 @@
-// Aggregated coverage gate (spec 6.11): unit and integration tests of every backend module together.
+// Aggregated coverage gate (spec 6.11) over the `test` suite of every backend module together. A
+// separate integration-test suite would need a report and executionData of its own.
 // architecture-tests is deliberately not aggregated: its fixtures are test code, not production code.
 plugins {
     base
     `jacoco-report-aggregation`
 }
 
-repositories {
-    mavenCentral()
+// The report and the gate run the same JaCoCo as the modules' agents.
+jacoco {
+    toolVersion = libs.jacoco.agent.get().versionConstraint.requiredVersion
 }
 
 dependencies {
+    // bootstrap depends on every hexagonal module, so its graph is the single module list.
     jacocoAggregation(project(":mock-gds"))
-    jacocoAggregation(project(":domain"))
-    jacocoAggregation(project(":application"))
-    jacocoAggregation(project(":adapters:providers"))
-    jacocoAggregation(project(":adapters:persistence"))
-    jacocoAggregation(project(":adapters:web"))
     jacocoAggregation(project(":bootstrap"))
 }
 
 reporting {
     reports {
         register<JacocoCoverageReport>("testCodeCoverageReport") {
+            // Not redundant: Gradle 9.9.1 fails on an explicitly registered report without it.
             testSuiteName = "test"
         }
     }
@@ -34,6 +33,8 @@ val minimumLines = providers.gradleProperty("coverage.minimum.lines").orElse("0.
 val minimumBranches = providers.gradleProperty("coverage.minimum.branches").orElse("0.80").map(::BigDecimal)
 
 val report = tasks.named<JacocoReport>("testCodeCoverageReport") {
+    // Snapshot the directories first: filtering classDirectories in place refers to itself and
+    // runs out of memory with the configuration cache.
     val allClasses = files(classDirectories.from.toList())
     classDirectories.setFrom(allClasses.asFileTree.matching { exclude(coverageExclusions) })
 }
