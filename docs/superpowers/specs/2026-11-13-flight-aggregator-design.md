@@ -256,6 +256,24 @@ All user-facing text is in **English**: API error messages, dashboard labels, fi
 
 **Only if time remains:** JVM dashboards and PostgreSQL / Valkey exporters. **Rejected:** Alertmanager, SLO burn-rate alerts and a trace id in every error response.
 
+### 6.11 Continuous integration (decided in the grill-me, Q10)
+
+GitHub Actions on every push and pull request to `main`:
+1. **Backend:** Java 25 and Gradle with its cache, running `./gradlew build`: the full suite (unit, ArchUnit, WireMock and Testcontainers integration, failure tests with 1, 2 and 3 providers down).
+2. **Frontend:** TypeScript in strict mode, ESLint, Prettier and Vitest (§6.8).
+3. **Contract drift:** regenerate the OpenAPI specification and the TypeScript types, and fail if they differ from the committed ones (§6.8).
+4. **Images:** build the backend, `mock-gds` and frontend images, without pushing them.
+5. **End-to-end:** `docker compose up --build`, wait for health, then Playwright with axe against the stack (§6.8).
+6. Test reports are uploaded as artefacts when a job fails.
+
+**Approved extras:**
+- **Superseded runs are cancelled** (a concurrency group), and the README shows a build status badge.
+- **Dependabot** for Gradle, npm, GitHub Actions and Docker: weekly, grouped per ecosystem, with a cooldown before proposing a fresh release (it matches the "no recent releases" rule of §6.1).
+- **Coverage gate with JaCoCo:** at least **90% of lines and 80% of branches**, over unit and integration tests of every backend module together. The Spring Boot entry point, configuration classes and generated code are excluded. Branches get a lower bar because 90% would force tests with no value for defensive and compiler-generated branches.
+- **Formatting gate with Spotless and google-java-format** (Google Java Style: 2-space indentation, 100 columns). `spotlessCheck` runs inside `./gradlew build`, so the gate also applies locally; `./gradlew spotlessApply` fixes it. The existing code is reformatted once, in a commit of its own.
+
+**Rejected:** publishing images to GHCR, CodeQL / Trivy scans, branch protection (it would block the agents' direct pushes to `main`). **Not approved:** frontend coverage gate, mutation testing with PIT.
+
 Modules (Gradle subprojects; the dependency direction is enforced with ArchUnit):
 
 | Module | Content | Depends on |
@@ -310,7 +328,7 @@ Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight wor
 7. ~~**Payload schemas**~~ — **decided**, see §6.7.
 8. ~~**Dashboard**~~ — **decided**: stack and visual design, see §6.8.
 9. ~~**Observability**~~ — **decided**, see §6.10.
-10. **CI** — GitHub Actions scope (build, tests, image build).
+10. ~~**CI**~~ — **decided**, see §6.11.
 11. **Pagination UX** — load more vs page numbers, after checking eDreams' website.
 
 ## 11. Left to the builder
