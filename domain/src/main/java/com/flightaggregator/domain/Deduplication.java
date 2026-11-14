@@ -10,6 +10,9 @@ public record Deduplication(List<Leg> legs, List<Leg> conflicting) {
 
   public Deduplication {
     legs = List.copyOf(legs);
+    if (legs.stream().map(Leg::key).distinct().count() != legs.size()) {
+      throw new IllegalArgumentException("Two offers of the same flight: " + legs);
+    }
     conflicting = List.copyOf(conflicting);
   }
 }
