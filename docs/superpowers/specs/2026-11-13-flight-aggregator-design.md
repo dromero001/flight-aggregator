@@ -243,6 +243,19 @@ Production-like choices (agent's calls, made to that goal):
 
 All user-facing text is in **English**: API error messages, dashboard labels, filters, notices and empty states. The same applies to code, logs and documentation.
 
+### 6.10 Observability (decided in the grill-me, Q9)
+
+**Minimum (required by §2 and the metrics the other sections already promise):**
+- **Metrics:** Micrometer, exposed through Actuator (admin only, §6.6): provider call outcomes and circuit-breaker state (§6.5), data freshness per provider (§6.5), ingestion duration (§6.4), cache hit ratio (§6.2), discarded records per provider and reason (§6.7), and partition health (§4.3). Low-cardinality tags only: never origin, destination or user.
+- **Alert:** N consecutive failed ingestions (§6.5), evaluated as a Prometheus rule with no notification channel.
+- **Logs:** structured JSON (Boot's built-in structured logging), with trace id, span id and the correlation id; every provider failure and discarded record logs its provider and reason.
+- **Traces:** OpenTelemetry through Boot's built-in observability, W3C `traceparent`.
+- **Compose:** Prometheus plus Grafana, with datasources and one dashboard provisioned from files in the repository, so `docker compose up --build` needs no manual step.
+
+**Approved extras:** the **OpenTelemetry Collector and Tempo** (one search or ingestion run visible as a single trace) and **Loki** (logs searchable in Grafana, with a jump from a log line to its trace). Together with Prometheus they give the three signals, correlated in one UI, as in production.
+
+**Only if time remains:** JVM dashboards and PostgreSQL / Valkey exporters. **Rejected:** Alertmanager, SLO burn-rate alerts and a trace id in every error response.
+
 Modules (Gradle subprojects; the dependency direction is enforced with ArchUnit):
 
 | Module | Content | Depends on |
@@ -296,7 +309,7 @@ Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight wor
 6. ~~**Authentication**~~ — **decided**, see §6.6.
 7. ~~**Payload schemas**~~ — **decided**, see §6.7.
 8. ~~**Dashboard**~~ — **decided**: stack and visual design, see §6.8.
-9. **Observability** — metrics, traces, logs; which stack in docker compose.
+9. ~~**Observability**~~ — **decided**, see §6.10.
 10. **CI** — GitHub Actions scope (build, tests, image build).
 11. **Pagination UX** — load more vs page numbers, after checking eDreams' website.
 
