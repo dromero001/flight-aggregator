@@ -67,7 +67,9 @@ class ItineraryTest {
 
   @Test
   void isPricedByThePricingPolicy() {
-    assertThat(new Itinerary(List.of(MAD_LHR, LHR_JFK)).price()).isEqualTo(Money.euros("210.00"));
+    List<Leg> legs = List.of(MAD_LHR, LHR_JFK);
+
+    assertThat(new Itinerary(legs).price()).isEqualTo(PricingPolicy.finalPrice(legs));
   }
 
   @Test

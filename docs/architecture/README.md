@@ -50,40 +50,41 @@ The `domain` module is one flat package, `com.flightaggregator.domain`, of immut
 Types:
 
 - `Airport` and `Carrier`: IATA codes, checked when created (three upper-case letters; two upper-case letters or digits).
-- `Money`: an amount of euros, kept in cents, never negative and rejected from one billion upwards (checked before rounding).
+- `Money`: an amount of euros, kept in cents, never negative. It rejects an amount that would round to one billion or more (999,999,999.995 upwards), checked before rounding so that a huge exponent fails fast.
 - `Provider`: the closed set of mock providers, `ALPHA`, `BETA` and `GAMMA`.
-- `Leg`: one provider's offer of one flight (flight number 1 to 9999), with its price and the time it was quoted. `LegKey` is the flight's identity: carrier, flight number, origin, destination and departure instant.
-- `LegDeduplicator`: merges the offers of each flight into one leg.
+- `Leg`: one provider's offer of one flight (flight number 1 to 9999), with its price and the time it was quoted. A price of 100 million euros or more is rejected (`Leg.PRICE_CEILING`), which keeps an itinerary's price, three legs with the markup, under the `Money` bound. `LegKey` is the flight's identity: carrier, flight number, origin, destination and departure instant.
+- `LegDeduplicator`: merges the offers of each flight into one leg and returns a `Deduplication`: `legs()`, one offer per flight, and `conflicting()`, every offer of a flight that its provider gave with two different arrivals (the provider contradicts itself, so none of its offers of that flight is used). Offers from different providers never conflict: the normal rules pick the winner, with that offer's arrival. The same offer twice is not a conflict. The caller counts and logs `conflicting()`.
 - `ConnectionRules`: when two legs connect, and when a leg can still be sold. It owns the connection window, which the builder reads too.
 - `PricingPolicy`: the final price of an itinerary.
 - `Itinerary`: one to three connecting legs, with the trip's origin, destination, times, duration, price, freshness and carrier. It refuses to exist with no legs or more than three, or with a leg that does not connect to the one before it or lands at an airport already on the trip (`Itinerary.canFollow`). It does not check that its legs are still sellable, because that needs `now`: the builder drops departed legs. `ItineraryId` is its identity.
-- `ItineraryBuilder`: turns a set of offers into every sellable itinerary.
+- `ItineraryBuilder`: turns a `Deduplication` into every sellable itinerary. It does not deduplicate, so the caller can count and log the conflicting offers first.
 
 Rules, where they are enforced, and the section of the [design spec](../planning/design-spec.md) that sets each one:
 
 | Rule | Where | Source |
 |---|---|---|
 | The same carrier, flight number, origin, destination and departure instant is the same flight. The cheapest offer wins; at the same price, the latest quote; at the same price and quote time, the provider declared first | `LegDeduplicator` | §4, leg deduplication |
+| A provider that offers one flight with two different arrivals has all its offers of that flight discarded (`Deduplication.conflicting()`); other providers' offers are not affected | `LegDeduplicator` | §4, leg deduplication |
 | A leg arrives after it departs (as instants), and does not start and end at the same airport | `Leg` | §4, itinerary, with the dead legs of [session 01](../ai/sessions/01-requirements-clarification.md); §4, no airport visited twice |
 | A leg departing at or before now is not sold | `ConnectionRules.isSellable` | §4, itinerary |
 | Two legs connect when the second leaves from the airport where the first lands, 45 min to 24 h after it lands, both ends included, measured between instants | `ConnectionRules` (the window and `connects`) | §4, itinerary; §4.2 |
 | An itinerary has 1 to 3 legs, so at most two stops | `Itinerary` | §4, itinerary |
 | No airport is visited twice, the origin included | `Itinerary.canFollow` | §4, no airport visited twice |
-| A price with more than two decimals is rounded half-up to cents; a negative price is rejected, and so is a leg priced at zero. An amount of one billion euros or more is rejected before rounding, as malformed input (pending the user's confirmation) | `Money`, `Leg` | §4, price |
+| A price with more than two decimals is rounded half-up to cents; a negative price is rejected, and so is a leg priced at zero. An amount that would round to one billion euros or more is rejected before rounding, as malformed input, and so is a leg priced at 100 million euros or more | `Money`, `Leg` | §4, price |
 | An itinerary costs the sum of its legs plus a 5% markup, rounded to cents once, half-up | `PricingPolicy` | §4, price |
 | The id is a name-based UUID of the leg keys; price, provider and quote time are not part of it | `ItineraryId` | §4, itinerary identity |
 | An itinerary is as fresh as its oldest leg quote | `Itinerary.quotedAt` | §4, price freshness |
 | An itinerary belongs to a carrier only when that carrier operates every leg; mixing carriers and providers is valid | `Itinerary.singleCarrier` | §4, carrier filter and interlining |
 | The providers are a closed set: a fourth one adds a constant | `Provider` | §4, providers |
 
-`ItineraryBuilder.build(offers, now)` works in four steps, so its cost grows with the itineraries it produces rather than with every combination of legs (§5.3):
+`ItineraryBuilder.build(deduplication, now)` works in four steps, so its cost grows with the itineraries it produces rather than with every combination of legs (§5.3):
 
-1. It merges duplicate offers and drops the legs already departed.
-2. It indexes the remaining legs by origin airport, sorted by departure instant.
-3. It extends every leg depth-first, up to three legs. At the airport where the trip lands, the index jumps to the first departure of the connection window that `ConnectionRules` gives (45 min to 24 h after the arrival) and reads on only to its end. A candidate is kept only if `Itinerary.canFollow` accepts it, so a leg that would land at an airport already on the trip is skipped.
+1. It takes the deduplicated legs (the caller ran `LegDeduplicator`) and drops the legs already departed.
+2. It indexes the remaining legs by origin airport: a `TreeMap` per airport, keyed by departure instant. Legs leaving at the same instant share a list.
+3. It extends every leg depth-first, up to three legs. At the airport where the trip lands, the index reads the window that `ConnectionRules` gives (45 min to 24 h after the arrival) with `subMap`, both ends inclusive. That finds the window's first departure in O(log n), the same cost as a binary search, without hand-written search code; the price is a little more memory than a sorted array. A candidate is kept only if `Itinerary.canFollow` accepts it, so a leg that would land at an airport already on the trip is skipped.
 4. It returns a lazy stream, one first leg at a time, so the ingestion can store the ~1M itineraries of the dataset (§4.1) in batches without holding them all in memory.
 
-Each itinerary is built exactly once: once the offers are merged, the only path to it is its own legs in order. The builder and `Itinerary`'s constructor ask the same rules (the window of `ConnectionRules`, `Itinerary.canFollow` and `Itinerary.MAXIMUM_LEGS`), so a rule changes in one place and the builder cannot produce an itinerary that the constructor rejects. The constructor still checks every itinerary, so a builder bug fails loudly instead of producing an invalid one.
+Each itinerary is built exactly once: once the offers are deduplicated, the only path to it is its own legs in order. The builder and `Itinerary`'s constructor ask the same rules (the window of `ConnectionRules`, `Itinerary.canFollow` and `Itinerary.MAXIMUM_LEGS`), so a rule changes in one place and the builder cannot produce an itinerary that the constructor rejects. The constructor still checks every itinerary, so a builder bug fails loudly instead of producing an invalid one.
 
 Glossary:
 

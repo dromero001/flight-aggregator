@@ -4,7 +4,6 @@ import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.toList;
 
 import java.time.Instant;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -28,15 +27,14 @@ public final class ItineraryBuilder {
   }
 
   /**
-   * Every sellable itinerary of one to three legs, each exactly once, in no particular order. Each
-   * flight is taken at its best offer, and legs departing at or before {@code now} are left out.
-   * The stream is lazy: it builds the itineraries of one first leg at a time.
+   * Every sellable itinerary of one to three legs, each exactly once, in no particular order. Legs
+   * departing at or before {@code now} are left out, and so are the conflicting offers: the caller
+   * deduplicates first, so it can count and log them. The stream is lazy: it builds the itineraries
+   * of one first leg at a time.
    */
-  public static Stream<Itinerary> build(Collection<Leg> offers, Instant now) {
+  public static Stream<Itinerary> build(Deduplication offers, Instant now) {
     List<Leg> legs =
-        LegDeduplicator.deduplicate(offers).stream()
-            .filter(leg -> ConnectionRules.isSellable(leg, now))
-            .toList();
+        offers.legs().stream().filter(leg -> ConnectionRules.isSellable(leg, now)).toList();
     ItineraryBuilder builder = new ItineraryBuilder(legs);
     return legs.stream().flatMap(first -> builder.extend(List.of(first)));
   }

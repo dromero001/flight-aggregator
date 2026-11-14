@@ -41,6 +41,13 @@ class MoneyTest {
   }
 
   @Test
+  void rejectsAmountsThatRoundToOneBillion() {
+    assertThatThrownBy(() -> Money.euros("999999999.995"))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThat(Money.euros("999999999.994")).isEqualTo(Money.euros("999999999.99"));
+  }
+
+  @Test
   void acceptsTheLargestAmount() {
     assertThat(Money.euros("999999999.99").amount()).isEqualTo(new BigDecimal("999999999.99"));
   }

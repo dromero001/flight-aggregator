@@ -7,10 +7,10 @@ import java.math.RoundingMode;
 public record Money(BigDecimal amount) implements Comparable<Money> {
 
   /**
-   * Amounts from here up are rejected before rounding: a bound against malformed input, such as a
-   * huge exponent, not a price ceiling.
+   * Amounts from here up are rejected before rounding, because they would round to one billion
+   * euros or more: a bound against malformed input, such as a huge exponent, not a price ceiling.
    */
-  private static final BigDecimal ONE_BILLION = new BigDecimal("1E+9");
+  private static final BigDecimal ROUNDS_TO_ONE_BILLION = new BigDecimal("999999999.995");
 
   /**
    * Amounts below this round to zero, so they become zero without rounding: rounding one with a
@@ -24,7 +24,7 @@ public record Money(BigDecimal amount) implements Comparable<Money> {
     if (amount.signum() < 0) {
       throw new IllegalArgumentException("Money cannot be negative: " + amount);
     }
-    if (amount.compareTo(ONE_BILLION) >= 0) {
+    if (amount.compareTo(ROUNDS_TO_ONE_BILLION) >= 0) {
       throw new IllegalArgumentException("Money must be under one billion euros: " + amount);
     }
     amount =

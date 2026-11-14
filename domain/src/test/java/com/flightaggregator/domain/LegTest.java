@@ -67,6 +67,22 @@ class LegTest {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
+  @Test
+  void rejectsAPriceOfOneHundredMillionOrMore() {
+    Leg leg = leg("IB3170", "MAD-LHR", DEPARTURE, ARRIVAL);
+
+    assertThatThrownBy(() -> Legs.requoted(leg, "100000000.00", Provider.ALPHA, Legs.QUOTED_AT))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void acceptsAPriceUnderOneHundredMillion() {
+    Leg leg = leg("IB3170", "MAD-LHR", DEPARTURE, ARRIVAL);
+
+    assertThat(Legs.requoted(leg, "99999999.99", Provider.ALPHA, Legs.QUOTED_AT).price())
+        .isEqualTo(Money.euros("99999999.99"));
+  }
+
   @ParameterizedTest
   @ValueSource(ints = {1, 9999})
   void acceptsFlightNumbersFromOneToFourDigits(int number) {

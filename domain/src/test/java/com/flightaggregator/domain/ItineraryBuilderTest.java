@@ -25,7 +25,7 @@ class ItineraryBuilderTest {
 
   @Test
   void buildsADirectItineraryForEverySellableLeg() {
-    assertThat(ItineraryBuilder.build(List.of(MAD_LHR), NOW))
+    assertThat(ItineraryBuilder.build(LegDeduplicator.deduplicate(List.of(MAD_LHR)), NOW))
         .containsExactly(new Itinerary(List.of(MAD_LHR)));
   }
 
@@ -58,7 +58,7 @@ class ItineraryBuilderTest {
     Leg alpha = requoted(MAD_LHR, "120.00", Provider.ALPHA, QUOTED_AT);
     Leg beta = requoted(MAD_LHR, "99.90", Provider.BETA, QUOTED_AT);
 
-    assertThat(ItineraryBuilder.build(List.of(alpha, beta), NOW))
+    assertThat(ItineraryBuilder.build(LegDeduplicator.deduplicate(List.of(alpha, beta)), NOW))
         .singleElement()
         .satisfies(
             itinerary -> {
@@ -127,7 +127,7 @@ class ItineraryBuilderTest {
     Leg fromGamma = requoted(LHR_JFK, "100.00", Provider.GAMMA, QUOTED_AT);
 
     assertThat(
-            ItineraryBuilder.build(List.of(MAD_LHR, fromGamma), NOW)
+            ItineraryBuilder.build(LegDeduplicator.deduplicate(List.of(MAD_LHR, fromGamma)), NOW)
                 .filter(itinerary -> itinerary.legs().size() == 2))
         .singleElement()
         .satisfies(
@@ -148,7 +148,8 @@ class ItineraryBuilderTest {
             leg("BA113", "LHR-JFK", "2026-11-20T14:00+00:00", "2026-11-20T17:10-05:00"),
             leg("BA115", "LHR-JFK", "2026-11-20T18:30+00:00", "2026-11-20T21:40-05:00"));
 
-    List<Itinerary> itineraries = ItineraryBuilder.build(offers, NOW).toList();
+    List<Itinerary> itineraries =
+        ItineraryBuilder.build(LegDeduplicator.deduplicate(offers), NOW).toList();
 
     assertThat(itineraries).extracting(Itinerary::id).hasSize(12).doesNotHaveDuplicates();
     assertThat(itineraries).filteredOn(itinerary -> itinerary.legs().size() == 1).hasSize(6);
@@ -165,12 +166,14 @@ class ItineraryBuilderTest {
 
   /** The routes of every itinerary built from these offers, one per itinerary. */
   private static List<String> routes(Collection<Leg> offers) {
-    return ItineraryBuilder.build(offers, NOW).map(ItineraryBuilderTest::route).toList();
+    return ItineraryBuilder.build(LegDeduplicator.deduplicate(offers), NOW)
+        .map(ItineraryBuilderTest::route)
+        .toList();
   }
 
   /** The second leg of every one-stop itinerary built from these offers. */
   private static List<Leg> onwardLegs(Collection<Leg> offers) {
-    return ItineraryBuilder.build(offers, NOW)
+    return ItineraryBuilder.build(LegDeduplicator.deduplicate(offers), NOW)
         .filter(itinerary -> itinerary.legs().size() == 2)
         .map(itinerary -> itinerary.legs().getLast())
         .toList();

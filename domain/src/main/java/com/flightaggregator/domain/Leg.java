@@ -17,6 +17,12 @@ public record Leg(
     Provider provider,
     Instant quotedAt) {
 
+  /**
+   * A leg priced from here up is a provider error. It keeps every itinerary price, three legs with
+   * the markup, under the {@link Money} bound of one billion euros.
+   */
+  static final Money PRICE_CEILING = Money.euros("100000000.00");
+
   public Leg {
     requireNonNull(carrier, "carrier");
     requireNonNull(origin, "origin");
@@ -31,6 +37,9 @@ public record Leg(
     }
     if (price.compareTo(Money.ZERO) == 0) {
       throw new IllegalArgumentException("A leg cannot be free: " + price);
+    }
+    if (price.compareTo(PRICE_CEILING) >= 0) {
+      throw new IllegalArgumentException("A leg must cost under " + PRICE_CEILING + ": " + price);
     }
     if (origin.equals(destination)) {
       throw new IllegalArgumentException("A leg cannot start and end at " + origin.code());
