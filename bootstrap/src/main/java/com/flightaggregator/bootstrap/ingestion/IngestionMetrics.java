@@ -17,11 +17,11 @@ import java.util.function.ToDoubleFunction;
 
 /**
  * The ingestion's meters, recorded from each run's report, with low-cardinality tags only (§6.10):
- * how long runs take and how they end (§6.4), how many runs in a row did not publish and how old
- * each provider's last fresh download is (§6.5), and the partitions' health (§4.3). A gauge whose
- * value is not known, before the first publication or while a provider has nothing stored, reads
- * {@code NaN}. A provider's age comes from its stored offers, so the first run after a restart
- * restores it.
+ * how long runs take and how they end (§6.4), how many runs in a row failed (did not publish, or
+ * published with no provider fresh) and how old each provider's data is (§6.5), and the partitions'
+ * health (§4.3). A gauge whose value is not known, before the first publication or while a provider
+ * has nothing stored, reads {@code NaN}. A provider's age comes from its stored offers, so the
+ * first run after a restart restores it.
  */
 public final class IngestionMetrics {
 
@@ -54,11 +54,15 @@ public final class IngestionMetrics {
     }
   }
 
-  /** A run that ended with a report; every outcome but {@code PUBLISHED} counts as a failure. */
+  /**
+   * A run that ended with a report. It ends the failures in a row only when it published something
+   * new: its outcome is {@code PUBLISHED} and at least one provider is {@code FRESH} (§6.5). A run
+   * that publishes only kept offers, every provider down, is a failure, so the alert fires.
+   */
   public void record(IngestionReport report) {
     String outcome = report.outcome().name();
     meters.timer("ingestion.duration", "outcome", outcome).record(report.duration());
-    ended(outcome, report.outcome() == IngestionReport.Outcome.PUBLISHED);
+    ended(outcome, publishedSomethingNew(report));
     report.publication().ifPresent(lastPublication::set);
     for (ProviderReport provider : report.providers()) {
       meters
@@ -80,10 +84,16 @@ public final class IngestionMetrics {
     ended(FAILED, false);
   }
 
-  /** Counts the run under its outcome; a run that published ends the failures in a row. */
-  private void ended(String outcome, boolean published) {
+  private static boolean publishedSomethingNew(IngestionReport report) {
+    return report.outcome() == IngestionReport.Outcome.PUBLISHED
+        && report.providers().stream()
+            .anyMatch(provider -> provider.status() == ProviderReport.Status.FRESH);
+  }
+
+  /** Counts the run under its outcome; a run that succeeded ends the failures in a row. */
+  private void ended(String outcome, boolean succeeded) {
     meters.counter("ingestion.runs", "outcome", outcome).increment();
-    if (published) {
+    if (succeeded) {
       consecutiveFailures.set(0);
     } else {
       consecutiveFailures.incrementAndGet();

@@ -90,6 +90,31 @@ class IngestionMetricsTest {
     assertThat(gauge("ingestion.consecutive.failures")).isZero();
   }
 
+  /**
+   * With every provider down the run still publishes the kept offers, but nothing new came in: it
+   * counts as a failure, so that the alert on failures in a row fires during the outage (§6.5).
+   */
+  @Test
+  void countsARunWithNoFreshProviderAsAFailureEvenWhenItPublishes() {
+    Publication publication = new Publication(7, 1234, 2, Instant.parse("2026-12-28T00:00:00Z"));
+    IOException down = new IOException("Server error 500");
+
+    metrics.record(
+        published(
+            publication,
+            kept(ALPHA, FailureReason.HTTP_ERROR, down),
+            kept(BETA, FailureReason.HTTP_ERROR, down),
+            kept(GAMMA, FailureReason.HTTP_ERROR, down)));
+
+    assertThat(gauge("ingestion.consecutive.failures")).isEqualTo(1);
+    assertThat(meters.get("ingestion.runs").tag("outcome", "PUBLISHED").counter().count())
+        .isEqualTo(1);
+
+    metrics.record(published(publication, fresh(ALPHA), kept(BETA, FailureReason.TIMEOUT, down)));
+
+    assertThat(gauge("ingestion.consecutive.failures")).isZero();
+  }
+
   /** Search still reads the last published generation, so its gauges keep it. */
   @Test
   void keepsTheLastPublicationThroughARunThatPublishesNothing() {
