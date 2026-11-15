@@ -16,14 +16,24 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 record SearchProperties(
     Duration cacheTtl, Duration freshnessThreshold, Duration refreshClaimTtl, Duration valkeySkip) {
 
+  /** The shortest wait Valkey's circuit breaker can be built with: it waits whole milliseconds. */
+  private static final Duration SHORTEST_VALKEY_SKIP = Duration.ofMillis(1);
+
   SearchProperties {
     require(cacheTtl, "cache-ttl");
     require(freshnessThreshold, "freshness-threshold");
     require(refreshClaimTtl, "refresh-claim-ttl");
     require(valkeySkip, "valkey-skip");
+    if (valkeySkip.compareTo(SHORTEST_VALKEY_SKIP) < 0) {
+      throw new IllegalArgumentException(
+          "search.valkey-skip must be at least 1 ms, not " + valkeySkip);
+    }
   }
 
-  /** A missing setting binds as null; zero or less would make Valkey refuse every write. */
+  /**
+   * A missing setting binds as null. Zero or less would make Valkey refuse every write that sets it
+   * as a time to live, or, for {@code valkey-skip}, Resilience4j refuse to build Valkey's breaker.
+   */
   private static void require(Duration setting, String name) {
     if (setting == null || !setting.isPositive()) {
       throw new IllegalArgumentException(
