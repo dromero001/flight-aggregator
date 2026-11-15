@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.tuple;
 
-import com.flightaggregator.adapter.persistence.support.PostgresImage;
 import com.flightaggregator.application.port.in.IngestInventory;
 import com.flightaggregator.application.port.in.IngestionReport;
 import com.flightaggregator.application.port.in.ProviderReport;
@@ -31,6 +30,7 @@ import java.util.stream.Stream;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationState;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -43,16 +43,12 @@ import org.springframework.boot.health.contributor.Status;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -66,7 +62,7 @@ import tools.jackson.databind.json.JsonMapper;
       FlightAggregatorApplicationTest.GAMMA_KEY,
       "ingestion.schedule.enabled=false"
     })
-@Testcontainers
+@ImportTestcontainers(PostgresContainers.class)
 @ExtendWith(OutputCaptureExtension.class)
 class FlightAggregatorApplicationTest {
 
@@ -77,16 +73,6 @@ class FlightAggregatorApplicationTest {
   static final String BETA_KEY = "providers.beta.api-key=test-beta-key";
   static final String GAMMA_URL = "providers.gamma.base-url=http://localhost:1/";
   static final String GAMMA_KEY = "providers.gamma.api-key=test-gamma-key";
-
-  /**
-   * Named, because Boot otherwise deduces the name from the image, and Testcontainers' check of an
-   * image name refuses one pinned by both tag and digest.
-   */
-  @Container
-  @ServiceConnection(name = "postgres")
-  static final PostgreSQLContainer POSTGRES =
-      new PostgreSQLContainer(
-          DockerImageName.parse(PostgresImage.NAME).asCompatibleSubstituteFor("postgres"));
 
   @Autowired private HealthEndpoint health;
   @Autowired private Flyway flyway;
@@ -102,6 +88,12 @@ class FlightAggregatorApplicationTest {
   @Autowired
   @Qualifier("applicationTaskExecutor")
   private AsyncTaskExecutor tasks;
+
+  /** The database is shared with the other test classes, whose runs leave offers behind. */
+  @BeforeEach
+  void startFromAnEmptyInventory() {
+    PostgresContainers.emptyTheInventory(jdbc);
+  }
 
   @Test
   void startsAgainstPostgresAndMigrates() {
@@ -260,9 +252,9 @@ class FlightAggregatorApplicationTest {
     String[] arguments =
         Stream.concat(
                 Stream.of(
-                    "spring.datasource.url=" + POSTGRES.getJdbcUrl(),
-                    "spring.datasource.username=" + POSTGRES.getUsername(),
-                    "spring.datasource.password=" + POSTGRES.getPassword(),
+                    "spring.datasource.url=" + PostgresContainers.POSTGRES.getJdbcUrl(),
+                    "spring.datasource.username=" + PostgresContainers.POSTGRES.getUsername(),
+                    "spring.datasource.password=" + PostgresContainers.POSTGRES.getPassword(),
                     "ingestion.schedule.enabled=false"),
                 Stream.of(ALPHA_URL, ALPHA_KEY, BETA_URL, BETA_KEY, GAMMA_URL, GAMMA_KEY)
                     .filter(

@@ -12,8 +12,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.serverError;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.flightaggregator.adapter.persistence.support.PostgresImage;
 import com.flightaggregator.application.port.out.DiscardReason;
+import com.flightaggregator.bootstrap.PostgresContainers;
 import com.flightaggregator.bootstrap.config.ProviderBreakers;
 import com.flightaggregator.domain.Provider;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
@@ -37,15 +37,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Whole runs of the job, against PostgreSQL and one WireMock server that answers for the three
@@ -62,15 +58,8 @@ import org.testcontainers.utility.DockerImageName;
       "providers.gamma.api-key=gamma-key",
       "ingestion.schedule.enabled=false"
     })
-@Testcontainers
+@ImportTestcontainers(PostgresContainers.class)
 class IngestionEndToEndTest {
-
-  /** Named for the reason given in {@code FlightAggregatorApplicationTest}. */
-  @Container
-  @ServiceConnection(name = "postgres")
-  static final PostgreSQLContainer POSTGRES =
-      new PostgreSQLContainer(
-          DockerImageName.parse(PostgresImage.NAME).asCompatibleSubstituteFor("postgres"));
 
   /** Reset before each test by the extension itself. */
   @RegisterExtension
@@ -109,11 +98,7 @@ class IngestionEndToEndTest {
 
   @BeforeEach
   void startFromAnEmptyInventoryWithEveryProviderUp() {
-    jdbc.sql("TRUNCATE provider_offer, itinerary_a, itinerary_b").update();
-    jdbc.sql(
-            "UPDATE inventory_publication"
-                + " SET active_slot = 'a', generation = 0, published_at = NULL")
-        .update();
+    PostgresContainers.emptyTheInventory(jdbc);
     letTheLockLapse();
     ProviderBreakers.closeAll(context);
     for (Meter meter : meters.getMeters()) {
