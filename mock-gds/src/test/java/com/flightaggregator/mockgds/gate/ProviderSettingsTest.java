@@ -7,6 +7,7 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.util.TestPropertyValues;
 
 class ProviderSettingsTest {
 
@@ -126,6 +127,35 @@ class ProviderSettingsTest {
         .withPropertyValues("mockgds.providers.beta.error-rate=NaN")
         .run(
             context -> assertThat(context).getFailure().hasStackTraceContaining("beta.error-rate"));
+  }
+
+  /** A misspelt or outdated setting stops startup instead of silently leaving its default on. */
+  @Test
+  void failsToStartOnAnUnknownSetting() {
+    runner
+        .withPropertyValues(KEYS)
+        .withPropertyValues("mockgds.providers.alpha.latency-min=0ms")
+        .run(
+            context ->
+                assertThat(context)
+                    .getFailure()
+                    .hasStackTraceContaining("mockgds.providers.alpha.latency-min"));
+  }
+
+  /** The same through an environment variable, the way compose passes the settings. */
+  @Test
+  void failsToStartOnAnUnknownSettingFromTheEnvironment() {
+    runner
+        .withPropertyValues(KEYS)
+        .withInitializer(
+            context ->
+                TestPropertyValues.of("MOCKGDS_PROVIDERS_ALPHA_LATENCYMIN=0ms")
+                    .applyTo(context.getEnvironment(), TestPropertyValues.Type.SYSTEM_ENVIRONMENT))
+        .run(
+            context ->
+                assertThat(context)
+                    .getFailure()
+                    .hasStackTraceContaining("mockgds.providers.alpha.latencymin"));
   }
 
   @Test

@@ -5,8 +5,11 @@ import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
-/** Per-provider gate settings, bound from {@code mockgds.providers.<provider>.*}. */
-@ConfigurationProperties("mockgds.providers")
+/**
+ * Per-provider gate settings, bound from {@code mockgds.providers.<provider>.*}. An unknown key
+ * stops startup, so a misspelt or outdated setting cannot silently leave its default on.
+ */
+@ConfigurationProperties(prefix = "mockgds.providers", ignoreUnknownFields = false)
 public record ProviderSettings(Entry alpha, Entry beta, Entry gamma) {
 
   public ProviderSettings {
