@@ -146,6 +146,41 @@ class ValkeyConfigTest {
   }
 
   /**
+   * Valkey's breaker state is a meter, as the providers' breakers' are, under a name of its own: at
+   * startup, before Valkey has answered, the breaker is half open.
+   */
+  @Test
+  void measuresTheValkeyBreakersState() {
+    runner.run(
+        context ->
+            assertThat(
+                    context
+                        .getBean(MeterRegistry.class)
+                        .get("valkey.circuitbreaker.state")
+                        .tag("name", "valkey")
+                        .tag("state", "half_open")
+                        .gauge()
+                        .value())
+                .isEqualTo(1));
+  }
+
+  /**
+   * Every meter Resilience4j's binding gives Valkey's breaker is named apart from the providers'
+   * breakers' meters ({@code resilience4j.circuitbreaker.*}), so a panel over theirs never shows
+   * Valkey.
+   */
+  @Test
+  void namesEveryMeterOfTheValkeyBreakerApartFromTheProviders() {
+    runner.run(
+        context ->
+            assertThat(context.getBean(MeterRegistry.class).getMeters())
+                .filteredOn(meter -> "valkey".equals(meter.getId().getTag("name")))
+                .extracting(meter -> meter.getId().getName())
+                .isNotEmpty()
+                .allMatch(name -> name.startsWith("valkey.circuitbreaker.")));
+  }
+
+  /**
    * Q9: a command waits 250 ms at most and a connection 1 s, instead of Lettuce's 60 s and 10 s, so
    * Valkey down costs a search little (Review Focus 3).
    */
