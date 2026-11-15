@@ -1,6 +1,6 @@
 # Build context: the repository root (docker build -f mock-gds/Dockerfile .).
 # Both base images are pinned by tag and digest (the tags are 14+ days old, spec 6.1).
-FROM eclipse-temurin:25.0.4.1_1-jdk-noble@sha256:a9c5ddd386f629518bd500ecfabf7d1e5d32d7ffed735d5c3b1604ae92c830f4 AS build
+FROM eclipse-temurin:26.0.2.1_1-jdk-noble@sha256:9c0e8eddecccc0d5679b317b0c90fa7103ad25cae33df1c00280675eb681c7f8 AS build
 WORKDIR /workspace
 # settings.gradle.kts includes every module, and Gradle refuses an included project whose directory
 # is missing. The other modules stay out of the image: empty directories, derived from the settings,
@@ -13,7 +13,7 @@ COPY mock-gds mock-gds
 # Tests run in CI, not here.
 RUN --mount=type=cache,target=/root/.gradle ./gradlew :mock-gds:bootJar --no-daemon
 
-FROM eclipse-temurin:25.0.4.1_1-jre-noble@sha256:ce8543ddd3070ccbeaac2106a74c9387ddeb8d47a1c43348345715c1ef245c7f
+FROM eclipse-temurin:26.0.2.1_1-jre-noble@sha256:adfd44c114916dc79fa9a24087fbac34252096edb9892d1c2d9d82db3f8947b3
 RUN useradd --system --uid 10001 --no-create-home mockgds
 WORKDIR /app
 COPY --from=build /workspace/mock-gds/build/libs/mock-gds.jar app.jar
