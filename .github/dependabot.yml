@@ -1,9 +1,12 @@
+# Paused until the delivery (user, 2026-11-15): open-pull-requests-limit 0 stops new version-update
+# PRs while the configuration stays as designed (spec 6.11). Remove those lines to resume.
 version: 2
 updates:
   - package-ecosystem: "gradle"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 0
     cooldown:
       default-days: 14
     # A formatter's major version can reformat every file: a decision, not a routine update.
@@ -18,6 +21,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 0
     cooldown:
       default-days: 14
     groups:
@@ -28,6 +32,7 @@ updates:
     directory: "/mock-gds"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 0
     cooldown:
       default-days: 14
     # The images stay on Java 25, the current LTS (spec 6.1): a major bump (26 is not an LTS) is a
