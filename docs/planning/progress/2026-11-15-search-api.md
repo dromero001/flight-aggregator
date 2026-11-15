@@ -1092,3 +1092,90 @@ The double review (`.superpowers/sdd/2026-11-15-search-api/task-9-review.md`) an
 - C3: the sort values are written twice, in the parser and in the contract annotation.
 - C4: `CursorCodec`'s Javadoc claims more strictness than the code has (leading zeros are accepted).
 Approved extra E2 (Swagger UI) is built by no task: a plan gap for the user, not a finding.
+
+## Task 10 — evidence
+
+The re-price endpoint and the per-client rate limit, from `main` at `9e6674e`. One test at a time, in the order of the plan's Steps; a test green on its first run is shown red by a labelled mutation of the production code, then restored.
+
+Design notes:
+- **Security.** Re-price was already public: Task 11's `SecurityConfig` permits `POST /api/itineraries/*/reprice` (spec §6.6, Task 11's interface line). `SecurityConfig` is unchanged. `SecurityTest.searchAndRepriceNeedNoToken` now reaches the endpoint, and its `some-id` answers 400, not 401 or 403.
+- **Files as the plan lists them, with these additions:**
+  - Web adapter: `RateLimited` (the annotation that marks a limited endpoint), `RetryLaterException` (a problem with `Retry-After`, shared by the 429 and the 503) and `ItineraryNotFoundException` (the 404).
+  - Test fixtures: `Legs` (moved out of `SearchControllerTest`), `RecordingReprice`, `RecordingAdmission`, and `application`'s `InMemoryRequestCounter`.
+  - `adapters/web/build.gradle.kts` declares what the module now uses directly: `spring-webmvc` (the interceptor), the servlet API as `compileOnly` (Tomcat provides it at run time), and `jackson-annotations` (below). All three take the Boot BOM's versions. Before this they reached the module only through springdoc.
+- **How the interceptor picks the action.** The plan says "by method and path". The interceptor reads it from the endpoint Spring MVC matched by method and path: a `@RateLimited(SEARCH)` or `@RateLimited(REPRICE)` on the controller method. A first version matched its own copies of the two routes. The self-review replaced it, because a route changed in the controller would silently lose its limit. With the annotation, a `HEAD` of the search, which Spring routes to the `GET` handler and so runs the search, is counted too. The interceptor is registered on every path and acts only on marked endpoints.
+- **Buckets** are `<action>:<address>` (`rate:search:127.0.0.1` in Valkey, through Task 5's `ValkeyRequestCounter`). Q9's limits, 60 searches and 10 re-prices a minute, are constants in `WebConfig`, as `RepriceConfig` keeps Q9's re-price settings.
+- **`Retry-After`:**
+  - The 429's value is the window's time left, rounded up to whole seconds, so that a client that waits it never asks too early (41.2 s → 42).
+  - The 503's value is 60 s, the providers' breakers' open time (Q9).
+  - Both are written by one handler in `ProblemResponses`. The 429's detail does not repeat the number: the header carries it.
+- **The client address** is `request.getRemoteAddr()`. `server.forward-headers-strategy: native` (`application.yaml`) makes Boot install Tomcat's `RemoteIpValve`, which takes `X-Forwarded-For` only from its internal proxies (private ranges and loopback by default), as the plan's decision line says.
+- **The re-price body (Q4-A).** One `RepriceResponse`: `outcome` (`CONFIRMED`, `PRICE_CHANGED`, `ALTERNATIVE`) and `itinerary` (Task 9's `ItineraryResponse`) always; `previousPrice` (Task 9's `Price`) only with `PRICE_CHANGED`; `notice` (§6.5's text) only with `ALTERNATIVE`.
+  - **A departure from Task 9's "every field always written, null when absent".** springdoc 3.2 could not write a nullable reference to `Price` that OpenAPI 3.1 reads as nullable:
+    - `types = {"object", "null"}` gave `{"type": ["object", "null"], "$ref": "#/components/schemas/Price"}`. In 3.1 the `$ref` still applies beside the type, so `null` fails `Price`.
+    - `nullable = true` gave `"type": "null"` beside the `$ref`.
+  - So the two outcome fields are left out when absent (`@JsonInclude(NON_NULL)`, from `jackson-annotations`) and are optional in the contract. Nothing in the re-price schema is null. The alternative, a `oneOf` of three variant schemas, is listed below as an extra.
+- **The id** is read as text and must match a canonical UUID, in either case (a UUID is case-insensitive on input). `UUID.fromString` alone accepts `1-1-1-1-1`, and its exceptions would be a 500. A bad id is a 400 whose detail starts with `id`.
+- **The contract** documents each new response on its own operation with `@ApiResponse` (Task 9's rule): the search's 429; the re-price's 200, 400, 404, 429 and 503. Each 429 and 503 has a required integer `Retry-After` header. The `id` parameter is documented with `format: uuid` and the controller's own pattern. Checked in the regenerated file: the search's operation lists only 200, 400 and 429, so no handler of the shared advice leaked onto every operation.
+- **Commits.** The contract was regenerated with `./gradlew :bootstrap:test --tests '*OpenApiContractTest*' -Dopenapi.write=true`. It is committed together with the wiring, not in a commit of its own after it. Once `WebConfig` wires the endpoint, the drift test fails until the file is regenerated, so a wiring commit without it would break "every commit green". Task 9 did the same in `482e87d`.
+
+Cycles:
+
+- `RateLimitServiceTest` (`application`, an in-memory counter whose window never ends):
+  - `admitsUpToTheLimitInAWindow`: red = `UnsupportedOperationException` (stub); green = count, then admit.
+  - `rejectsPastItWithTheTimeLeft`: red = `expected: Rejected[retryAfter=PT42S] but was: Admitted[]`; green = a count above the limit rejected with `WindowCount.resetsIn()`.
+  - `countsSearchAndRepriceApart`: red = all three re-prices `Rejected` (one bucket per address, so the searches spent the re-price limit); green = the bucket `<action>:<address>`.
+  - `admitsWhenTheCounterIsUnavailable`: green on its first run, since `WindowCount.unavailable()` is a count of 0. Mutation M1 "fail closed: a count of 0 is rejected" turned it red (`Expecting ArrayList: [Rejected[retryAfter=PT0S], ...] to contain only: [Admitted[]]`). Restored.
+- `RepriceControllerTest` (`@WebMvcTest`, a fake `RepriceItinerary`):
+  - `answersEachOutcome` (parameterised over the three 200s; the §6.5 notice exact; the body's fields exactly those of its outcome plus `itinerary`):
+    - red = `Status expected:<200> but was:<404>` (an empty controller);
+    - green = the mapping and `RepriceResponse`;
+    - when the body changed to leave out the other outcome's fields (above), its expectation was restated first and went red: `Expecting actual: ["outcome", "itinerary", "previousPrice", "notice"] to contain exactly in any order: ["itinerary", "outcome"]`. Green = `@JsonInclude(NON_NULL)`.
+  - `answers503WithRetryAfterAndTheMessage`: red = `ServletException: ... UnsupportedOperationException: not yet`; green = `RetryLaterException` and its handler.
+  - `answers404ForAnUnknownId`: red = the same stub; green = `ItineraryNotFoundException` mapped to 404.
+  - `answers400ForAMalformedId` (5 cases):
+    - red: four cases leaked a 500 (`Invalid UUID string: not-an-id`, `UUID string too large`, `NumberFormatException`), and `1-1-1-1-1` was accepted and answered 404;
+    - green = the canonical pattern, refused with `InvalidParameterException`.
+- `RateLimitInterceptorTest.answers429WithRetryAfter` (`@WebMvcTest` of both controllers behind the interceptor; parameterised: search, search by `HEAD`, re-price):
+  - red = `Status expected:<429> but was:<200>` (search) and `<404>` (re-price), with nothing limited;
+  - green = the interceptor and the rounding;
+  - mutation M2 "`Retry-After` truncated": `Response header 'Retry-After' expected:<42> but was:<41>`;
+  - after the refactor to `@RateLimited` (the `HEAD` row added with it, green), mutation M3 "the search's `@RateLimited` removed": `Status expected:<429> but was:<200>` for both search rows. Restored.
+- `ClientAddressTest` (a real port, Valkey and PostgreSQL in Testcontainers; one search from `127.0.0.1` with `X-Forwarded-For: 203.0.113.9`, then the counters Valkey holds):
+  - `countsTheSocketAddressOfANonProxyClient` (Review Focus 5; `server.tomcat.remoteip.internal-proxies=10[.]9[.]9[.]9`, so loopback is no proxy):
+    - red = `Expecting actual: [] to contain exactly: ["rate:search:127.0.0.1"]` (nothing wired);
+    - green = `WebConfig` (the rate-limit service over the counter, and the interceptor);
+    - mutation M4 "the interceptor reads `X-Forwarded-For` itself": `Expecting actual: ["rate:search:203.0.113.9"] to contain exactly: ["rate:search:127.0.0.1"]`. Restored.
+  - `honoursForwardedForFromAnInternalProxy` (Tomcat's default internal proxies): red = `["rate:search:127.0.0.1"]` instead of `["rate:search:203.0.113.9"]` (no valve); green = `server.forward-headers-strategy: native`.
+- The contract, beyond the plan's list (Task 9's rule that each new error is documented on its operation):
+  - `documentsEachProblemOnItsOperation` (search 429; re-price 400, 404, 429, 503): red = `expected: "#/components/schemas/ProblemDetail" but was: ""` for all five; green = the `@ApiResponse`s.
+  - `documentsRetryAfterOnEachProblemToRetry` (the two 429s and the 503): red = `Expecting value to be true but was false`; green = `@Header(name = "Retry-After", required = true)` as an integer.
+  - `marksTheOutcomeAndTheItineraryOfARepriceRequiredAndNothingNullable`:
+    - first written as "every field required, only `previousPrice` and `notice` nullable". Red = `["notice"]` instead of `["previousPrice", "notice"]`. Both attempts at a nullable `Price` gave invalid schemas (above).
+    - restated as above: red = `["itinerary", "notice", "outcome", "previousPrice"]` required instead of `["outcome", "itinerary"]`; green = the fields left out when absent.
+  - `documentsTheIdAsTheRepriceReadsIt`: red = `expected: "uuid" but was: ""`; green = `@Parameter` with the controller's pattern.
+  - `servedContractMatchesTheCommittedOne`: red from the moment the endpoint was wired (`the committed contract differs from the served one`); green after the regeneration.
+  - Docker was running for every container test; no container connection failed.
+
+Refactors under the green suite, from the review of my own diff:
+- `@RateLimited` replaced the interceptor's copies of the routes (above).
+- The rounding of `Retry-After` is private to `ProblemResponses`. The interceptor used it only to put the number in the detail, so the detail no longer repeats it.
+- A `transient` on a `Duration` field was removed: `Duration` is serializable.
+- The `leg` helper moved from `SearchControllerTest` to the `Legs` fixture, shared with `RepriceControllerTest`.
+
+Self-review (thermo-nuclear) and gates:
+- `./gradlew build` green (exit 0; Spotless, ArchUnit and the coverage gate included) before each of the task's three commits. Tests: `application` 88 (4 added by this task), `adapters/web` 66 (13 added), `bootstrap` 158 (12 added: 2 in `ClientAddressTest`, 10 contract cases), `adapters/persistence` 114, `adapters/providers` 197, `domain` 91, architecture 39, `mock-gds` 201; none failed or skipped.
+- No file near 1,000 lines. The largest production file is `RepriceController`, 120 lines, most of them the contract's annotations; the largest test file `OpenApiContractTest`, 261.
+- No branch was added to existing code: `ProblemResponses` gains two handlers, and `SearchController` gains an annotation and its 429 documentation.
+- Existing mechanisms are used: Task 5's `RequestCounter` and its fail-open `ValkeyFailures`, which logs one WARN per outage; Spring MVC's `HandlerInterceptor`, `HandlerMethod` and `@RestControllerAdvice`; Tomcat's `RemoteIpValve`. No rate-limiting library was added: the plan builds the limit over Task 5's counter.
+- What fails without a clear answer:
+  - a request the counter cannot count is admitted. This is §6.2's decision, and Task 5's breaker logs the outage;
+  - a `RateLimitService` given no limit for an action would fail at that action's first request (a `NullPointerException`, Boot's 500), not at startup. `WebConfig` gives both actions, so this cannot happen in the application, and no check was added for it.
+- Nothing is written half-way: admission is one counter increment (Task 5's script), and the controller only calls the use case.
+
+### Extras for the user to decide
+
+- **A `oneOf` re-price contract.** Three schemas, one per outcome, each with only its own required fields, under a discriminator on `outcome`. The generated TypeScript would then be a true discriminated union instead of one object with two optional fields. Cost: Jackson polymorphic type annotations on a sealed `RepriceResponse`, springdoc's `oneOf`/`discriminatorMapping`, and checking how swagger-core resolves the subtypes (it tends to add `allOf` back-references), about 40 lines and a regeneration. Left out unless you approve.
+- **Rate-limit configuration properties** (`rate-limit.search`, `rate-limit.reprice`) instead of constants in `WebConfig`. Value: tuning without a build. Cost: a properties record with validation and a test, as `SearchProperties`. Left out unless you approve.
+- **Check at startup that every action has a limit** (above). Value: a missing limit stops startup instead of answering 500. Cost: three lines and a test. Left out unless you approve.
+- **The README's security paragraph names the limits** (60 searches and 10 re-prices a minute per address, 429 with `Retry-After`). Value: a reviewer sees them without reading the code. Cost: one sentence. The plan gives Task 10 no README change. Left out unless you approve.

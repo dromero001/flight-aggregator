@@ -3,9 +3,11 @@ package com.flightaggregator.adapter.web;
 import com.flightaggregator.application.port.in.RateLimitedAction;
 import com.flightaggregator.application.port.in.SearchItineraries;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,6 +35,19 @@ public final class SearchController {
   @ApiResponse(
       responseCode = "400",
       description = "A parameter or the cursor is not valid; the detail names it",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "429",
+      description = "Too many searches from this address; try again after Retry-After",
+      headers =
+          @Header(
+              name = HttpHeaders.RETRY_AFTER,
+              required = true,
+              description = "How many seconds to wait before asking again",
+              schema = @Schema(type = "integer", minimum = "0")),
       content =
           @Content(
               mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,

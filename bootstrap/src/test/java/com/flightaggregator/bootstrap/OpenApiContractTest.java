@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.FieldSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -105,6 +106,34 @@ class OpenApiContractTest {
         .containsExactly("SearchResponse.nextCursor");
   }
 
+  /**
+   * Q4-A: a re-price answers one body, its outcome and the itinerary always; the previous price and
+   * the notice come only with the outcome that has them, so they are optional, and nothing is null
+   * (springdoc cannot write a nullable reference to {@code Price} that OpenAPI 3.1 reads as one).
+   */
+  @Test
+  void marksTheOutcomeAndTheItineraryOfARepriceRequiredAndNothingNullable() throws Exception {
+    JsonNode contract = contract();
+    JsonNode schema = contract.at("/components/schemas/RepriceResponse");
+
+    assertThat(
+            contract
+                .at("/paths/~1api~1itineraries~1{id}~1reprice/post/responses/200/content")
+                .path("application/json")
+                .at("/schema/$ref")
+                .asString())
+        .isEqualTo("#/components/schemas/RepriceResponse");
+    assertThat(schema.path("required").valueStream().map(JsonNode::asString))
+        .containsExactlyInAnyOrder("outcome", "itinerary");
+    assertThat(schema.path("properties").propertyNames())
+        .containsExactlyInAnyOrder("outcome", "itinerary", "previousPrice", "notice");
+    assertThat(
+            schema.path("properties").properties().stream()
+                .filter(property -> isNullable(property.getValue()))
+                .map(Map.Entry::getKey))
+        .isEmpty();
+  }
+
   /** A bad parameter or cursor is an RFC 9457 problem (global constraints), and says so. */
   @Test
   void documentsTheProblemOfABadRequest() throws Exception {
@@ -119,6 +148,49 @@ class OpenApiContractTest {
         .isEqualTo("#/components/schemas/ProblemDetail");
     assertThat(contract.at("/components/schemas/ProblemDetail/properties").propertyNames())
         .contains("type", "title", "status", "detail", "instance");
+  }
+
+  /**
+   * Q4-A, Q9 and §6.6: each problem a search or a re-price may answer is documented on its own
+   * operation as an RFC 9457 problem, so the dashboard's types know every failure it must show.
+   */
+  @ParameterizedTest(name = "{1} {0} answers {2}")
+  @CsvSource({
+    "/api/itineraries, get, 429",
+    "/api/itineraries/{id}/reprice, post, 400",
+    "/api/itineraries/{id}/reprice, post, 404",
+    "/api/itineraries/{id}/reprice, post, 429",
+    "/api/itineraries/{id}/reprice, post, 503"
+  })
+  void documentsEachProblemOnItsOperation(String path, String method, String status)
+      throws Exception {
+    JsonNode content =
+        contract().path("paths").path(path).path(method).path("responses").path(status);
+
+    assertThat(content.at("/content/application~1problem+json/schema/$ref").asString())
+        .isEqualTo("#/components/schemas/ProblemDetail");
+  }
+
+  /** §6.5, §6.6 and Q9: a problem to retry says when, in whole seconds. */
+  @ParameterizedTest(name = "{1} {0} answers {2}")
+  @CsvSource({
+    "/api/itineraries, get, 429",
+    "/api/itineraries/{id}/reprice, post, 429",
+    "/api/itineraries/{id}/reprice, post, 503"
+  })
+  void documentsRetryAfterOnEachProblemToRetry(String path, String method, String status)
+      throws Exception {
+    JsonNode retryAfter =
+        contract()
+            .path("paths")
+            .path(path)
+            .path(method)
+            .path("responses")
+            .path(status)
+            .at("/headers/Retry-After");
+
+    assertThat(retryAfter.path("required").asBoolean()).isTrue();
+    assertThat(retryAfter.at("/schema/type").asString()).isEqualTo("integer");
   }
 
   /**
@@ -150,6 +222,18 @@ class OpenApiContractTest {
     assertThat(schema(parameters, "limit", "maximum")).isEqualTo("100");
     assertThat(schema(parameters, "limit", "default")).isEqualTo("20");
     assertThat(schema(parameters, "cursor", "maxLength")).isEqualTo("200");
+  }
+
+  /** The re-price's id as the endpoint reads it: an itinerary id in its canonical form. */
+  @Test
+  void documentsTheIdAsTheRepriceReadsIt() throws Exception {
+    JsonNode parameters = contract().at("/paths/~1api~1itineraries~1{id}~1reprice/post/parameters");
+
+    assertThat(parameters.valueStream().map(parameter -> parameter.path("name").asString()))
+        .containsExactly("id");
+    assertThat(parameters.at("/0/schema/format").asString()).isEqualTo("uuid");
+    assertThat(parameters.at("/0/schema/pattern").asString())
+        .isEqualTo("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
   }
 
   private static String schema(Map<String, JsonNode> parameters, String name, String keyword) {

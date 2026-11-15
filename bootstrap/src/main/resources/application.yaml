@@ -35,6 +35,13 @@ spring:
           authorities-claim-expressions: "[realm_access][roles]"
           authority-prefix: ROLE_
 
+server:
+  # The rate limit counts each client under its address (spec 6.6). Tomcat's RemoteIpValve takes it
+  # from X-Forwarded-For only when the connection comes from one of its internal proxies (private
+  # ranges and loopback, as the dashboard's nginx in compose), so a client cannot pick its own
+  # counter by sending the header itself.
+  forward-headers-strategy: native
+
 springdoc:
   # The served contract, committed as docs/architecture/openapi.json, lists its keys in order, so the
   # same API is always the same text (OpenApiContractTest, spec 6.11).

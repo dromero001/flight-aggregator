@@ -4,10 +4,17 @@ import com.flightaggregator.application.port.in.RateLimitedAction;
 import com.flightaggregator.application.port.in.RepriceItinerary;
 import com.flightaggregator.application.port.in.RepriceResult;
 import com.flightaggregator.domain.ItineraryId;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import java.time.Duration;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -41,7 +48,55 @@ public final class RepriceController {
 
   @PostMapping(path = "/api/itineraries/{id}/reprice", produces = MediaType.APPLICATION_JSON_VALUE)
   @RateLimited(RateLimitedAction.REPRICE)
-  RepriceResponse reprice(@PathVariable("id") String id) {
+  @ApiResponse(
+      responseCode = "200",
+      description = "The choice confirmed, at its price or a new one, or the best alternative")
+  @ApiResponse(
+      responseCode = "400",
+      description = "The id is not an itinerary id",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "404",
+      description = "No itinerary with this id is on sale; search again",
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "429",
+      description = "Too many re-prices from this address; try again after Retry-After",
+      headers =
+          @Header(
+              name = HttpHeaders.RETRY_AFTER,
+              required = true,
+              description = "How many seconds to wait before asking again",
+              schema = @Schema(type = "integer", minimum = "0")),
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+              schema = @Schema(implementation = ProblemDetail.class)))
+  @ApiResponse(
+      responseCode = "503",
+      description = "Nothing could be confirmed; try again after Retry-After",
+      headers =
+          @Header(
+              name = HttpHeaders.RETRY_AFTER,
+              required = true,
+              description = "How many seconds to wait before asking again",
+              schema = @Schema(type = "integer", minimum = "0")),
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+              schema = @Schema(implementation = ProblemDetail.class)))
+  RepriceResponse reprice(
+      @Parameter(
+              description = "The id of the chosen itinerary, as the search gave it",
+              schema = @Schema(format = "uuid", pattern = ID))
+          @PathVariable("id")
+          String id) {
     return switch (reprice.reprice(itineraryId(id))) {
       case RepriceResult.Confirmed(var itinerary) -> RepriceResponse.confirmed(itinerary);
       case RepriceResult.PriceChanged(var itinerary, var previousPrice) ->
