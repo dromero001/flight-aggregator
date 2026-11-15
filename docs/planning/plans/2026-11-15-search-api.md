@@ -222,7 +222,7 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 ### Task 5: Valkey: result cache, refresh coordination, request counters
 
-**Extras approved by the user on 2026-11-15, after fix round 1:** the state of Valkey's circuit breaker as a meter, and fewer WARN lines when many cached values fail to parse at once (as after a format change). Recovery after a JVM `Error` in a probe and a meter for unreadable refresh marks stay out.
+**Extras approved by the user on 2026-11-15, after fix round 1:** the state of Valkey's circuit breaker as a meter, and fewer WARN lines when many cached values fail to parse at once (as after a format change). A meter for unreadable refresh marks stays out. **Decided by the user on 2026-11-15, after the re-review:** a probe that throws anything (`Throwable`, a JVM `Error` included) releases the breaker's permission and rethrows, so a bug neither closes the breaker with a false recovery nor leaves it half-open for good; this replaces the earlier "recovery after a JVM `Error` stays out".
 
 **Depends on:** 4 (`SearchPage`, `SearchCriteria`, `LegsJson` from 3). **Parallel:** with 8 (after 4) and 11; it edits `libs.versions.toml`, `bootstrap/build.gradle.kts` and `application.yaml`, shared with 11 and 13, so those merges are by hand.
 
