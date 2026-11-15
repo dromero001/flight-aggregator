@@ -4,6 +4,7 @@ import static com.flightaggregator.bootstrap.ingestion.Reports.STARTED_AT;
 import static com.flightaggregator.bootstrap.ingestion.Reports.fresh;
 import static com.flightaggregator.bootstrap.ingestion.Reports.kept;
 import static com.flightaggregator.bootstrap.ingestion.Reports.published;
+import static com.flightaggregator.bootstrap.ingestion.Reports.unpublished;
 import static com.flightaggregator.domain.Provider.ALPHA;
 import static com.flightaggregator.domain.Provider.BETA;
 import static com.flightaggregator.domain.Provider.GAMMA;
@@ -36,6 +37,8 @@ import net.javacrumbs.shedlock.support.LockException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.jdbc.UncategorizedSQLException;
@@ -192,6 +195,23 @@ class IngestionJobTest {
                     + " gamma.used=3 gamma.lostToDeduplication=1"));
     assertThat(((ThrowableProxy) log.list.getFirst().getThrowableProxy()).getThrowable())
         .isSameAs(serverError);
+  }
+
+  /** A run that publishes nothing is a warning, so it is not lost among the runs that did. */
+  @ParameterizedTest
+  @EnumSource(
+      value = IngestionReport.Outcome.class,
+      names = {"NOTHING_TO_PUBLISH", "CEILING_EXCEEDED"})
+  void logsARunThatPublishedNothingAsAWarning(IngestionReport.Outcome outcome) {
+    job(() -> unpublished(outcome, fresh(ALPHA))).run();
+
+    assertThat(log.list)
+        .singleElement()
+        .satisfies(
+            event -> {
+              assertThat(event.getLevel()).isEqualTo(Level.WARN);
+              assertThat(event.getFormattedMessage()).isEqualTo("Ingestion run ended");
+            });
   }
 
   /** The job over this ingestion, its lock always free. */

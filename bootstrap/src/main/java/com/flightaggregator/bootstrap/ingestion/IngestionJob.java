@@ -16,10 +16,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 
 /**
  * One ingestion run: it takes the ingestion's lock, ingests, then logs and meters the run's report
- * (§6.10). The report is one {@code INFO} line, with each provider's fields under its name, and
- * each provider whose last good offers were kept is one {@code WARN} line with its reason and its
- * failure's stack trace. Any exception of a run, taking the lock included, fails that run alone: it
- * is logged and counted, and never escapes, so the next run still comes.
+ * (§6.10). The report is one line, {@code INFO} for a run that published and {@code WARN} for any
+ * other outcome, with each provider's fields under its name, and each provider whose last good
+ * offers were kept is one {@code WARN} line with its reason and its failure's stack trace. Any
+ * exception of a run, taking the lock included, fails that run alone: it is logged and counted, and
+ * never escapes, so the next run still comes.
  */
 public final class IngestionJob {
 
@@ -77,7 +78,10 @@ public final class IngestionJob {
       // A provider has a failure exactly when its offers were kept.
       provider.failure().ifPresent(reason -> warnKept(provider, reason));
     }
-    LoggingEventBuilder line = LOG.atInfo().addKeyValue("outcome", report.outcome().name());
+    // A run that publishes nothing leaves search on an older generation: a warning, not news.
+    LoggingEventBuilder line =
+        (report.outcome() == IngestionReport.Outcome.PUBLISHED ? LOG.atInfo() : LOG.atWarn())
+            .addKeyValue("outcome", report.outcome().name());
     report
         .publication()
         .ifPresent(
