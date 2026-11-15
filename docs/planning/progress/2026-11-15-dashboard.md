@@ -266,3 +266,39 @@ The double review (`.superpowers/sdd/2026-11-15-dashboard/task-2-review.md`) ans
 - C-1: a `Retry-After` that is not whole seconds (an HTTP date) becomes `NaN` (`apiError.ts:37`).
 - C-2: an invalid `problem+json` body makes `toApiError` reject with a `SyntaxError`; the media-type test is case-sensitive (`apiError.ts:31-32`).
 - C-3: the drift test resolves Prettier without `.editorconfig`, unlike the CLI that writes the file; the path is built with `.pathname` instead of `fileURLToPath` (`schema.test.ts:15-16`).
+
+## Task 4 — evidence
+
+Worktree branch `worktree-agent-a7d9badffb86559a3`, from `main` at `59cdf88` (plan 6 Tasks 1, 2, 3 and 9 integrated). No new dependency. Files: `src/itinerary/format.ts`, `ItineraryCard.tsx`, `ItineraryCard.module.css` and their two tests; no shared file changed.
+
+### Red → green, one test at a time
+
+`format.test.ts`
+- `'shows the airport's local time whatever the browser's zone'` (Review Focus 2; the browser's zone is `Pacific/Auckland`, 18 hours ahead of New York): red `Failed to resolve import "./format"`. Green with `localTime` and `localDate` reading the wall clock written before the offset (`^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})`) and formatting the date as a UTC midnight. Shown red by two mutations, each restored: formatting `new Date(iso)` in the browser's zone gives `expected '02:15' to be '08:15'`, and the date without `timeZone: 'UTC'` gives `expected 'Sat 21 Nov' to be 'Fri 20 Nov'`. The zone is set with `vi.stubEnv('TZ', …)` and restored with `vi.unstubAllEnvs()` instead of the plan's `process.env.TZ = …`: same effect (Node applies `TZ` on assignment, as the mutations show), but the app's `tsconfig` has no Node types, and the restore cannot leave the string `"undefined"` behind.
+- `'formats durations'` (`445` → `7h 25m`, `45` → `45m`, `120` → `2h`): red `TypeError: duration is not a function`; green.
+- `'formats euro prices from decimal strings'` (`'1234.50'` → `€1,234.50`, `'412.6'` → `€412.60`, `'129'` → `€129.00`): red `TypeError: price is not a function`; green with one `Intl.NumberFormat('en-GB', EUR)` that formats the decimal string itself (ES2023), so no amount goes through a binary number.
+- `'describes freshness'` (30 s, 4 min, 61 min → "Updated just now", "Updated 4 min ago", "Updated 1 h ago"): red `TypeError: freshness is not a function`; green.
+- `'computes layovers across time zones'`: the plan's case (LHR in at `09:20Z`, out at `10:30+00:00` → 70), plus the same arrival written as `10:20+01:00`, whose wall clocks differ by only 10 minutes, and a direct flight (no layover). Red `TypeError: layovers is not a function`; green with the difference of the two instants. The extra case shown red by mutation: subtracting the wall clocks gives `expected [ { airport: 'LHR', minutes: 10 } ] to deeply equal [ { airport: 'LHR', minutes: 70 } ]`; restored. (The plan's case alone passes that mutation: `Z` and `+00:00` are the same offset.)
+- `'detects a multi-airline itinerary'` (`connecting()` yes, `direct()` no, two IB legs no): red `TypeError: isMultiAirline is not a function`; green with a `Set` of carriers.
+
+`ItineraryCard.test.tsx`
+- `'shows a direct flight'` (`direct()`, five minutes after its quote): red `Failed to resolve import "./ItineraryCard"`. Green with an `<article>`: `<time dateTime>` for departure (08:15) and arrival (09:40) and for the date ("Fri 20 Nov", the departure's instant), MAD and LHR, "2h 25m", "Direct", "IB 3166", "€129.90", "Updated 5 min ago", no "Multiple airlines".
+- `'shows each stop with its airport and layover'`: `connecting()` shows "1 stop: LHR, 1h 10m" (Q6's wording) and one dot on the route line; the same trip on to Boston shows "2 stops: LHR, 1h 10m; JFK, 1h 20m" and two dots. Red `Unable to find an element with the text: 1 stop: LHR, 1h 10m`; green with the stops summary from `layovers` and one dot per layover.
+- `'marks a multi-airline itinerary'` ("IB 3166, BA 117" and "Multiple airlines"): red `Unable to find an element with the text: Multiple airlines`; green.
+
+### Choices to review
+- **A whole number of hours reads "2h"**, not "2h 0m" (the plan gives only "7h 25m" and "45m").
+- **The stop count comes from the legs** (`layovers(legs).length`), not from the API's `stops` field, so the count and the listed airports cannot disagree.
+- **Two or more stops are joined with "; "**: "2 stops: LHR, 1h 10m; JFK, 1h 20m" (Q6 shows only one stop).
+- **The card's content is phrasing content only** (`span` and `time` inside two `div`s), so Task 6 can turn the pass and the stub into its disclosure `<button>` without moving block elements out of a button.
+- **The route line is decorative** (`aria-hidden`); a visually hidden " to " between the codes makes it read "08:15 MAD to LHR 09:40".
+- **A malformed date-time throws** (`Not an ISO-8601 date-time: …`) rather than showing something wrong; the contract types every time as `date-time`. A malformed amount shows `€NaN`.
+- **Look (Q6):** a flat card with a 1 px border; the stub is torn off along a dashed perforation with a notch at each end, beside the pass on wide screens and under it below 640 px. Times and the price in Barlow Condensed 600 (the only weight imported), codes in tarmac, the route line and its stop dots in ink. Checked by eye in a throwaway Vite page with Playwright screenshots at 960 and 390 px (not committed).
+
+### Checks before the commit
+- `npm run verify` in `frontend/`: exit 0 (typecheck, ESLint, Prettier, 26 tests in 9 files).
+- `./gradlew build`: exit 0, `BUILD SUCCESSFUL`.
+- Self-review (thermo-nuclear): no existing formatting helper in the frontend to reuse (Tasks 1 to 3 format nothing); one `minutesBetween` serves freshness and layovers, one `duration` serves the total and each layover; the layover shape became a named `Layover` type instead of `ReturnType<typeof layovers>`. The one cast (`amount as Intl.StringNumericLiteral`) is what lets Intl take the decimal string; nothing holds state.
+
+### Extras for the user to decide
+- **E1 ("+1" next-day arrival) and E2 (airline names) are approved but no task builds them.** Both belong on this card; the plan's Task 4 does not list them, so they are not built here. E2 also needs a carrier catalogue the API does not expose yet. The controller decides which task takes them.
