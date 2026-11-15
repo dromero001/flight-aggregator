@@ -10,11 +10,17 @@ import com.flightaggregator.application.port.out.DiscardedRecord;
 import com.flightaggregator.application.port.out.DiscardedRecords;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.FlightProvider;
+import com.flightaggregator.application.port.out.ItineraryRepository;
+import com.flightaggregator.application.port.out.ItineraryWriter;
 import com.flightaggregator.application.port.out.OfferStore;
 import com.flightaggregator.application.port.out.ProviderDownload;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
+import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.domain.Airport;
+import com.flightaggregator.domain.Deduplication;
+import com.flightaggregator.domain.ItineraryBuilder;
 import com.flightaggregator.domain.Leg;
+import com.flightaggregator.domain.LegDeduplicator;
 import com.flightaggregator.domain.Provider;
 import java.time.Duration;
 import java.time.Instant;
@@ -29,6 +35,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 
 /** Downloads every provider and stores what arrived whole. */
 public final class IngestInventoryService implements IngestInventory {
@@ -37,25 +44,57 @@ public final class IngestInventoryService implements IngestInventory {
   private final OfferStore store;
   private final AirportCatalogue catalogue;
   private final DiscardedRecords discardedRecords;
+  private final ItineraryRepository repository;
   private final Clock clock;
+  private final long maxItineraries;
 
   public IngestInventoryService(
       List<FlightProvider> providers,
       OfferStore store,
       AirportCatalogue catalogue,
       DiscardedRecords discardedRecords,
-      Clock clock) {
+      ItineraryRepository repository,
+      Clock clock,
+      long maxItineraries) {
     this.providers =
         providers.stream().sorted(Comparator.comparing(FlightProvider::provider)).toList();
     this.store = store;
     this.catalogue = catalogue;
     this.discardedRecords = discardedRecords;
+    this.repository = repository;
     this.clock = clock;
+    this.maxItineraries = maxItineraries;
   }
 
   @Override
   public IngestionReport ingest() {
     Instant startedAt = clock.now();
+    List<ProviderReport> reports = downloadAndStore();
+    Map<Provider, List<Leg>> stored = storedOffers();
+    List<Leg> offers = stored.values().stream().flatMap(List::stream).toList();
+    if (offers.isEmpty()) {
+      return report(startedAt, IngestionReport.Outcome.NO_OFFERS, 0, 0, reports);
+    }
+    Deduplication deduplication = LegDeduplicator.deduplicate(offers);
+    deduplication.conflicting().forEach(this::discardConflicting);
+    List<ProviderReport> finalReports =
+        reports.stream().map(report -> withLost(report, stored, deduplication)).toList();
+    try {
+      Publication publication =
+          repository.replaceInventory(startedAt, writerOf(deduplication, startedAt));
+      return report(
+          startedAt,
+          IngestionReport.Outcome.PUBLISHED,
+          publication.generation(),
+          publication.itineraries(),
+          finalReports);
+    } catch (IngestionCeiling e) {
+      return report(startedAt, IngestionReport.Outcome.CEILING_EXCEEDED, 0, 0, finalReports);
+    }
+  }
+
+  /** Downloads every provider at once and stores what arrived whole, in {@code Provider} order. */
+  private List<ProviderReport> downloadAndStore() {
     List<Future<Outcome>> downloads = new ArrayList<>();
     try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
       for (FlightProvider provider : providers) {
@@ -73,8 +112,69 @@ public final class IngestInventoryService implements IngestInventory {
                 kept(provider, reason, cause);
           });
     }
+    return reports;
+  }
+
+  private Map<Provider, List<Leg>> storedOffers() {
+    Map<Provider, List<Leg>> stored = new EnumMap<>(Provider.class);
+    for (FlightProvider provider : providers) {
+      stored.put(provider.provider(), store.offers(provider.provider()));
+    }
+    return stored;
+  }
+
+  private void discardConflicting(Leg conflicting) {
+    discardedRecords.discarded(
+        conflicting.provider(),
+        new DiscardedRecord(DiscardReason.CONFLICTING, conflicting.key().toString()));
+  }
+
+  /** The report of a run that ends now. */
+  private IngestionReport report(
+      Instant startedAt,
+      IngestionReport.Outcome outcome,
+      long generation,
+      long itineraries,
+      List<ProviderReport> providerReports) {
     return new IngestionReport(
-        startedAt, Duration.ZERO, IngestionReport.Outcome.NO_OFFERS, 0, 0, reports);
+        startedAt,
+        Duration.between(startedAt, clock.now()),
+        outcome,
+        generation,
+        itineraries,
+        providerReports);
+  }
+
+  private ItineraryWriter writerOf(Deduplication deduplication, Instant now) {
+    return sink -> {
+      AtomicLong written = new AtomicLong();
+      ItineraryBuilder.build(deduplication, now)
+          .forEach(
+              itinerary -> {
+                if (written.incrementAndGet() > maxItineraries) {
+                  throw new IngestionCeiling(maxItineraries);
+                }
+                sink.accept(itinerary);
+              });
+    };
+  }
+
+  /** The report with the stored offers that the deduplication left out, conflicting ones apart. */
+  private static ProviderReport withLost(
+      ProviderReport report, Map<Provider, List<Leg>> stored, Deduplication deduplication) {
+    Provider provider = report.provider();
+    long conflicting =
+        deduplication.conflicting().stream().filter(l -> l.provider() == provider).count();
+    long kept = deduplication.legs().stream().filter(l -> l.provider() == provider).count();
+    return new ProviderReport(
+        provider,
+        report.status(),
+        report.failure(),
+        report.cause(),
+        report.offersFetched(),
+        report.discarded(),
+        report.offersUsed(),
+        (int) (stored.get(provider).size() - conflicting - kept));
   }
 
   private ProviderReport fresh(
