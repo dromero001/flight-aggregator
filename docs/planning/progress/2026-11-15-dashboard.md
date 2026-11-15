@@ -389,3 +389,13 @@ Checks: `npm run verify` exit 0 (49 tests in 11 files). Self-review (thermo-nucl
 
 ### Extras for the user to decide
 - None built. Considered and left out: moving the keyboard focus to the first new card after "Load more" (value: a keyboard user continues where the new results start; cost: a ref per card and one test).
+
+## Task 5 — fix round 1
+
+Review (`task-5-review.md`): functional CHANGES REQUESTED on one Important finding, code APPROVED. F-1 fixed as the controller chose; the Minors (2 functional, 5 code) wait for the end-of-plan review. Worked on top of `93f20ec` (the branch rebased by the controller onto `main` at `07bed8b`).
+
+- **F-1, a 429 with `Retry-After` was a dead end:** "Try again" is hidden there (E9 unchanged), and "Search" with the same filters kept the same query key, so nothing was asked again after the wait. Fix: submitting "Search" with unchanged criteria while the search is in error asks again from the first page (`queryClient.resetQueries` on the search's key, limited to a query in error).
+  - `'searches again with the same filters after a rate-limited search'` (429 with `Retry-After: 30`, then a 200; a click on "Search"): red `Unable to find an element with the text: Showing 1 flight` (one request only; the URL and the key did not change). Green with the reset in `SearchPage.search` when the normalised criteria equal the current ones; MSW counts 2 requests.
+  - `'keeps the shown results when the same filters are searched again'` (a guard for the "in error" condition, added beyond the controller's one test because the condition is production code): passed on its first run, shown red by mutation (the predicate made `() => true`): `AssertionError: expected 2 to be 1`; restored. A successful search is not asked again by the same "Search": fresh results stay "Reload"'s job (Q4-A).
+- Checks: `npm run verify` exit 0, 51 tests in 11 files, run on a clean export of `HEAD` plus this change (`git archive`), because the worktree also held another agent's uncommitted Task 6 files (`RepricePanel*`, `LegList*`, `useReprice.ts`, `renderWithClient.tsx`, changes to `ItineraryCard*` and `types.ts`) whose own `RepricePanel.test.tsx` was red there; none of them is part of this commit. No Gradle build (frontend only).
+- Self-review (thermo-nuclear): the retry of a failed search reuses the cache key helper and TanStack's `resetQueries`, the same mechanism as "Reload"; one comparison of normalised parameters decides "same search"; no new state.
