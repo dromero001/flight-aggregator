@@ -19,4 +19,11 @@ class AlphaCursorTest {
     assertThatIllegalArgumentException().isThrownBy(() -> AlphaCursor.decode("YWJj")); // "abc"
     assertThatIllegalArgumentException().isThrownBy(() -> AlphaCursor.decode("LTE")); // "-1"
   }
+
+  @Test
+  void rejectsANonCanonicalOffset() {
+    assertThatIllegalArgumentException().isThrownBy(() -> AlphaCursor.decode("KzUwMA")); // "+500"
+    assertThatIllegalArgumentException().isThrownBy(() -> AlphaCursor.decode("MDUwMA")); // "0500"
+    assertThatIllegalArgumentException().isThrownBy(() -> AlphaCursor.decode("NTAw=")); // padded
+  }
 }

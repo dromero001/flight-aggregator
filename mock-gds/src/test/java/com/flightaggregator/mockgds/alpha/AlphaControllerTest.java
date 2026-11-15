@@ -4,37 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.flightaggregator.mockgds.model.Provider;
 import com.flightaggregator.mockgds.serving.ProviderInventory;
+import com.flightaggregator.mockgds.support.MockGdsTest;
+import com.flightaggregator.mockgds.support.ProviderKeys;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.TestRestTemplate;
-import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {
-      "mockgds.providers.alpha.api-key=test-alpha-key",
-      "mockgds.providers.beta.api-key=test-beta-key",
-      "mockgds.providers.gamma.api-key=test-gamma-key",
-      "mockgds.providers.alpha.latency-min=0",
-      "mockgds.providers.alpha.latency-max=0",
-      "mockgds.providers.beta.latency-min=0",
-      "mockgds.providers.beta.latency-max=0",
-      "mockgds.providers.gamma.latency-min=0",
-      "mockgds.providers.gamma.latency-max=0",
-      "mockgds.providers.alpha.error-rate=0",
-      "mockgds.providers.beta.error-rate=0",
-      "mockgds.providers.gamma.error-rate=0"
-    })
-@AutoConfigureTestRestTemplate
+@MockGdsTest
 class AlphaControllerTest {
 
   @Autowired private TestRestTemplate http;
@@ -49,7 +30,7 @@ class AlphaControllerTest {
     var body = new ObjectMapper().readTree(response.getBody());
     assertThat(body.get("legs")).hasSize(500);
     assertThat(body.get("nextCursor").asString()).isEqualTo(AlphaCursor.encode(500));
-    assertThat(response.getBody()).doesNotContain("test-alpha-key");
+    assertThat(response.getBody()).doesNotContain(ProviderKeys.ALPHA);
   }
 
   @Test
@@ -81,9 +62,12 @@ class AlphaControllerTest {
     assertThat(get("/alpha/legs?limit=1001").getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
   }
 
+  @Test
+  void rejectsAnEmptyLimit() {
+    assertThat(get("/alpha/legs?limit=").getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+  }
+
   private ResponseEntity<String> get(String path) {
-    var headers = new HttpHeaders();
-    headers.set("X-Api-Key", "test-alpha-key");
-    return http.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+    return ProviderKeys.get(http, path, ProviderKeys.ALPHA);
   }
 }

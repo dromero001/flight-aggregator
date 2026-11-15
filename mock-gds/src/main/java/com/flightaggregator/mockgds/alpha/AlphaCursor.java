@@ -1,5 +1,6 @@
 package com.flightaggregator.mockgds.alpha;
 
+import com.flightaggregator.mockgds.serving.InvalidRequestException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -14,12 +15,18 @@ final class AlphaCursor {
         .encodeToString(Integer.toString(offset).getBytes(StandardCharsets.US_ASCII));
   }
 
+  /** The offset a cursor holds; any cursor {@link #encode} would not have produced is refused. */
   static int decode(String cursor) {
-    var text = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.US_ASCII);
-    var offset = Integer.parseInt(text);
-    if (offset < 0) {
-      throw new IllegalArgumentException("Cursor must hold a non-negative offset");
+    try {
+      var offset =
+          Integer.parseInt(
+              new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.US_ASCII));
+      if (offset >= 0 && encode(offset).equals(cursor)) {
+        return offset;
+      }
+    } catch (IllegalArgumentException e) {
+      throw new InvalidRequestException("Unreadable cursor", e);
     }
-    return offset;
+    throw new InvalidRequestException("Unreadable cursor");
   }
 }

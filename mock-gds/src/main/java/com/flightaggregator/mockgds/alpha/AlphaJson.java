@@ -1,10 +1,8 @@
 package com.flightaggregator.mockgds.alpha;
 
-import com.flightaggregator.mockgds.dataset.Defect;
-import com.flightaggregator.mockgds.dataset.MalformedLeg;
 import com.flightaggregator.mockgds.serving.InventoryPage;
-import com.flightaggregator.mockgds.serving.IsoTimes;
 import com.flightaggregator.mockgds.serving.PricedRecord;
+import com.flightaggregator.mockgds.serving.RenderedLeg;
 import java.io.StringWriter;
 import tools.jackson.core.JsonGenerator;
 import tools.jackson.core.ObjectWriteContext;
@@ -39,23 +37,17 @@ final class AlphaJson {
   }
 
   private static void writeLeg(JsonGenerator json, PricedRecord priced) {
-    var leg = priced.record().leg();
-    var defect = priced.record() instanceof MalformedLeg malformed ? malformed.defect() : null;
-    var price = defect == Defect.NEGATIVE_PRICE ? priced.price().negate() : priced.price();
+    var leg = RenderedLeg.of(priced);
     json.writeStartObject();
-    json.writeStringProperty("carrier", leg.airline());
-    if (defect != Defect.MISSING_FIELD) {
+    json.writeStringProperty("carrier", leg.carrier());
+    if (leg.flightNumber() != null) {
       json.writeNumberProperty("flightNumber", leg.flightNumber());
     }
     json.writeStringProperty("origin", leg.origin());
-    json.writeStringProperty(
-        "destination",
-        defect == Defect.UNKNOWN_AIRPORT ? Defect.UNKNOWN_AIRPORT_CODE : leg.destination());
-    json.writeStringProperty(
-        "departureTime",
-        defect == Defect.BAD_DATE ? Defect.INVALID_DATE_TEXT : IsoTimes.format(leg.departure()));
-    json.writeStringProperty("arrivalTime", IsoTimes.format(leg.arrival()));
-    json.writeStringProperty("price", price.toPlainString());
+    json.writeStringProperty("destination", leg.destination());
+    json.writeStringProperty("departureTime", leg.departureTime());
+    json.writeStringProperty("arrivalTime", leg.arrivalTime());
+    json.writeStringProperty("price", leg.price().toPlainString());
     json.writeEndObject();
   }
 }
