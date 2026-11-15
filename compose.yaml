@@ -148,9 +148,8 @@ services:
 
   # The telemetry backends (spec 6.10), configured from deploy/. Their images are the ones the tests
   # run (ObservabilityImages). The app depends on none of them: telemetry is never in a request's path.
-  # They keep their data on the container's own disk, so `docker compose down` resets it (plan 7, Q4:
-  # no volumes). Prometheus's image declares an anonymous volume for its data: a new container gets a
-  # new one, and `docker compose down -v` removes the old ones.
+  # They keep their data on the container's own disk, Prometheus in memory, so `docker compose down`
+  # resets it and leaves no volume behind (plan 7, Q4: no volumes).
   otel-collector:
     restart: unless-stopped
     image: otel/opentelemetry-collector:0.164.0@sha256:28b6d41ac51bff6b41ba5e8fe503569ffb9d6a1ea90f7a78419e86f34e44f750
@@ -172,6 +171,11 @@ services:
       - "127.0.0.1:9090:9090"
     volumes:
       - ./deploy/prometheus:/etc/prometheus:ro
+    # The image declares /prometheus a volume; a tmpfs there, owned by the image's user (nobody,
+    # 65534), keeps Docker from creating an anonymous one. A restart of Prometheus loses its history
+    # (the user's decision of 2026-11-15).
+    tmpfs:
+      - /prometheus:uid=65534,gid=65534
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/ready"]
       interval: 10s
@@ -231,11 +235,18 @@ services:
       # Opens Explore to Viewers, where a log line jumps to its trace; they may change a panel on
       # screen but never save it (plan 7, Q1-A). Deprecated by Grafana, still honoured by 13.3.
       GF_USERS_VIEWERS_CAN_EDIT: "true"
+      # Explore's query history is off: it was the one thing a Viewer could save, and every
+      # anonymous visitor shared it (the user's decision of 2026-11-15).
+      GF_QUERY_HISTORY_ENABLED: "false"
       # No Grafana account is committed (spec 6.6): the built-in administrator cannot sign in.
       GF_AUTH_BASIC_ENABLED: "false"
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
       # No anonymous usage statistics to Grafana Labs (the user's decision of 2026-11-15).
       GF_ANALYTICS_REPORTING_ENABLED: "false"
+      # Nor checks grafana.com for new versions of Grafana or its plugins (the user's decision of
+      # 2026-11-15).
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
 
 volumes:
   postgres-data:

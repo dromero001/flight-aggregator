@@ -5,6 +5,7 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
-# Relative to this file: deploy/prometheus/rules/ in the repository.
+# Relative to this file: deploy/prometheus/rules/ in the repository. Only *.rules.yaml: promtool's
+# unit tests for them (*.rules.test.yaml) sit beside them and are not rule files.
 rule_files:
-  - rules/*.yaml
+  - rules/*.rules.yaml

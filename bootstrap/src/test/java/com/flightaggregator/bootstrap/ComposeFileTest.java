@@ -35,6 +35,9 @@ class ComposeFileTest {
   /** An exact tag and the digest of the image's multi-arch index (spec 6.1). */
   private static final Pattern PINNED = Pattern.compile("[^\\s@]+:[^\\s@:/]+@sha256:[0-9a-f]{64}");
 
+  /** A Dockerfile's {@code FROM} instruction; any other line, a continuation too, is not one. */
+  private static final Pattern FROM = Pattern.compile("\\s*FROM\\s", Pattern.CASE_INSENSITIVE);
+
   @Test
   void runsThePostgresImageTheTestsRun() throws IOException {
     assertThat(ComposeFile.services().get("postgres").get("image")).isEqualTo(PostgresImage.NAME);
@@ -72,6 +75,20 @@ class ComposeFileTest {
     assertThat(environment.keySet())
         .noneMatch(
             name -> name.startsWith("KC_BOOTSTRAP_ADMIN") || name.startsWith("KEYCLOAK_ADMIN"));
+  }
+
+  /**
+   * No account or password is committed for Grafana (plan 7, Global Constraints): no {@code
+   * [security] admin_*} setting, nor its {@code __FILE} form, so the built-in administrator keeps
+   * Grafana's default and cannot sign in (sign-in is off, {@code GrafanaProvisioningTest}).
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void givesGrafanaNoAdministratorAccount() throws IOException {
+    Map<String, Object> environment =
+        (Map<String, Object>) ComposeFile.services().get("grafana").get("environment");
+
+    assertThat(environment.keySet()).noneMatch(name -> name.startsWith("GF_SECURITY_ADMIN_"));
   }
 
   /**
@@ -127,11 +144,11 @@ class ComposeFileTest {
     List<String> images = new ArrayList<>();
     Set<String> stages = new HashSet<>();
     for (String line : Files.readAllLines(dockerfile)) {
-      List<String> words =
-          Arrays.stream(line.trim().split("\\s+")).filter(word -> !word.startsWith("--")).toList();
-      if (!words.getFirst().equalsIgnoreCase("FROM")) {
+      if (!FROM.matcher(line).lookingAt()) {
         continue;
       }
+      List<String> words =
+          Arrays.stream(line.trim().split("\\s+")).filter(word -> !word.startsWith("--")).toList();
       if (!stages.contains(words.get(1).toLowerCase(Locale.ROOT))) {
         images.add(words.get(1));
       }

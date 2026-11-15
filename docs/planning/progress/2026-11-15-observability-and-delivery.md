@@ -148,3 +148,72 @@ Each setting is the one the pinned version documents, checked against the settin
   - Kept: `TempoConfigTest` and `LokiConfigTest` stay two small classes with the same shape, as the plan names them, rather than a shared base class.
   - Fixed: the Grafana log check, replaced as above because it proved nothing more.
   - Nothing passes silently: every new test was seen red.
+
+## Task 1 — round 3 (review fixes)
+
+The task review (one reviewer, functional then code) answered: functional CHANGES REQUESTED (F1 Important; F2–F4 Minor), code APPROVED (C1–C6 Minor). The user decided F2–F4 (plan 7, Task 1, "Decided by the user on 2026-11-15, after the task's review"). C3–C5 are deferred to the end-of-plan review, as the controller ruled.
+
+### F1: nobody signs in to Grafana, not even with the right password
+
+- **`GrafanaProvisioningTest.letsNoOneSignIn` now uses a password that works.**
+  - Before: the test tried `admin:admin`. Under the reviewer's scenario, a committed `GF_SECURITY_ADMIN_PASSWORD: demo` in place of `GF_AUTH_DISABLE_LOGIN_FORM` (so the form is back on), all five Grafana tests stayed green (shown on the old test).
+  - Now: the test's own container gets a random administrator password (`GF_SECURITY_ADMIN_PASSWORD`, set after compose's environment, so it also replaces any committed one). Basic authentication and the form must both refuse that password.
+  - Red under the reviewer's scenario: `Expecting actual: 200 to be between: [400, 499]` (the form signed in). Green with compose restored.
+  - Second labelled mutation (`GF_AUTH_BASIC_ENABLED` removed): `expected: 401 but was: 200`; restored.
+- **`ComposeFileTest.givesGrafanaNoAdministratorAccount`** sits beside Keycloak's check: the `grafana` service sets no `GF_SECURITY_ADMIN_*` variable, which covers the `__FILE` forms. Passed on its first run. Labelled mutation (`GF_SECURITY_ADMIN_PASSWORD__FILE` added): `Expecting no elements of: [..., "GF_SECURITY_ADMIN_PASSWORD__FILE", ...] to match given predicate`; restored.
+
+### F2: Explore's query history off (the user's decision)
+
+- Name checked on 13.3.0: `defaults.ini`'s `[query_history] enabled = true`, documented in "Configure Grafana", `[query_history]`. So the variable is `GF_QUERY_HISTORY_ENABLED`.
+- **`GrafanaProvisioningTest.savesNoQueryHistory`**: an anonymous `POST /api/query-history` is refused.
+  - Red: `Expecting actual: 200 to be between: [400, 499]`.
+  - Green: `GF_QUERY_HISTORY_ENABLED: "false"`. Grafana now answers `404 {"message":"Not found"}` to both the save and the list.
+  - Explore itself stays open: `opensExploreToTheAnonymousViewer` is green.
+
+### F3: Prometheus on tmpfs (the user's decision)
+
+- A first compose check (`keepsPrometheusDataOnTmpfs`: a `tmpfs` entry `/prometheus`) went red, then green with `tmpfs: [/prometheus]`. But the stack then showed Prometheus restarting with `open /prometheus/queries.active: permission denied`: the tmpfs is root's, and the image runs as `nobody`.
+- The compose check proved only the file's shape, so a test that runs compose's settings replaced it:
+  - **`PrometheusConfigTest.storesItsDataOnComposesTmpfsWithNoVolume`** starts the pinned Prometheus with compose's own `command` and `tmpfs` entries, read from `compose.yaml`. It expects `/-/ready` to answer within 30 s and no mount at `/prometheus`.
+  - Red with the plain tmpfs: `Wait strategy failed. Container exited with code 1`; Prometheus's log: `create mmap-ed active query log: open /prometheus/queries.active: permission denied`.
+  - Green: `/prometheus:uid=65534,gid=65534`, a tmpfs owned by the image's user.
+  - Labelled mutation (the `tmpfs` entry removed): `Expecting no elements of: [InspectContainerResponse.Mount(name=0216…, source=/var/lib/docker/volumes/…` (the anonymous volume came back); restored.
+- In compose (`-p plan7-task1`): Prometheus was healthy, and its only mount was the read-only `/etc/prometheus` bind. `HostConfig.Tmpfs` was `{"/prometheus":"uid=65534,gid=65534"}`, and inside the container `tmpfs on /prometheus ... uid=65534,gid=65534` held `chunks_head`, `wal` and `queries.active`. After `docker compose down` without `-v`, the project left no volume.
+- The compose comment now says that the data lives in memory, that no volume is left behind, and that a restart loses the history.
+
+### F4: Grafana's update checks off (the user's decision)
+
+- **`GrafanaProvisioningTest.checksForNoUpdates`**: compose sets `GF_ANALYTICS_CHECK_FOR_UPDATES` and `GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES` to `"false"`. These are "Configure Grafana" settings `[analytics] check_for_updates` and `check_for_plugin_updates`. They are checked in compose for the same reason as `sendsNoUsageReport`: only an administrator can read them.
+  - Red: `could not find the following map entries: ["GF_ANALYTICS_CHECK_FOR_UPDATES"="false"]`.
+  - With only that variable added: `["GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES"="false"]`.
+  - Green with both.
+
+### C1: rule files, not their promtool tests
+
+- **`PrometheusConfigTest.loadsTheRuleFilesButNotTheirPromtoolTests`** copies the directory, plus an `example.rules.yaml` (`groups: []`) and a promtool unit test, `example.rules.test.yaml`, into `rules/`. `promtool check config` must exit 0, and its output must say `SUCCESS: 1 rule files found` and `Checking /etc/prometheus/rules/example.rules.yaml`.
+  - Red with `rules/*.yaml`: `Checking /etc/prometheus/rules/example.rules.test.yaml FAILED: ... field rule_files not found in type rulefmt.RuleGroups`.
+  - Green: `rule_files: [rules/*.rules.yaml]`, with a comment in `prometheus.yaml`. This narrows the plan's literal `rules/*.yaml`, as the controller asked; Task 3's brief should name its files `*.rules.yaml` and `*.rules.test.yaml`.
+  - Labelled mutation (`rules/*.rule.yaml`, a glob that matches nothing): `to contain: "SUCCESS: 1 rule files found"`; restored. So a glob that silently drops the rules fails too.
+- The two promtool tests now share one builder, `promtoolCheckConfig()`.
+
+### C2: the Dockerfile reader and continuation lines
+
+- Red by labelled mutation: `bootstrap/Dockerfile`'s `RUN` line split so that its last continuation line holds only `--no-daemon`. `pinsEveryImageByTagAndDigest` failed with `java.util.NoSuchElementException`.
+- Green: the reader keeps only lines that start with a `FROM` instruction (`\s*FROM\s`, any case) before it drops the flags. With the same mutation the test passes; with an unpinned nginx `FROM` it still fails (`[images of frontend]`). Both mutations restored.
+
+### C6: Dependabot's comments
+
+`.github/dependabot.yml` now says that compose pins every image it pulls by tag and digest, and that `PostgresImage`, `KeycloakImage` and `ObservabilityImages` must each follow an update, or `ComposeFileTest` fails. These are comments only, so there is no test.
+
+### Run and gates
+
+- The five telemetry services under `-p plan7-task1` came up healthy, the Collector `Up`, and the three datasources `OK`.
+  - From the host: `POST /api/query-history` answered 404, and the anonymous visitor still had `datasources:explore`.
+  - Sign-in was refused: basic `admin:admin` answered 401, and the form answered `400 auth.client.notConfigured`.
+  - Stopped; no container or volume of the project is left.
+- `./gradlew build`: `BUILD SUCCESSFUL` (exit 0), 734 tests, none failed or skipped. That is five more than round 2: `givesGrafanaNoAdministratorAccount`, `savesNoQueryHistory`, `checksForNoUpdates`, `loadsTheRuleFilesButNotTheirPromtoolTests` and `storesItsDataOnComposesTmpfsWithNoVolume`. `letsNoOneSignIn` was strengthened; `keepsPrometheusDataOnTmpfs` was replaced.
+- Self-review (thermo-nuclear):
+  - Fixed: the duplicated promtool container became one builder.
+  - Fixed: the compose-only tmpfs check was replaced by a test that runs compose's settings, because the shape check passed while Prometheus could not write.
+  - Kept, as deferred (C4): `givesGrafanaNoAdministratorAccount` casts compose's environment inline, as `givesKeycloakNoAdministratorAccount` does. A `ComposeFile.environment(service)` would remove both casts and `GrafanaProvisioningTest`'s own copy.
+  - Nothing new passes silently: every new or changed test was seen red, by mutation where the state already held.
