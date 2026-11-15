@@ -292,6 +292,8 @@ Alertmanager, SLO burn-rate alerts and a trace id in error responses (rejected, 
 
 ### Task 10: Delivery: the final reviews, the README and the clean-clone check 👤
 
+**Deadline (the user, 2026-11-15):** the URL is sent before **23:59 on Monday 2026-11-16**. The hands-on runs at the close of plans 5 and 6 (roadmap) come before this task, so Step 6 confirms on a clean clone what was already tried.
+
 **Files:** Modify `README.md` (final), `docs/planning/roadmap.md` (plan 7 done), `docs/planning/progress/<date>.md` (plan 7's close-out), `docs/ai/sessions/` and the README's sessions index (a record for the work since session 09, if none exists yet). (CLAUDE.md; §9)
 
 - [ ] **Step 1: end of plan 7.** The three reviewers on the plan's whole diff; findings fixed or accepted by the user, recorded with the verdicts. (CLAUDE.md review protocol)

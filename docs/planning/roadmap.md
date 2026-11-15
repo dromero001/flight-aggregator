@@ -1,6 +1,6 @@
 # Roadmap
 
-How the remaining work is split and ordered until the delivery on **Monday 2026-11-16, end of day**. The design is closed ([design spec](design-spec.md)); each subsystem gets its own implementation plan in [`plans/`](plans/), written just before the subsystem starts, so that it builds on the interfaces the previous plan actually produced.
+How the remaining work is split and ordered until the delivery on **Monday 2026-11-16, before 23:59** (the user's commitment, 2026-11-15). The design is closed ([design spec](design-spec.md)); each subsystem gets its own implementation plan in [`plans/`](plans/), written just before the subsystem starts, so that it builds on the interfaces the previous plan actually produced.
 
 Legend: 👤 = with the user (review and decisions), 🌙 = autonomous work by agents, bounded by tests. Every 🌙 run ends with small commits and a [progress report](progress/).
 
@@ -26,5 +26,7 @@ The order above assumed one plan after another, each task reviewed by two review
 - **One reviewer per task from plan 5 on,** acting as both the functional and the code reviewer with two verdicts; the end-of-plan review keeps its three separate reviewers (`CLAUDE.md`, "Review protocol").
 
 What did not change: TDD one test at a time, the full suite before every commit, a push and a green CI run after every task, and the user's design decisions. Why and how it was decided: [session 09](../ai/sessions/09-lost-sessions-and-recovery.md).
+
+**The running application is tried by hand at the close of every plan** (the user, 2026-11-15: "the application also has to be tested to see that it works"), besides the tests: after plan 5, the API through `docker compose up --build` and `curl` (search with each filter, "Load more", re-price, admin status and a manual ingestion with a client-credentials token); after plan 6, the same through the dashboard in a browser; after plan 7, the clean clone of its Task 10. What was tried and what it showed goes in the progress report; a defect becomes a fix task before the plan closes.
 
 **Documentation in every plan:** each plan updates its own block of the documentation (`docs/architecture/` for what it builds, `docs/planning/progress/` for its run) and the README index, as part of its tasks.
