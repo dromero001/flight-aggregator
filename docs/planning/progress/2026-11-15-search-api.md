@@ -598,3 +598,11 @@ Cycles:
   - The "no transaction left open" check first counted backends with `xact_start` set, and a mutation showed it vacuous: with "the read opens its transaction by hand and never rolls it back on failure", the test stayed green, because PostgreSQL clears `xact_start` once a statement aborts the transaction. The check now counts backends whose `state` is not `idle`; the same mutation then failed: `expected: 0L but was: 1L` (the backend left `idle in transaction (aborted)`).
 - `boundsEachReadToTwoSeconds`, one case per read, each read run inside an enclosing transaction of the same data source and `SHOW statement_timeout` read before its commit, then `0` after it. Red: `[1] state` and `[3] byId`: `expected: "2s" but was: "0"`; `[2] page` passed. Green: all three reads go through `read(...)`, which bounds the transaction. `[2] page` passed on its first run; mutation "the bound is `3s`": all three cases `expected: "2s" but was: "3s"`, while `cutsAReadThatTakesLongerThanItsBound` stayed green, which is why the value needs its own pin.
 - Refactor under green: the literal `SET LOCAL` became `StatementTimeout.SEARCH_READ`, and the stores' calls `StatementTimeout.STORE` (their pins, `boundsEachStatementOfTheLoad`, `boundsTheTransactionOfAnUpdate` and the offer store's, stay green at `5min`).
+
+### Task 4: defensive copies in `StoredPage` and `SearchPage`
+
+Each record copies its list in a compact constructor with `List.copyOf`, as `IngestionReport` does; a null list or a null itinerary fails at construction, as there.
+
+- `StoredPageTest.copiesTheItineraries` (a mutable list given to the page, then `null` added to it). Red: `Expecting empty but was: [null]`. Green: `StoredPage`'s compact constructor.
+- `SearchPageTest.copiesTheItineraries` (the same, with no cursor). Red: `Expecting empty but was: [null]`. Green: `SearchPage`'s compact constructor.
+- Refactor under green: `SearchPageJson.read` copied its list before building the page; the record copies it now, so that copy was removed.
