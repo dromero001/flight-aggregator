@@ -38,18 +38,18 @@ class ProviderSettingsTest {
       delimiter = '|',
       textBlock =
           """
-          api-key must be set                                |      | 100  | 1000 | 1000 | 5000 | 0.1  | 0.05
-          api-key must be set                                | '  ' | 100  | 1000 | 1000 | 5000 | 0.1  | 0.05
-          fast-latency-min must not be negative: PT-0.001S   | k    | -1   | 1000 | 1000 | 5000 | 0.1  | 0.05
-          fast-latency-min must not exceed fast-latency-max  | k    | 2000 | 1000 | 1000 | 5000 | 0.1  | 0.05
-          slow-latency-min must not be negative: PT-0.001S   | k    | 100  | 1000 | -1   | 5000 | 0.1  | 0.05
-          slow-latency-min must not exceed slow-latency-max  | k    | 100  | 1000 | 6000 | 5000 | 0.1  | 0.05
-          slow-share must be within [0, 1]: 1.5              | k    | 100  | 1000 | 1000 | 5000 | 1.5  | 0.05
-          slow-share must be within [0, 1]: -0.1             | k    | 100  | 1000 | 1000 | 5000 | -0.1 | 0.05
-          slow-share must be within [0, 1]: NaN              | k    | 100  | 1000 | 1000 | 5000 | NaN  | 0.05
-          error-rate must be within [0, 1]: 1.5              | k    | 100  | 1000 | 1000 | 5000 | 0.1  | 1.5
-          error-rate must be within [0, 1]: -0.1             | k    | 100  | 1000 | 1000 | 5000 | 0.1  | -0.1
-          error-rate must be within [0, 1]: NaN              | k    | 100  | 1000 | 1000 | 5000 | 0.1  | NaN
+          api-key must be set                                            |      | 100  | 1000 | 1000 | 5000 | 0.1  | 0.05
+          api-key must be set                                            | '  ' | 100  | 1000 | 1000 | 5000 | 0.1  | 0.05
+          fast-latency-min must not be negative: PT-0.001S               | k    | -1   | 1000 | 1000 | 5000 | 0.1  | 0.05
+          fast-latency-min must not exceed fast-latency-max: PT2S > PT1S | k    | 2000 | 1000 | 1000 | 5000 | 0.1  | 0.05
+          slow-latency-min must not be negative: PT-0.001S               | k    | 100  | 1000 | -1   | 5000 | 0.1  | 0.05
+          slow-latency-min must not exceed slow-latency-max: PT6S > PT5S | k    | 100  | 1000 | 6000 | 5000 | 0.1  | 0.05
+          slow-share must be within [0, 1]: 1.5                          | k    | 100  | 1000 | 1000 | 5000 | 1.5  | 0.05
+          slow-share must be within [0, 1]: -0.1                         | k    | 100  | 1000 | 1000 | 5000 | -0.1 | 0.05
+          slow-share must be within [0, 1]: NaN                          | k    | 100  | 1000 | 1000 | 5000 | NaN  | 0.05
+          error-rate must be within [0, 1]: 1.5                          | k    | 100  | 1000 | 1000 | 5000 | 0.1  | 1.5
+          error-rate must be within [0, 1]: -0.1                         | k    | 100  | 1000 | 1000 | 5000 | 0.1  | -0.1
+          error-rate must be within [0, 1]: NaN                          | k    | 100  | 1000 | 1000 | 5000 | 0.1  | NaN
           """)
   void rejectsAnInvalidEntryNamingThePropertyAndTheRule(
       String message,

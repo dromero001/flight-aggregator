@@ -64,7 +64,8 @@ public record ProviderSettings(Entry alpha, Entry beta, Entry gamma) {
         throw new IllegalArgumentException(name + "-min must not be negative: " + min);
       }
       if (min.compareTo(max) > 0) {
-        throw new IllegalArgumentException(name + "-min must not exceed " + name + "-max");
+        throw new IllegalArgumentException(
+            name + "-min must not exceed " + name + "-max: " + min + " > " + max);
       }
     }
 
