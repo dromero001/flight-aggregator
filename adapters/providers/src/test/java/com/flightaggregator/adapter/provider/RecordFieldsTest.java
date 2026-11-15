@@ -2,6 +2,7 @@ package com.flightaggregator.adapter.provider;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.domain.Airport;
@@ -11,9 +12,13 @@ import com.flightaggregator.domain.Money;
 import com.flightaggregator.domain.Provider;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.function.Function;
+import java.util.stream.Stream;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class RecordFieldsTest {
@@ -85,6 +90,24 @@ class RecordFieldsTest {
   @ValueSource(strings = {"mad", "MADR", "M1D", ""})
   void rejectsABadAirport(String text) {
     assertRejected(() -> RecordFields.airport(text), DiscardReason.AIRPORT);
+  }
+
+  @ParameterizedTest
+  @MethodSource("fieldsWithTheirReasons")
+  void rejectsAMissingValueWithTheFieldsOwnReason(
+      Function<String, Object> parse, DiscardReason reason) {
+    assertRejected(() -> parse.apply(null), reason);
+  }
+
+  static Stream<Arguments> fieldsWithTheirReasons() {
+    return Stream.of(
+        arguments((Function<String, Object>) RecordFields::decimalPrice, DiscardReason.PRICE),
+        arguments((Function<String, Object>) RecordFields::centsPrice, DiscardReason.PRICE),
+        arguments((Function<String, Object>) RecordFields::time, DiscardReason.TIME),
+        arguments(
+            (Function<String, Object>) RecordFields::flightNumber, DiscardReason.FLIGHT_NUMBER),
+        arguments((Function<String, Object>) RecordFields::carrier, DiscardReason.CARRIER),
+        arguments((Function<String, Object>) RecordFields::airport, DiscardReason.AIRPORT));
   }
 
   @Test

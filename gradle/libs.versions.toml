@@ -28,6 +28,7 @@ spring-jdbc = { module = "org.springframework:spring-jdbc" }
 postgresql = { module = "org.postgresql:postgresql" }
 jackson-databind = { module = "tools.jackson.core:jackson-databind" }
 resilience4j-circuitbreaker = { module = "io.github.resilience4j:resilience4j-circuitbreaker", version.ref = "resilience4j" }
+resilience4j-timelimiter = { module = "io.github.resilience4j:resilience4j-timelimiter", version.ref = "resilience4j" }
 wiremock-standalone = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
 jackson-core = { module = "tools.jackson.core:jackson-core" }
 flyway-core = { module = "org.flywaydb:flyway-core" }

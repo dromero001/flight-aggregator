@@ -25,10 +25,10 @@ import org.springframework.web.client.RestClient;
  * The HTTP client of one provider: its API key on every request, bounded in time, retries and body
  * size, behind a circuit breaker.
  */
-final class ProviderHttp {
+public final class ProviderHttp {
 
   /** One page's body and the instant its response arrived. */
-  record FetchedPage(String body, Instant receivedAt) {}
+  public record FetchedPage(String body, Instant receivedAt) {}
 
   private final RestClient client;
   private final Provider provider;
@@ -38,7 +38,7 @@ final class ProviderHttp {
   private final int maxBodyBytes;
   private final Clock clock;
 
-  ProviderHttp(
+  public ProviderHttp(
       ProviderEndpoint endpoint,
       ResilienceSettings settings,
       CircuitBreaker circuitBreaker,
@@ -71,7 +71,7 @@ final class ProviderHttp {
    * Gets a page. The path is a URI template and each variable is encoded into it, so a cursor with
    * {@code +}, {@code &} or {@code #} reaches the provider as one value.
    */
-  FetchedPage get(String pathTemplate, Object... variables) {
+  public FetchedPage get(String pathTemplate, Object... variables) {
     String body;
     try {
       body =

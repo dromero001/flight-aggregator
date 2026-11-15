@@ -12,8 +12,11 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.regex.Pattern;
 
-/** Strict, per-field parsing of a provider record: a field that is not exact is rejected. */
-final class RecordFields {
+/**
+ * Strict, per-field parsing of a provider record: a field that is missing ({@code null}) or not
+ * exact is rejected with that field's own reason.
+ */
+public final class RecordFields {
 
   private static final Pattern DECIMAL_PRICE = Pattern.compile("^[0-9]{1,9}(\\.[0-9]{1,6})?$");
 
@@ -28,22 +31,22 @@ final class RecordFields {
 
   private RecordFields() {}
 
-  static Money decimalPrice(String text) {
-    if (!DECIMAL_PRICE.matcher(text).matches()) {
+  public static Money decimalPrice(String text) {
+    if (text == null || !DECIMAL_PRICE.matcher(text).matches()) {
       throw new RecordRejected(DiscardReason.PRICE);
     }
     return money(new BigDecimal(text));
   }
 
   static Money centsPrice(String text) {
-    if (!CENTS_PRICE.matcher(text).matches()) {
+    if (text == null || !CENTS_PRICE.matcher(text).matches()) {
       throw new RecordRejected(DiscardReason.PRICE);
     }
     return money(BigDecimal.valueOf(Long.parseLong(text), 2));
   }
 
-  static OffsetDateTime time(String text) {
-    if (!TIME.matcher(text).matches()) {
+  public static OffsetDateTime time(String text) {
+    if (text == null || !TIME.matcher(text).matches()) {
       throw new RecordRejected(DiscardReason.TIME);
     }
     try {
@@ -53,14 +56,17 @@ final class RecordFields {
     }
   }
 
-  static int flightNumber(String text) {
-    if (!FLIGHT_NUMBER.matcher(text).matches()) {
+  public static int flightNumber(String text) {
+    if (text == null || !FLIGHT_NUMBER.matcher(text).matches()) {
       throw new RecordRejected(DiscardReason.FLIGHT_NUMBER);
     }
     return Integer.parseInt(text);
   }
 
-  static Carrier carrier(String text) {
+  public static Carrier carrier(String text) {
+    if (text == null) {
+      throw new RecordRejected(DiscardReason.CARRIER);
+    }
     try {
       return new Carrier(text);
     } catch (IllegalArgumentException e) {
@@ -68,7 +74,10 @@ final class RecordFields {
     }
   }
 
-  static Airport airport(String text) {
+  public static Airport airport(String text) {
+    if (text == null) {
+      throw new RecordRejected(DiscardReason.AIRPORT);
+    }
     try {
       return new Airport(text);
     } catch (IllegalArgumentException e) {
@@ -77,7 +86,7 @@ final class RecordFields {
   }
 
   /** Builds the leg, turning the domain's refusal of it into a rejected record. */
-  static Leg leg(
+  public static Leg leg(
       Carrier carrier,
       int flightNumber,
       Airport origin,
