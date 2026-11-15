@@ -157,8 +157,9 @@ services:
     # Not published: only the app, on the compose network, sends it traces and logs.
     volumes:
       - ./deploy/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
-    # No health check yet: the image holds only the Collector's binary, with no shell or HTTP client
-    # to probe it with. Pending the user's decision (progress report of plan 7, Task 1).
+    # No health check, the one service without one (the user's decision of 2026-11-15): the core
+    # image is /otelcol on scratch, with no shell, HTTP client or probe command to run one with.
+    # Nothing waits on the Collector, and an exporter that cannot send to it drops what it holds.
 
   prometheus:
     restart: unless-stopped
@@ -233,6 +234,8 @@ services:
       # No Grafana account is committed (spec 6.6): the built-in administrator cannot sign in.
       GF_AUTH_BASIC_ENABLED: "false"
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      # No anonymous usage statistics to Grafana Labs (the user's decision of 2026-11-15).
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
 
 volumes:
   postgres-data:

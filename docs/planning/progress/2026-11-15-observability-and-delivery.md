@@ -91,3 +91,60 @@ The plan asks for a health check on every new service (Global Constraints, Task 
 - Self-review (thermo-nuclear) of the diff: the existing mechanisms are reused (`ComposeFileTest` and the `PostgresImage`/`KeycloakImage` pattern for the pins; Testcontainers' `OneShotStartupCheckStrategy` and HTTP wait strategy; each image's own probe, `-health` or `wget`; Gradle's task inputs, as plan 4 R10). Nothing passes silently when a file is missing: each test was seen failing without its file. Findings fixed: a comment in `compose.yaml` claimed Prometheus listened on IPv4 only (it listens on `[::]`), so both `wget` checks went back to `localhost`, like the repository's other checks. Kept as they are: each test class keeps its own `../deploy/...` path, as `RealmClientCredentialsTest` does, rather than a shared helper for one line; `GrafanaProvisioningTest` parses `compose.yaml` itself, as each `ComposeFileTest` test does.
 - `./gradlew build`: `BUILD SUCCESSFUL` (exit 0), 724 tests across the modules, none failed or skipped; the new ones: `CollectorConfigTest` 1, `PrometheusConfigTest` 1, `TempoConfigTest` 1, `LokiConfigTest` 1, `GrafanaProvisioningTest` 4, `ComposeFileTest` 4 (one new). `frontend/` is not touched.
 - Not built, and not assigned to Task 1 by the plan's text: the approved extras E1–E5 and E7–E10. E8 (every compose image pinned by tag and digest) would sit next to `runsTheObservabilityImagesTheTestsRun`, but no task names it.
+
+## Task 1 — user decisions and E8
+
+The user's decisions of 2026-11-15 on Task 1's open points (plan 7, Task 1, "Decided by the user on 2026-11-15, after the implementation"), and the controller's ruling that the approved E8 is built in this task.
+
+### 1. The Collector's health check: A
+
+The Collector stays without a health check, the one exception to the Global Constraints' rule. The comment in `compose.yaml` now says why, as decided: the core image is `/otelcol` on `scratch`, with no shell, HTTP client or probe command; nothing waits on the Collector; an exporter that cannot send to it drops what it holds. No test (a comment).
+
+### Refactor first (green to green)
+
+`ComposeFile` (bootstrap test package) now reads `compose.yaml` for every test that needs it: `ComposeFileTest`'s tests and `GrafanaProvisioningTest`'s compose environment, which had each parsed the file on their own. `TempoConfigTest` and `LokiConfigTest` now start their container once in `@BeforeAll`, so that a second test can share it; `startsWithTheRepositorysConfiguration` asserts that `/ready` answers 200. All green before and after.
+
+### 2. E8: every compose image pinned by tag and digest
+
+- **`ComposeFileTest.pinsEveryImageByTagAndDigest`**: every service's image matches `name:tag@sha256:<64 hex>`. For a service compose builds (app, frontend, mock-gds), the images are the `FROM` lines of its Dockerfile, except those naming an earlier stage; each service must yield at least one image. Passed on its first run (every image was already pinned, and none was repinned). Shown red by labelled mutations, each restored:
+  - Tempo's digest removed in `compose.yaml`: `[image of tempo] Expecting actual: "grafana/tempo:3.1.1" to match pattern: "[^\s@]+:[^\s@:/]+@sha256:[0-9a-f]{64}"`.
+  - nginx's digest removed in `frontend/Dockerfile`: `[image of frontend] Expecting actual: "nginx:1.30.5-alpine3.24" to match pattern ...`. The node stage, `AS build`, still matched.
+- **The Dockerfiles as test inputs** (the same lesson as Step 3 and plan 4 R10).
+  - Red: after a green `./gradlew build`, the nginx mutation alone left `:bootstrap:test UP-TO-DATE` and the build green (`BUILD SUCCESSFUL in 531ms`).
+  - Green: `bootstrap/build.gradle.kts` declares `bootstrap/Dockerfile`, `mock-gds/Dockerfile` and `frontend/Dockerfile` as test inputs, with a comment that a service built from a new Dockerfile adds it there. After a green build, the same mutation alone failed a plain build: `ComposeFileTest > pinsEveryImageByTagAndDigest() FAILED`. Restored.
+- The test checks the form only: that each digest is the multi-arch index's is checked when an image is pinned (`docker buildx imagetools inspect`), as recorded in each progress report.
+
+### 3. No usage reports (extra approved)
+
+Each setting is the one the pinned version documents, checked against the setting the running service reports wherever the service exposes it.
+
+- **Tempo.** Tempo 3.1.1's configuration reference, section "Usage-report" (`docs/sources/tempo/configuration/_index.md` at `v3.1.1`): "By default, Tempo reports anonymous usage data ... to Grafana Labs", disabled with `usage_report: reporting_enabled: false`.
+  - `TempoConfigTest.sendsNoUsageReport` reads the configuration Tempo runs with from `/status/config`, which answers its request line and then the configuration as a second YAML document.
+  - Red: `["reporting_enabled"=true (expected: false)]`. Green: the setting in `deploy/tempo/tempo.yaml`.
+  - A first run failed for the wrong reason (`expected a single document in the stream`); the test now reads the last YAML document.
+- **Loki.** Loki 3.7.9's documentation, "Usage statistics" (`docs/sources/configure/usage-statistics.md` at `v3.7.9`): "Loki sends anonymous usage statistics to Grafana Labs ... To disable reporting in the Loki config file, set `analytics.reporting_enabled` to `false`".
+  - `LokiConfigTest.sendsNoUsageReport` reads `/config`.
+  - Red: `["reporting_enabled"=true (expected: false)]`. Green: the setting in `deploy/loki/loki.yaml`.
+- **Grafana.** Grafana 13.3's "Configure Grafana" (`docs/sources/setup-grafana/configure-grafana/_index.md` at `v13.3.0`), `[analytics] reporting_enabled`: "When enabled Grafana sends anonymous usage statistics to `stats.grafana.org`". The same page documents environment overrides as `GF_<SECTION>_<KEY>`, so the variable is `GF_ANALYTICS_REPORTING_ENABLED`.
+  - Grafana shows this setting only to an administrator: `/api/frontend/settings` and `/bootdata` do not follow it, as checked with and without the variable. Nobody can sign in as an administrator. So `GrafanaProvisioningTest.sendsNoUsageReport` checks compose's environment for `GF_ANALYTICS_REPORTING_ENABLED: "false"`.
+  - A first version read Grafana's start-up log (`Config overridden from Environment variable`). Its red was `to contain: "var="GF_ANALYTICS_REPORTING_ENABLED=false""`, and it went green with the variable. It was replaced because Grafana logs every `GF_` variable it is given, even one it does not know (seen with a misspelled `GF_ANALYTICS_REPORTING_ENABLE`). The log therefore proved no more than compose's environment.
+  - The replacement passed on its first run. Labelled mutation (the variable removed): `could not find the following map entries: ["GF_ANALYTICS_REPORTING_ENABLED"="false"]`; restored.
+- Not included: Grafana's `check_for_updates`, a version check against grafana.com, not a usage report. The round-1 extra had listed it; the user's decision names the usage reports only.
+
+### 4. Published ports (extra approved)
+
+- **`ComposeFileTest.publishesOnlyGrafanaAndPrometheusOfTheTelemetryOnTheLoopback`**: Grafana publishes exactly `127.0.0.1:3001:3000`, Prometheus exactly `127.0.0.1:9090:9090`, and the Collector, Tempo and Loki publish nothing (Q4). Passed on its first run; shown red by labelled mutations, each restored:
+  - Tempo published on `127.0.0.1:3200:3200`: `["tempo"=["127.0.0.1:3200:3200"] (expected: null)]`.
+  - Grafana published on every interface (`3001:3000`): `["grafana"=["3001:3000"] (expected: ["127.0.0.1:3001:3000"])]`.
+
+### Run and gates
+
+- The five telemetry services were started again alone with the new settings (`docker compose -p plan7-task1 up -d --wait`). Four were healthy and the Collector `Up`; the three datasources were `OK`. Stopped with `down -v`.
+- `./gradlew build`: `BUILD SUCCESSFUL` (exit 0), 729 tests across the modules, none failed or skipped. That is five more than round 1: `pinsEveryImageByTagAndDigest`, `publishesOnlyGrafanaAndPrometheusOfTheTelemetryOnTheLoopback` and the three `sendsNoUsageReport`.
+- Self-review (thermo-nuclear):
+  - One reader of `compose.yaml` (`ComposeFile`) replaces five copies of the parse.
+  - The Dockerfile reader is about 15 lines in `ComposeFileTest`, its only user.
+  - The ports test compares compose's short syntax literally, so a switch to the long syntax would need the test updated.
+  - Kept: `TempoConfigTest` and `LokiConfigTest` stay two small classes with the same shape, as the plan names them, rather than a shared base class.
+  - Fixed: the Grafana log check, replaced as above because it proved nothing more.
+  - Nothing passes silently: every new test was seen red.

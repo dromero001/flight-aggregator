@@ -2,14 +2,13 @@ package com.flightaggregator.bootstrap.deploy;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.flightaggregator.bootstrap.ComposeFile;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -19,7 +18,6 @@ import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.MountableFile;
-import org.yaml.snakeyaml.Yaml;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -30,11 +28,9 @@ import tools.jackson.databind.json.JsonMapper;
 class GrafanaProvisioningTest {
 
   /**
-   * The tests run in the module's directory; compose.yaml and deploy/ are at the repository's root.
+   * Mounted by compose as Grafana's provisioning directory. The tests run in the module's
+   * directory; deploy/ is at the repository's root.
    */
-  private static final Path COMPOSE = Path.of("..", "compose.yaml");
-
-  /** Mounted by compose as Grafana's provisioning directory. */
   private static final String PROVISIONING = "../deploy/grafana/provisioning";
 
   private static final JsonMapper JSON = JsonMapper.builder().build();
@@ -134,6 +130,19 @@ class GrafanaProvisioningTest {
         .containsOnly(true);
   }
 
+  /**
+   * Grafana sends anonymous usage statistics to {@code stats.grafana.org} unless {@code [analytics]
+   * reporting_enabled} is false (Grafana 13.3's "Configure Grafana", section {@code analytics});
+   * the user's decision of 2026-11-15. Grafana shows the setting only to an administrator, and
+   * nobody can sign in as one, so this checks compose's override of it, {@code GF_<SECTION>_<KEY>}
+   * as that page documents.
+   */
+  @Test
+  void sendsNoUsageReport() throws IOException {
+    assertThat(composeEnvironment("grafana"))
+        .containsEntry("GF_ANALYTICS_REPORTING_ENABLED", "false");
+  }
+
   private static URI uri(String path) {
     return URI.create("http://" + GRAFANA.getHost() + ":" + GRAFANA.getMappedPort(3000) + path);
   }
@@ -145,9 +154,7 @@ class GrafanaProvisioningTest {
 
   @SuppressWarnings("unchecked")
   private static Map<String, String> composeEnvironment(String service) throws IOException {
-    Map<String, Map<String, Map<String, Object>>> compose =
-        new Yaml().load(Files.readString(COMPOSE));
-    Map<String, Object> definition = compose.get("services").get(service);
+    Map<String, Object> definition = ComposeFile.services().get(service);
     assertThat(definition).as("service %s in compose.yaml", service).isNotNull();
     Map<String, Object> environment = (Map<String, Object>) definition.get("environment");
     assertThat(environment).as("environment of %s in compose.yaml", service).isNotNull();

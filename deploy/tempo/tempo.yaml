@@ -18,3 +18,7 @@ storage:
       path: /tmp/tempo/wal
     local:
       path: /tmp/tempo/blocks
+
+# No anonymous usage report to Grafana Labs (the user's decision of 2026-11-15).
+usage_report:
+  reporting_enabled: false
