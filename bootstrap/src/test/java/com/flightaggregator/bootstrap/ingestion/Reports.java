@@ -32,11 +32,13 @@ final class Reports {
         DURATION,
         IngestionReport.Outcome.PUBLISHED,
         Optional.of(publication),
-        List.of(providers));
+        List.of(providers),
+        Optional.empty());
   }
 
   static IngestionReport unpublished(IngestionReport.Outcome outcome, ProviderReport... providers) {
-    return new IngestionReport(STARTED_AT, DURATION, outcome, Optional.empty(), List.of(providers));
+    return new IngestionReport(
+        STARTED_AT, DURATION, outcome, Optional.empty(), List.of(providers), Optional.empty());
   }
 
   /**

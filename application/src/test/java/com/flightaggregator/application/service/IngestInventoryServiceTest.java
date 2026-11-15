@@ -18,14 +18,18 @@ import com.flightaggregator.application.port.out.AirportCatalogue;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
 import com.flightaggregator.application.port.out.FailureReason;
+import com.flightaggregator.application.port.out.IngestionStatusStore;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.ItineraryWriter;
 import com.flightaggregator.application.port.out.ProviderDownload;
+import com.flightaggregator.application.port.out.ProviderRun;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.application.port.out.StoreOutcome;
 import com.flightaggregator.application.service.fakes.FakeFlightProvider;
 import com.flightaggregator.application.service.fakes.FakeItineraryRepository;
+import com.flightaggregator.application.service.fakes.InMemoryIngestionStatusStore;
+import com.flightaggregator.application.service.fakes.InMemoryIngestionStatusStore.Recorded;
 import com.flightaggregator.application.service.fakes.InMemoryOfferStore;
 import com.flightaggregator.application.service.fakes.RecordingDiscardedRecords;
 import com.flightaggregator.application.service.fakes.RecordingDiscardedRecords.Entry;
@@ -61,6 +65,7 @@ class IngestInventoryServiceTest {
   private final InMemoryOfferStore store = new InMemoryOfferStore();
   private final RecordingDiscardedRecords discarded = new RecordingDiscardedRecords();
   private final FakeItineraryRepository repository = new FakeItineraryRepository();
+  private final InMemoryIngestionStatusStore statuses = new InMemoryIngestionStatusStore();
 
   private IngestInventoryService service(FakeFlightProvider... providers) {
     return serviceWithCeiling(MAX_ITINERARIES, providers);
@@ -69,7 +74,14 @@ class IngestInventoryServiceTest {
   private IngestInventoryService serviceWithCeiling(
       long maxItineraries, FakeFlightProvider... providers) {
     return new IngestInventoryService(
-        List.of(providers), store, CATALOGUE, discarded, repository, () -> NOW, maxItineraries);
+        List.of(providers),
+        store,
+        CATALOGUE,
+        discarded,
+        repository,
+        statuses,
+        () -> NOW,
+        maxItineraries);
   }
 
   private static ProviderDownload download(Leg... legs) {
@@ -504,7 +516,14 @@ class IngestInventoryServiceTest {
     FakeFlightProvider alpha = new FakeFlightProvider(ALPHA, () -> download(madLhr));
     IngestInventoryService service =
         new IngestInventoryService(
-            List.of(alpha), store, CATALOGUE, discarded, failing, () -> NOW, MAX_ITINERARIES);
+            List.of(alpha),
+            store,
+            CATALOGUE,
+            discarded,
+            failing,
+            statuses,
+            () -> NOW,
+            MAX_ITINERARIES);
 
     assertThatThrownBy(service::ingest).isSameAs(failure);
     assertThat(store.offers(ALPHA)).containsExactly(madLhr);
@@ -522,6 +541,7 @@ class IngestInventoryServiceTest {
             CATALOGUE,
             discarded,
             repository,
+            statuses,
             instants::next,
             MAX_ITINERARIES);
 
@@ -529,6 +549,115 @@ class IngestInventoryServiceTest {
 
     assertThat(report.startedAt()).isEqualTo(NOW);
     assertThat(report.duration()).isEqualTo(Duration.ofSeconds(5));
+  }
+
+  /**
+   * Alpha's fresh offer and Beta's kept one, a day old, by outcome: two itineraries that publish,
+   * or exceed a ceiling of one, or two departed offers that build nothing.
+   */
+  static Stream<Arguments> everyOutcome() {
+    Instant yesterday = NOW.minus(Duration.ofDays(1));
+    Leg fresh = leg(ALPHA, 1, "MAD", "LHR", "2026-11-25T07:15:00Z", NOW);
+    Leg kept = leg(BETA, 7, "MAD", "BCN", "2026-11-25T09:15:00Z", yesterday);
+    Leg freshDeparted = leg(ALPHA, 1, "MAD", "LHR", "2026-11-19T10:00:00Z", NOW);
+    Leg keptDeparted = leg(BETA, 7, "MAD", "BCN", "2026-11-19T10:00:00Z", yesterday);
+    return Stream.of(
+        arguments(IngestionReport.Outcome.PUBLISHED, MAX_ITINERARIES, fresh, kept),
+        arguments(IngestionReport.Outcome.CEILING_EXCEEDED, 1L, fresh, kept),
+        arguments(
+            IngestionReport.Outcome.NOTHING_TO_PUBLISH,
+            MAX_ITINERARIES,
+            freshDeparted,
+            keptDeparted));
+  }
+
+  /**
+   * Q7-B: every run that ends with a report records its providers' statuses, whether it published
+   * or not, since they are the last known either way: a kept provider with its failure and the
+   * newest quote of the offers it keeps, at the run's end.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("everyOutcome")
+  void recordsEveryRunsProviderStatus(
+      IngestionReport.Outcome outcome, long ceiling, Leg fresh, Leg kept) {
+    store.with(BETA, List.of(kept));
+    FakeFlightProvider alpha = new FakeFlightProvider(ALPHA, () -> download(fresh));
+    FakeFlightProvider beta =
+        new FakeFlightProvider(
+            BETA,
+            () -> {
+              throw new ProviderUnavailableException(BETA, FailureReason.TIMEOUT, null);
+            });
+    Iterator<Instant> instants = List.of(NOW, NOW.plusSeconds(5)).iterator();
+    IngestInventoryService service =
+        new IngestInventoryService(
+            List.of(alpha, beta),
+            store,
+            CATALOGUE,
+            discarded,
+            repository,
+            statuses,
+            instants::next,
+            ceiling);
+
+    IngestionReport report = service.ingest();
+
+    assertThat(report.outcome()).isEqualTo(outcome);
+    assertThat(statuses.recorded())
+        .containsExactly(
+            new Recorded(
+                List.of(
+                    new ProviderRun(ALPHA, Optional.empty(), 1, Map.of(), Optional.of(NOW)),
+                    new ProviderRun(
+                        BETA,
+                        Optional.of(FailureReason.TIMEOUT),
+                        1,
+                        Map.of(),
+                        Optional.of(kept.quotedAt()))),
+                NOW.plusSeconds(5)));
+  }
+
+  /**
+   * The status is only what the provider-status screen shows: a store that fails to record it
+   * leaves the run's outcome as it was, and the report carries the failure, for the job to log.
+   */
+  @Test
+  void aFailureToRecordTheStatusNeverFailsTheRun() {
+    IllegalStateException databaseDown = new IllegalStateException("database down");
+    IngestionStatusStore failing =
+        new IngestionStatusStore() {
+          @Override
+          public void record(List<ProviderRun> runs, Instant finishedAt) {
+            throw databaseDown;
+          }
+
+          @Override
+          public List<ProviderRun> latest() {
+            throw new UnsupportedOperationException("Ingestion reads no status");
+          }
+
+          @Override
+          public Optional<Instant> lastFinishedAt() {
+            throw new UnsupportedOperationException("Ingestion reads no status");
+          }
+        };
+    FakeFlightProvider alpha =
+        new FakeFlightProvider(ALPHA, () -> download(leg(ALPHA, 1, "MAD", "LHR")));
+    IngestInventoryService service =
+        new IngestInventoryService(
+            List.of(alpha),
+            store,
+            CATALOGUE,
+            discarded,
+            repository,
+            failing,
+            () -> NOW,
+            MAX_ITINERARIES);
+
+    IngestionReport report = service.ingest();
+
+    assertThat(report.outcome()).isEqualTo(IngestionReport.Outcome.PUBLISHED);
+    assertThat(report.statusNotRecorded()).containsSame(databaseDown);
   }
 
   @Test

@@ -22,7 +22,8 @@ class IngestionReportTest {
             Duration.ZERO,
             IngestionReport.Outcome.NOTHING_TO_PUBLISH,
             Optional.empty(),
-            providers);
+            providers,
+            Optional.empty());
 
     providers.add(null);
 
@@ -46,6 +47,11 @@ class IngestionReportTest {
   private static IngestionReport report(
       IngestionReport.Outcome outcome, Optional<Publication> publication) {
     return new IngestionReport(
-        Instant.parse("2026-11-20T08:00:00Z"), Duration.ZERO, outcome, publication, List.of());
+        Instant.parse("2026-11-20T08:00:00Z"),
+        Duration.ZERO,
+        outcome,
+        publication,
+        List.of(),
+        Optional.empty());
   }
 }
