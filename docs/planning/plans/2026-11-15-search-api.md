@@ -338,16 +338,15 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 **Files:**
 - Modify: `gradle/libs.versions.toml`, `bootstrap/build.gradle.kts` (`spring-boot-starter-security`, `spring-boot-starter-oauth2-resource-server`; tests `spring-security-test`), `application.yaml`, `compose.yaml` (service `keycloak`), `README.md` (the demo admin user)
-- Create: `bootstrap/.../security/SecurityConfig.java`, `security/KeycloakRoles.java`; `deploy/keycloak/flight-aggregator-realm.json`
-- Test: `security/SecurityTest.java`, `security/KeycloakRolesTest.java`
+- Create: `bootstrap/.../security/SecurityConfig.java`; `deploy/keycloak/flight-aggregator-realm.json`
+- Test: `security/SecurityTest.java`, `security/PublicAccessOverHttpTest.java`, `security/RealmClientCredentialsTest.java`
 
 **Interfaces:**
 - Public: `GET /api/itineraries`, `POST /api/itineraries/*/reprice`, `GET /actuator/health` (status only; details for `ADMIN`), `GET /v3/api-docs`. Everything else, `/api/admin/**` and the other Actuator endpoints, needs `ROLE_ADMIN`; Actuator exposes `health` and `metrics`. Stateless; CSRF off (bearer tokens only, no cookies).
-- `KeycloakRoles implements Converter<Jwt, Collection<GrantedAuthority>>`: `realm_access.roles` → `ROLE_<role>`.
-- `security.jwt.jwk-set-uri` (in compose `http://keycloak:8080/realms/flight-aggregator/protocol/openid-connect/certs`) and `security.jwt.issuer` (`http://localhost:8180/realms/flight-aggregator`, fixed by `KC_HOSTNAME`).
+- **Changed in the fix round (controller's ruling, spec §6.6):** no hand-written decoder or role converter. Spring Boot's own resource-server settings do it, so that Keycloak can be swapped through configuration only: `spring.security.oauth2.resourceserver.jwt.jwk-set-uri` (in compose `http://keycloak:8080/realms/flight-aggregator/protocol/openid-connect/certs`, set as `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI`), `issuer-uri` (`http://localhost:8180/realms/flight-aggregator`, fixed by `KC_HOSTNAME`, checked on each token with no lookup at startup), `authorities-claim-expressions` `[realm_access][roles]` with `authority-prefix` `ROLE_`. The internal forward to `/error` is permitted (`DispatcherType.ERROR`), so a public path's error reaches an anonymous client with its own status.
 - Keycloak image by §6.1 (tag and digest), `start-dev --import-realm`, health enabled; realm `flight-aggregator` with realm role `ADMIN` and the user `admin` holding it, its password a committed demo default like the provider keys (§6.6). The dashboard's client comes with plan 6.
 
-- [ ] **Step 1: `KeycloakRolesTest.mapsRealmRolesToAuthorities`** (no claim → none).
+- [ ] **Step 1: `SecurityTest` maps the realm roles to authorities** (no claim → none) through Boot's settings.
 - [ ] **Step 2: `SecurityTest` (`jwt()` from `spring-security-test`), one test at a time:** `searchAndRepriceNeedNoToken`; `healthNeedsNoTokenAndShowsNoDetails`; `metricsAnswer401WithoutAToken`; `metricsAnswer403WithoutTheAdminRole`; `metricsAnswer200WithTheAdminRealmRole`; `rejectsATokenOfAnotherIssuer`.
 - [ ] **Step 3:** `docker compose up keycloak --wait`; the realm's `.well-known/openid-configuration` names the public issuer. Record it.
 - [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Protect the admin side with Keycloak tokens and the ADMIN role"`.
@@ -380,7 +379,7 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 **Depends on:** every other task (the contract documents all endpoints; the measures need the whole stack). **Parallel:** no; it runs last, alone. Its compose step (`valkey`) may start earlier, after 5.
 
 **Files:**
-- Modify: `gradle/libs.versions.toml`, `adapters/web/build.gradle.kts` (`springdoc-openapi-starter-webmvc-api`, by §6.1), `application.yaml` (`springdoc.writer-with-order-by-keys: true`), `compose.yaml` (`valkey`; `app` with the Valkey host, Task 11's JWT settings, depending on `valkey` and `keycloak` healthy), `README.md`, `docs/architecture/README.md`, `docs/planning/roadmap.md`
+- Modify: `gradle/libs.versions.toml`, `adapters/web/build.gradle.kts` (`springdoc-openapi-starter-webmvc-api`, by §6.1), `application.yaml` (`springdoc.writer-with-order-by-keys: true`), `compose.yaml` (`valkey`; `app` with the Valkey host, Task 11's resource-server settings (`SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_*`), depending on `valkey` and `keycloak` healthy), `README.md`, `docs/architecture/README.md`, `docs/planning/roadmap.md`
 - Create: `docs/architecture/openapi.json`, `docs/architecture/search-api.md`, `bootstrap/src/test/.../OpenApiContractTest.java`
 
 **Interfaces:** `/v3/api-docs` documents every endpoint, its parameters and bodies, the 400/404/409/429/503 problem responses with `Retry-After`, and the admin bearer scheme.
