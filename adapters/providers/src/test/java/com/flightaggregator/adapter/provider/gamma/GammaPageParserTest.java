@@ -167,6 +167,114 @@ class GammaPageParserTest {
             ProviderUnavailableException.class,
             e -> assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE));
     assertThatThrownBy(() -> GammaPageParser.parse(VALID_ROW, QUOTED_AT, 0, 100))
-        .isInstanceOf(ProviderUnavailableException.class);
+        .isInstanceOfSatisfying(
+            ProviderUnavailableException.class,
+            e -> {
+              assertThat(e.provider()).isEqualTo(Provider.GAMMA);
+              assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
+            });
+  }
+
+  @Test
+  void failsABodyOfOnlyLineBreaksAsAMissingHeader() {
+    for (String body : new String[] {"\r\n", "\r\n\r\n"}) {
+      assertThatThrownBy(() -> GammaPageParser.parse(body, QUOTED_AT, 0, 100))
+          .isInstanceOfSatisfying(
+              ProviderUnavailableException.class,
+              e -> {
+                assertThat(e.provider()).isEqualTo(Provider.GAMMA);
+                assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
+              });
+    }
+  }
+
+  @Test
+  void discardsABlankLineAtTheEndOfAPageAndCountsItTowardTheLimit() {
+    ParsedPage page = GammaPageParser.parse(HEADER + VALID_ROW + "\r\n", QUOTED_AT, 0, 2);
+
+    assertThat(page.legs()).hasSize(1);
+    assertThat(page.discarded()).containsExactly(new DiscardedRecord(DiscardReason.SHAPE, ""));
+    assertThat(page.next()).contains("2");
+  }
+
+  @Test
+  void failsAPageWithMoreRowsThanTheLimit() {
+    String threeRows = HEADER + VALID_ROW + VALID_ROW + VALID_ROW;
+
+    assertThatThrownBy(() -> GammaPageParser.parse(threeRows, QUOTED_AT, 0, 2))
+        .isInstanceOfSatisfying(
+            ProviderUnavailableException.class,
+            e -> {
+              assertThat(e.provider()).isEqualTo(Provider.GAMMA);
+              assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
+              assertThat(e.getCause()).hasMessage("Asked for at most 2 rows, got 3");
+            });
+  }
+
+  @Test
+  void continuesAfterAFullPageThatHoldsADiscardedLine() {
+    String badPrice = VALID_ROW.replace("129.90", "-129.90");
+
+    ParsedPage page = GammaPageParser.parse(HEADER + VALID_ROW + badPrice, QUOTED_AT, 0, 2);
+
+    assertThat(page.legs()).hasSize(1);
+    assertThat(page.discarded()).hasSize(1);
+    assertThat(page.next()).contains("2");
+  }
+
+  @Test
+  void failsAHeaderThatRepeatsAColumn() {
+    String repeated =
+        "airline,flight_number,from,to,departs_at,arrives_at,price_eur,price_eur\r\n"
+            + VALID_ROW.replace("\r\n", ",1\r\n");
+
+    assertThatThrownBy(() -> GammaPageParser.parse(repeated, QUOTED_AT, 0, 100))
+        .isInstanceOfSatisfying(
+            ProviderUnavailableException.class,
+            e -> {
+              assertThat(e.provider()).isEqualTo(Provider.GAMMA);
+              assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
+            });
+  }
+
+  @Test
+  void failsAPageWithABareLineBreakInADataLine() {
+    for (String separator : new String[] {"\n", "\r"}) {
+      String body = HEADER + VALID_ROW.replace(",129.90", separator + "129.90") + VALID_ROW;
+
+      assertThatThrownBy(() -> GammaPageParser.parse(body, QUOTED_AT, 0, 100))
+          .isInstanceOfSatisfying(
+              ProviderUnavailableException.class,
+              e -> {
+                assertThat(e.provider()).isEqualTo(Provider.GAMMA);
+                assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
+              });
+    }
+  }
+
+  @Test
+  void failsAPageWithABareLineBreakInTheHeader() {
+    String body = HEADER.replace("\r\n", ",note\nbreak\r\n") + VALID_ROW.replace("\r\n", ",1\r\n");
+
+    assertThatThrownBy(() -> GammaPageParser.parse(body, QUOTED_AT, 0, 100))
+        .isInstanceOfSatisfying(
+            ProviderUnavailableException.class,
+            e -> {
+              assertThat(e.provider()).isEqualTo(Provider.GAMMA);
+              assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
+            });
+  }
+
+  @Test
+  void quotesTheHeaderInTheMissingColumnMessage() {
+    String body = "airline\u0085,flight_number\r\n";
+
+    assertThatThrownBy(() -> GammaPageParser.parse(body, QUOTED_AT, 0, 100))
+        .isInstanceOfSatisfying(
+            ProviderUnavailableException.class,
+            e ->
+                assertThat(e.getCause())
+                    .hasMessage(
+                        "The header \"airline\\u0085,flight_number\" has no column airline"));
   }
 }

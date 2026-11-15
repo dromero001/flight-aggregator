@@ -1,5 +1,6 @@
 package com.flightaggregator.adapter.provider.gamma;
 
+import com.flightaggregator.adapter.provider.LoggedText;
 import com.flightaggregator.adapter.provider.ParsedPage;
 import com.flightaggregator.adapter.provider.RecordFields;
 import com.flightaggregator.adapter.provider.RecordRejected;
@@ -22,13 +23,18 @@ import java.util.Optional;
  */
 final class GammaPageParser {
 
+  private static final String EOL = "\r\n";
   private static final String QUOTE = "\"";
 
   private GammaPageParser() {}
 
   static ParsedPage parse(String body, Instant quotedAt, int offset, int limit) {
-    String[] lines = body.split("\r\n");
-    Columns columns = Columns.of(List.of(lines[0].split(",", -1)));
+    String[] lines = lines(body);
+    Columns columns = Columns.of(lines[0]);
+    int rows = lines.length - 1;
+    if (rows > limit) {
+      throw malformed("Asked for at most " + limit + " rows, got " + rows);
+    }
     List<Leg> legs = new ArrayList<>();
     List<DiscardedRecord> discarded = new ArrayList<>();
     for (int i = 1; i < lines.length; i++) {
@@ -39,10 +45,25 @@ final class GammaPageParser {
       }
     }
     Optional<String> next =
-        lines.length - 1 == limit
-            ? Optional.of(Integer.toString(offset + limit))
-            : Optional.empty();
+        rows == limit ? Optional.of(Integer.toString(offset + limit)) : Optional.empty();
     return new ParsedPage(legs, discarded, next);
+  }
+
+  private static ProviderUnavailableException malformed(String detail) {
+    return new ProviderUnavailableException(
+        Provider.GAMMA, FailureReason.MALFORMED_PAGE, new IllegalArgumentException(detail));
+  }
+
+  /** Exactly one final line end closes the last line; every other line counts, a blank one too. */
+  private static String[] lines(String body) {
+    String closed = body.endsWith(EOL) ? body.substring(0, body.length() - EOL.length()) : body;
+    String[] lines = closed.split(EOL, -1);
+    for (String line : lines) {
+      if (line.indexOf('\r') >= 0 || line.indexOf('\n') >= 0) {
+        throw malformed("A line break that is not CRLF, so the records cannot be told apart");
+      }
+    }
+    return lines;
   }
 
   private static Leg leg(Columns columns, String line, Instant quotedAt) {
@@ -73,25 +94,26 @@ final class GammaPageParser {
       int arrivesAt,
       int priceEur) {
 
-    static Columns of(List<String> header) {
+    static Columns of(String line) {
+      List<String> header = List.of(line.split(",", -1));
       return new Columns(
           header.size(),
-          required(header, "airline"),
-          required(header, "flight_number"),
-          required(header, "from"),
-          required(header, "to"),
-          required(header, "departs_at"),
-          required(header, "arrives_at"),
-          required(header, "price_eur"));
+          required(line, header, "airline"),
+          required(line, header, "flight_number"),
+          required(line, header, "from"),
+          required(line, header, "to"),
+          required(line, header, "departs_at"),
+          required(line, header, "arrives_at"),
+          required(line, header, "price_eur"));
     }
 
-    private static int required(List<String> header, String name) {
+    private static int required(String line, List<String> header, String name) {
       int index = header.indexOf(name);
       if (index < 0) {
-        throw new ProviderUnavailableException(
-            Provider.GAMMA,
-            FailureReason.MALFORMED_PAGE,
-            new IllegalArgumentException("The header has no column " + name));
+        throw malformed("The header " + LoggedText.quoted(line) + " has no column " + name);
+      }
+      if (index != header.lastIndexOf(name)) {
+        throw malformed("The header " + LoggedText.quoted(line) + " repeats the column " + name);
       }
       return index;
     }
