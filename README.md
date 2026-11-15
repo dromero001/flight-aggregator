@@ -14,14 +14,14 @@ docker compose up --build
 
 This starts the three mock providers, PostgreSQL and the aggregator (`bootstrap/Dockerfile`, `-Xmx512m`). The aggregator ingests the providers at startup, then every 30 minutes, and publishes about one million itineraries into PostgreSQL; the first run takes about 12 to 15 seconds. Its health is on `http://localhost:8080/actuator/health`, published on the loopback interface only. PostgreSQL is not published. How a run works, and what each failure does: [Ingestion](docs/architecture/ingestion.md).
 
-**The database password is a committed demo default too**, the same deliberate exception as the provider keys below (spec 6.6): `POSTGRES_PASSWORD` in the shell or a `.env` file overrides it. It protects only a database that no port exposes outside the compose network; in production it would be a secret injected at deploy time.
+**The database password is a committed demo default too**, the same deliberate exception as the provider keys below (spec 6.6): `POSTGRES_PASSWORD` in the shell or a `.env` file overrides it. It protects only a database that no port exposes outside the compose network; in production it would be a secret injected at deploy time. PostgreSQL sets the password only when it creates its volume: to change it after the first start, remove the volume with `docker compose down -v` (which deletes the stored inventory) and start again.
 
 ## Run the mock providers
 
-The three mock GDS providers run as one image, built from `mock-gds/Dockerfile`:
+The three mock GDS providers run as one image, built from `mock-gds/Dockerfile`. `docker compose up --build` starts them with the rest of the stack; to start the mocks alone:
 
 ```bash
-docker compose up --build
+docker compose up --build mock-gds
 ```
 
 They listen on `http://localhost:8081`. Each provider asks for its own key in the `X-Api-Key` header, and answers `401` without it:
@@ -98,3 +98,4 @@ The documentation is split by what each part shows.
   6. [Grill-me: observability, CI and pagination](docs/ai/sessions/06-grill-me-observability-ci-pagination.md)
   7. [Plans, a review protocol and the foundations run](docs/ai/sessions/07-plans-review-protocol-and-foundations.md)
   8. [The domain plan, its review and its run](docs/ai/sessions/08-domain-plan-and-run.md)
+  9. [Lost sessions, recovery, and the providers and ingestion plan](docs/ai/sessions/09-lost-sessions-and-recovery.md)

@@ -6,7 +6,7 @@
 
 **Architecture:**
 - `application` owns the use case `IngestInventory` and its outbound ports. The service downloads the providers in parallel, replaces each provider's offers only when its download is complete, deduplicates and builds the itineraries, and streams them into the repository in push mode.
-- `adapters/providers` holds one adapter per provider: an HTTP client with timeout, retry, circuit breaker and bounded pagination, and a strict parser that discards each bad record on its own.
+- `adapters/providers` holds one `PagedProvider`, built per provider from its endpoint: an HTTP client with timeout, retry, circuit breaker and bounded pagination, and a page format per provider (`AlphaPage`, `BetaPage`, `GammaPage`) whose strict parser discards each bad record on its own (as delivered: the three provider classes of Tasks 6 to 8 became one in the final fix wave).
 - `adapters/persistence` keeps the offers per provider and the itineraries in **two slots** (double buffer): each run loads the inactive slot with PostgreSQL `COPY` and switches slots in the same transaction.
 - `bootstrap` is the Spring Boot application: wiring, the schedule with ShedLock, logs and metrics of each run, and the image that `docker compose` runs.
 
@@ -41,7 +41,7 @@ Roadmap: [plan 4](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - **Scope (`brief-scope`):** only what this plan lists. An extra found mid-task goes to the progress report under "Extras for the user to decide".
 - **Repo rules:** English everywhere. No AI attribution in commits. Push only after `direnv exec . gh api user --jq .login` prints `dromero001`.
 
-**Status:** approved by the user for execution on 2026-11-15 at 04:20 (session 09), after the review recorded in the decisions below.
+**Status:** approved by the user for execution on 2026-11-15 at 04:20 (session 09), after the review recorded in the decisions below. Built in Tasks 1 to 11; the interfaces below are written back to what was delivered after the final fix wave (progress 2026-11-15, "Final fix wave — evidence"), whose user decisions are listed in "As delivered" at the end.
 
 ## Decisions this plan takes (reviewed by the user)
 
@@ -97,17 +97,17 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 - Produces (`port.out`):
   - `interface Clock { Instant now(); }`
   - `interface FlightProvider { Provider provider(); ProviderDownload download(); }`. `download()` returns only when every page arrived, else throws `ProviderUnavailableException(Provider provider, FailureReason reason, Throwable cause)`.
-  - `enum FailureReason { HTTP_ERROR, TIMEOUT, UNAUTHORIZED, CIRCUIT_OPEN, MALFORMED_PAGE, PAGINATION_LIMIT, UNEXPECTED }`
+  - `enum FailureReason { HTTP_ERROR, TIMEOUT, UNAUTHORIZED, CIRCUIT_OPEN, MALFORMED_PAGE, PAGINATION_LIMIT, EMPTY_DOWNLOAD, UNEXPECTED }`. `EMPTY_DOWNLOAD`: a download that arrived whole but left no usable leg after parsing and the airport catalogue; the provider is kept (user, final fix wave).
   - `record ProviderDownload(List<Leg> legs, List<DiscardedRecord> discarded)`, legs in page order.
-  - `record DiscardedRecord(DiscardReason reason, String excerpt)`: the excerpt is the record as received (Alpha: the JSON object; Beta: the segment's values as `name=value` pairs; Gamma: the line), at most 200 characters.
+  - `record DiscardedRecord(DiscardReason reason, String excerpt)`: the excerpt is the record as received (Alpha: the JSON object; Beta: the segment's values as `name=value` pairs; Gamma: the line), escaped and cut to at most 200 characters by `ProviderText`, the one escaping helper of `port.out`, which every message carrying provider text uses too.
   - `enum DiscardReason { SHAPE, CARRIER, FLIGHT_NUMBER, AIRPORT, TIME, PRICE, LEG, UNKNOWN_AIRPORT, CONFLICTING }`
   - `interface DiscardedRecords { void discarded(Provider provider, DiscardedRecord record); }`
   - `interface OfferStore { void replace(Provider provider, List<Leg> offers); List<Leg> offers(Provider provider); }`, `offers` in stored page order.
   - `interface AirportCatalogue { Set<Airport> airports(); }`
 - Produces (`port.in`):
   - `interface IngestInventory { IngestionReport ingest(); }`
-  - `record ProviderReport(Provider provider, Status status, Optional<FailureReason> failure, int offersFetched, Map<DiscardReason, Integer> discarded, int offersUsed, int lostToDeduplication)` with `enum Status { FRESH, KEPT }`. `offersUsed` counts the stored offers (fresh or kept) that took part in the run.
-  - `record IngestionReport(Instant startedAt, Duration duration, Outcome outcome, long generation, long itineraries, List<ProviderReport> providers)` with `enum Outcome { PUBLISHED, NOTHING_TO_PUBLISH, CEILING_EXCEEDED }`; providers in `Provider` order.
+  - `record ProviderReport(Provider provider, Optional<FailureReason> failure, Optional<Throwable> cause, int offersFetched, Map<DiscardReason, Integer> discarded, int offersUsed, int lostToDeduplication, Optional<Instant> newestQuotedAt)` with `Status status()`, `KEPT` exactly when `failure` is present (`enum Status { FRESH, KEPT }`); a cause without a failure is refused. `cause` is the `ProviderUnavailableException` itself, or the unexpected exception (none for `EMPTY_DOWNLOAD`), for the job to log. `offersUsed` counts the stored offers (fresh or kept) that took part in the run. `newestQuotedAt` is the newest quote among the provider's stored offers after the run, so that its freshness survives a restart. Each report is built once, after the deduplication.
+  - `record IngestionReport(Instant startedAt, Duration duration, Outcome outcome, Optional<Publication> publication, List<ProviderReport> providers)` with `enum Outcome { PUBLISHED, NOTHING_TO_PUBLISH, CEILING_EXCEEDED }`; `publication` is present exactly when the outcome is `PUBLISHED`, which the constructor checks; providers in `Provider` order.
 - `IngestInventoryService(List<FlightProvider>, OfferStore, AirportCatalogue, DiscardedRecords, Clock)`; this task's service ends after storing the offers, and Task 2 adds the build and the publication.
 
 - [ ] **Step 1: `LegKeyTest.rejectsANullComponent`** (code review note): each null component throws `NullPointerException` naming it.
@@ -133,7 +133,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 - Produces:
   - `@FunctionalInterface interface ItineraryWriter { void writeTo(Consumer<Itinerary> sink); }`
   - `interface ItineraryRepository { Publication replaceInventory(Instant now, ItineraryWriter writer); }`: writes everything the writer pushes into a generation search cannot see, and publishes it only if `writeTo` returns normally. If `writeTo` throws, nothing changes and the exception propagates.
-  - `record Publication(long generation, long itineraries, long rowsInDefaultPartition, LocalDate lastPartitionDay)`
+  - `record Publication(long generation, long itineraries, long rowsInDefaultPartition, Instant partitionedUntil)`: `partitionedUntil` is the instant the last day partition ends.
   - `IngestInventoryService(List<FlightProvider>, OfferStore, AirportCatalogue, DiscardedRecords, ItineraryRepository, Clock, long maxItineraries)`. It is a plain class; Task 9 declares it as a bean.
 - Push mode (R4) has no unit test here: a buffering consumer and a pushing one look the same to a fake. It is a global constraint for the code review, and Task 11 proves it on the real volume with a bounded heap.
 
@@ -158,7 +158,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 - Consumes: `OfferStore`, `AirportCatalogue` (Task 1).
 - Produces:
   - Table `provider_offer(provider text, position int, carrier char(2), flight_number int, origin char(3), destination char(3), departure timestamptz, departure_offset int, arrival timestamptz, arrival_offset int, price numeric(11,2), quoted_at timestamptz, primary key (provider, position))`; offsets in seconds.
-  - Table `airport(code char(3) primary key)`, seeded with the 33 airports of the mock's `StandardCatalogue` (copied as data; the persistence module does not depend on `mock-gds`).
+  - Table `airport(code char(3) primary key)`, seeded with the 32 airports of the mock's `StandardCatalogue` (copied as data; the persistence module does not depend on `mock-gds`).
   - `JdbcOfferStore(DataSource, TransactionTemplate)`, `JdbcAirportCatalogue(JdbcClient)`.
   - `final class CopyRows implements AutoCloseable`: `static CopyRows open(Connection connection, String copySql)`, `void row(String... cells)` (null → `\N`; backslash, tab, newline and carriage return escaped), `long finish()`. It runs on the connection of the current Spring transaction (`DataSourceUtils.getConnection`), unwrapped to `PGConnection`.
   - `PostgresTestDatabase`: one Testcontainers `PostgreSQLContainer` per JVM (same image and digest as Task 11), migrated with Flyway once, giving a `DataSource`; each test class truncates what it uses.
@@ -170,7 +170,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
   - `returnsOffersInStoredOrder`.
   - `replacesOnlyThatProvidersOffers`: replacing Alpha leaves Beta's rows.
   - `replacesAProvidersOffersAtomically`: a replacement with a `List<Leg>` whose `get(1)` throws (a test `AbstractList`) propagates the exception and leaves the provider's old offers.
-- [ ] **Step 4: `JdbcAirportCatalogueTest.loadsTheSeededCatalogue`:** 33 airports, `MAD` in, `ZZZ` out.
+- [ ] **Step 4: `JdbcAirportCatalogueTest.loadsTheSeededCatalogue`:** 32 airports, `MAD` in, `ZZZ` out.
 - [ ] **Step 5:** move rules 3 and 4 out of `LENIENT_RULES` (the list becomes empty; delete it and its test if nothing uses it).
 - [ ] **Step 6: `./gradlew build` green, review, commit:** `git commit -m "Store each provider's offers in PostgreSQL and read the airport catalogue"`.
 
@@ -213,7 +213,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 - Produces:
   - `record ProviderEndpoint(Provider provider, URI baseUrl, String apiKey)`; `toString()` prints `apiKey=***`.
   - `record ResilienceSettings(Duration requestTimeout, Duration downloadTimeout, int maxAttempts, Duration firstBackoff, int pageSize, int maxPages, int maxBodyBytes)`; production defaults 2.5 s, 60 s, 3, 200 ms, 1000, 200, 8 MB.
-  - `final class ProviderHttp`, built from `(ProviderEndpoint, ResilienceSettings, CircuitBreaker, Clock)`, with `FetchedPage get(String pathAndQuery)` and `record FetchedPage(String body, Instant receivedAt)`. It sends `X-Api-Key`, retries through `RetryTemplate`, runs each attempt inside the circuit breaker, and maps failures to `ProviderUnavailableException`: 401/403 → `UNAUTHORIZED` (no retry), other 4xx → `HTTP_ERROR` (no retry), 5xx after the attempts → `HTTP_ERROR`, timeout → `TIMEOUT`, open breaker → `CIRCUIT_OPEN`, body over the limit → `MALFORMED_PAGE`.
+  - `final class ProviderHttp`, built from `(ProviderEndpoint, ResilienceSettings, CircuitBreakerRegistry, RetryListener, Clock)` (as delivered: the registry's breaker named after the endpoint's provider, with `ProviderHttp.circuitBreakerConfig()`; a Spring `RetryListener` hears each retry), with `FetchedPage get(String pathTemplate, Object... variables)` and `record FetchedPage(String body, Provider provider, Instant receivedAt)`. It sends `X-Api-Key`, retries through `RetryTemplate`, runs each attempt inside the circuit breaker, and maps failures to `ProviderUnavailableException`: 401/403 → `UNAUTHORIZED` (no retry), other 4xx → `HTTP_ERROR` (no retry), 5xx after the attempts → `HTTP_ERROR`, timeout → `TIMEOUT`, open breaker → `CIRCUIT_OPEN`, body over the limit → `MALFORMED_PAGE`.
   - `final class RecordFields` (static, strict): `Carrier carrier(String)`, `int flightNumber(String)` (`^[0-9]{1,4}$`), `Airport airport(String)`, `OffsetDateTime time(String)` (ISO-8601 with offset, seconds required), `Money decimalPrice(String)`, `Money centsPrice(String)`. Each throws `RecordRejected(DiscardReason)`.
   - `static Leg RecordFields.leg(...)`: builds the `Leg`, turning the domain's `IllegalArgumentException` into `RecordRejected(LEG)`.
 
@@ -233,7 +233,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 
 **Files:**
 - Modify: `gradle/libs.versions.toml`, `adapters/providers/build.gradle.kts` (`resilience4j-timelimiter` 2.4.0, the same version as the circuit breaker)
-- Create: `adapter/provider/alpha/AlphaProvider.java` (implements `FlightProvider`), `alpha/AlphaPageParser.java`; `adapter/provider/PagedDownload.java` (shared bounds and the download's time budget)
+- Create: `adapter/provider/alpha/AlphaProvider.java` (implements `FlightProvider`), `alpha/AlphaPageParser.java`; `adapter/provider/PagedDownload.java` (shared bounds and the download's time budget). As delivered after the final fix wave: one package, `adapter/provider/PagedProvider.java` (the one `FlightProvider`), `AlphaPage.java` (the request and parser of one Alpha page), `PageRequest.java`, `PageFormat.java`, `PageMalformed.java`.
 - Test: `alpha/AlphaPageParserTest.java`, `alpha/AlphaProviderTest.java` (WireMock), `PagedDownloadTest.java`
 
 **Interfaces:**
@@ -241,8 +241,8 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 - Produces:
   - `record ParsedPage(List<Leg> legs, List<DiscardedRecord> discarded, Optional<String> next)`: shared by the three parsers (create it in this task, in `adapter.provider`).
   - `AlphaPageParser.parse(String body, Instant quotedAt) → ParsedPage`: the format `{"legs":[{"carrier","flightNumber","origin","destination","departureTime","arrivalTime","price"}],"nextCursor":…}` as `mock-gds/.../alpha/AlphaJson.java` writes it; `price` must be a JSON string, `flightNumber` a JSON integer.
-  - `final class PagedDownload`, built from `(Provider, ResilienceSettings, TimeLimiter)`: drives `next` positions and throws `ProviderUnavailableException(PAGINATION_LIMIT)` when a position repeats or `maxPages` is passed. It runs the whole page loop inside the provider's Resilience4j `TimeLimiter` (`timeoutDuration` = `downloadTimeout`, `cancelRunningFuture` true), on a virtual thread; past the budget it throws `ProviderUnavailableException(TIMEOUT)`, and the loop checks the thread's interrupt flag before each page, so a cancelled download requests no further page. The page in flight is bounded by its own request timeout.
-  - `AlphaProvider(ProviderHttp, PagedDownload, ResilienceSettings)`: `GET /alpha/legs?limit=<pageSize>[&cursor=…]` until `nextCursor` is `null`, the page loop run through `PagedDownload`. Beta and Gamma take the same three arguments.
+  - `final class PagedDownload`, built from `(Provider, ResilienceSettings, TimeLimiter)` (as delivered: from `(Provider, ResilienceSettings)`, building its own `TimeLimiter` of `downloadTimeout`): drives `next` positions and throws `ProviderUnavailableException(PAGINATION_LIMIT)` when a position repeats or `maxPages` is passed. It runs the whole page loop inside the provider's Resilience4j `TimeLimiter` (`timeoutDuration` = `downloadTimeout`, `cancelRunningFuture` true), on a virtual thread; past the budget it throws `ProviderUnavailableException(TIMEOUT)`, and the loop checks the thread's interrupt flag before each page, so a cancelled download requests no further page. The page in flight is bounded by its own request timeout.
+  - `AlphaProvider(ProviderHttp, PagedDownload, ResilienceSettings)`: `GET /alpha/legs?limit=<pageSize>[&cursor=…]` until `nextCursor` is `null`, the page loop run through `PagedDownload`. Beta and Gamma take the same three arguments. As delivered: `PagedProvider(ProviderEndpoint, ResilienceSettings, CircuitBreakerRegistry, RetryListener, Clock)` builds the HTTP client, the download and the format from the endpoint, choosing `AlphaPage::at`, `BetaPage::at` or `GammaPage::at` by `endpoint.provider()`; a format throws the provider-free `PageMalformed`, which `PagedDownload` reports as its provider's `MALFORMED_PAGE`, and a page of more records than asked for is malformed.
 
 - [ ] **Step 1: `AlphaPageParserTest`, one test at a time,** on golden bodies copied from the mock's `AlphaJsonTest`: `parsesAValidLeg`; `discardsEachOfTheMocksDefects` (`MISSING_FIELD` → `FLIGHT_NUMBER`, `BAD_DATE` → `TIME`, `NEGATIVE_PRICE` → `PRICE`; `UNKNOWN_AIRPORT` parses, since only the catalogue catches it) with the valid neighbours kept; `discardsANumericPrice` (`"price":129.9` → `PRICE`); `discardsANonObjectRecord` (`SHAPE`); `failsAPageThatIsNotJson` (`MALFORMED_PAGE`); `readsTheNextCursorAndTheEnd`.
 - [ ] **Step 2: `PagedDownloadTest`, one test at a time:** `failsADownloadThatRepeatsAPosition`, `failsADownloadPastTheMaximumPages` (Review Focus 3); `failsADownloadPastItsTimeBudget` (a fake page source that takes 100 ms per page, a 250 ms budget and 10 pages → `TIMEOUT`, raised within 400 ms); `requestsNoPageAfterTheBudget` (same setup: the fake records at most 3 page requests, and none after the exception, checked 300 ms later).
@@ -281,7 +281,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 
 **Files:**
 - Modify: `bootstrap/build.gradle.kts` (Boot plugin, starters: JDBC, Flyway with `flyway-database-postgresql`, Actuator, Jackson; `spring-boot-testcontainers`), `coverage/build.gradle.kts` (exclude `**/bootstrap/FlightAggregatorApplication.class` by name)
-- Create in `bootstrap/src/main/java/com/flightaggregator/bootstrap/`: `FlightAggregatorApplication.java`; `config/ProvidersConfig.java` (the three adapters, one circuit breaker and one time limiter each), `config/ProvidersProperties.java`, `config/PersistenceConfig.java`, `config/IngestionConfig.java` (the service), `config/SystemClock.java`; `observability/LoggedDiscardedRecords.java`; `src/main/resources/application.yaml`
+- Create in `bootstrap/src/main/java/com/flightaggregator/bootstrap/`: `FlightAggregatorApplication.java`; `config/ProvidersConfig.java` (the three adapters, one circuit breaker and one time limiter each; as delivered, a `CircuitBreakerRegistry` bean bound to Micrometer and three `PagedProvider` beans), `config/ProvidersProperties.java`, `config/PersistenceConfig.java`, `config/IngestionConfig.java` (the service), `config/SystemClock.java`; `observability/LoggedDiscardedRecords.java`; `src/main/resources/application.yaml`
 - Test: `FlightAggregatorApplicationTest.java`, `observability/LoggedDiscardedRecordsTest.java`
 
 **Interfaces:**
@@ -306,7 +306,8 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 - Consumes: `IngestInventory`, `IngestionReport`.
 - Produces:
   - `IngestionJob.run()`: `@Scheduled(initialDelay = 0, fixedDelayString = "${ingestion.interval}")`, the lock `ingestion` (lockAtMostFor PT29M, lockAtLeastFor PT1M) taken inside the job's own `try` through ShedLock's `LockingTaskExecutor`, not `@SchedulerLock`, so that a failure to take the lock is a counted failed run (ruling of the Task 10 review). It logs one `INFO` line per run (outcome, generation, itineraries, duration, and per provider status, failure, fetched, discarded, used, lost to deduplication), and one `WARN` line per `KEPT` provider with its provider, reason and the cause's stack trace (`ProviderReport.cause`, ruling of Task 1), records the metrics, and catches any exception so the schedule continues (logged at `ERROR`, counted as a failed run).
-  - Meters (`IngestionMetrics`): timer `ingestion.duration{outcome}`; counter `ingestion.runs{outcome}` (with `outcome=FAILED` for an exception); gauges `ingestion.itineraries`, `ingestion.consecutive.failures` (any outcome but `PUBLISHED` counts), `ingestion.provider.last.fresh.seconds{provider}` (age of the provider's last `FRESH` download), `ingestion.partitions.days.ahead`, `ingestion.partitions.default.rows`; counter `ingestion.provider.downloads{provider,status}`.
+  - Meters (`IngestionMetrics`): timer `ingestion.duration{outcome}`; counter `ingestion.runs{outcome}` (with `outcome=FAILED` for an exception); gauges `ingestion.itineraries`, `ingestion.consecutive.failures` (any outcome but `PUBLISHED` counts, and, as delivered, a `PUBLISHED` run with no `FRESH` provider), `ingestion.provider.last.fresh.seconds{provider}` (as delivered: the age of the newest quote among the provider's stored offers, fresh or kept, so a restart restores it), `ingestion.partitions.days.ahead` (whole days from now until `partitionedUntil`), `ingestion.partitions.default.rows`; counter `ingestion.provider.downloads{provider,status}` (as delivered, with `reason`: the `FailureReason` or `none`). Added in the final fix wave: `ingestion.provider.retries{provider}` and Resilience4j's `resilience4j.circuitbreaker.*{name}`.
+  - Logs, as delivered: every line of a run carries its run id, `correlation.id`, in the MDC (a deviation from §6.1's Scoped Values, recorded there); the run's line is `WARN` for any outcome but `PUBLISHED`; a run skipped for the lock is an `INFO` line; each breaker's state transition is a `WARN` line; an `Error` is logged and counted, then rethrown.
 
 - [ ] **Step 1: `IngestionMetricsTest`, one test at a time:** `recordsAPublishedRun`; `countsConsecutiveFailuresUntilAPublishedRun` (two `CEILING_EXCEEDED`, one exception, then `PUBLISHED` → 3 then 0).
 - [ ] **Step 2: `IngestionJobTest.keepsSchedulingAfterAnException`.**
@@ -331,3 +332,13 @@ No production Java, so no TDD: the proof is the local Docker run, recorded in th
 - [ ] **Step 2: compose.** `postgres` with a committed demo password as an overridable default (`${POSTGRES_PASSWORD:-…}`, the same deliberate exception as the provider keys, said in the comment and the README), a `pg_isready` health check and a named volume; `app` built from `bootstrap/Dockerfile`, depending on `postgres` and `mock-gds` being healthy, with the provider URLs and keys from the same variables as the mock, published on `127.0.0.1:8080`.
 - [ ] **Step 3: run and measure.** The `app` container runs with `-Xmx512m` (`JAVA_TOOL_OPTIONS`), which proves push mode (R4) on the real volume: buffering one first leg's itineraries ran out of memory at 256 MB in plan 2's probe. `docker compose up --build -d --wait`, then from the `app` log: the first run's outcome, duration, itineraries and per-provider counts; `SELECT count(*)` on the active slot. Record the numbers (this replaces the 5–15 s estimate given to the user). Then make one provider fail every request with an override file and show the next run keeping its offers. `docker compose down`.
 - [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Run the aggregator and PostgreSQL in docker compose, ingesting the mock providers"`.
+
+## As delivered (final fix wave)
+
+The user's decisions after the three end-of-plan reviews (2026-11-15), built in the final fix wave; the evidence is in the progress report, "Final fix wave — evidence":
+
+- A complete download that leaves no usable leg keeps the provider's offers (`EMPTY_DOWNLOAD`, §6.5).
+- The three provider classes became one `PagedProvider` with a page format per provider, every part built from the endpoint; breakers come from one registry, bound to Micrometer, and each state transition is logged.
+- The run id rides the MDC as `correlation.id`, not a Scoped Value (spec §6.1).
+- A run with no fresh provider counts as failed for `ingestion.consecutive.failures`.
+- The load locks the publication row first (`SELECT ... FOR UPDATE`), so two runs never load at once (E4); a run skipped for the lock is logged (E11).
