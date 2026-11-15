@@ -126,10 +126,11 @@ Texts: headings "Find flights" and "Provider status"; "Showing 1 flight"; field 
 
 **Where the approved extras are built (assigned 2026-11-16 by the controller under the night rules, rule 3: build what the user already approved; for the user to see):** no task listed them, as Task 4's review found.
 - E7 (`vitest-axe`, `eslint-plugin-jsx-a11y`) and E9 ("Try again") in **Task 5**: the dev dependencies and the lint plugin there, one axe assertion in each component test from then on (and one added to Tasks 3 and 4's component tests); "Try again" on the search failure state.
-- E1 ("+1" next-day arrival) and E8 (the note on "Select") in **Task 6**, which changes the card and owns the "Select" button.
+- E1 ("+1" next-day arrival), E2 (below) and E8 (the note on "Select") in **Task 6**, which changes the card and owns the "Select" button.
 - E4 ("Sign out") in **Task 7**, with the realm's post-logout redirect.
 - E6 (Firefox and WebKit) in **Task 10**.
-- E2 (airline names) and E3 (suggestions) need a catalogue endpoint from plan 5 that no task builds: **waiting for the user** (and the first to cut with E6 if the date is at risk).
+- E2 (airline names) in **Task 6**. **Decided by the user on 2026-11-16:** the controller finds the airline catalogue itself. The dataset's twelve carriers and their names are already in `mock-gds`'s `StandardCatalogue` (IB Iberia, UX Air Europa, BA British Airways, AF Air France, LH Lufthansa, KL KLM, TP TAP Air Portugal, AZ ITA Airways, LX Swiss, FR Ryanair, U2 easyJet, VY Vueling), and they match the airlines' IATA designators. The controller's choice of the two options E2 named: a static `src/itinerary/carriers.ts` in the bundle, no API change; an unknown code shows the code alone.
+- E3 (suggestions) needs a catalogue endpoint from plan 5 that no task builds: **waiting for the user** (and the first to cut with E6 if the date is at risk).
 
 ## Out of scope
 
