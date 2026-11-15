@@ -68,6 +68,11 @@ Every implementer below writes its report in its own worktree, at `.superpowers/
 
 Lessons for every brief: each subagent uses a private scratch folder of its own (one overwrote another's mutation script in the shared scratchpad). The guard fix is on `main` since `71184d9`, so a plus sign after a plain push no longer blocks; a destructive command quoted as text (for example in a script written by a heredoc) is still blocked, so write such text with a file.
 
+## Speed rules (the user's decision of 2026-11-16, about 00:30)
+
+- Plan 6 Tasks 6, 7 and 8: no per-task review; integrate after `npm run verify` and the controller's `./gradlew build`; the end-of-plan triple review covers them. Every other task keeps its per-task review.
+- A change that touches only `frontend/` runs `npm run verify` alone before each commit.
+
 ## Lesson of the night
 
 - A change to `docs/architecture/openapi.json` must regenerate `frontend/src/api/schema.d.ts` (`npm run api:generate`) in the same commit, and `npm run verify` must pass before merging: Task 10's merge (`005c70e`) turned CI red until `d2c6d4f`. Every backend brief that touches the contract says so.

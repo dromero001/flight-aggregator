@@ -132,6 +132,8 @@ Texts: headings "Find flights" and "Provider status"; "Showing 1 flight"; field 
 - E2 (airline names) in **Task 6**. **Decided by the user on 2026-11-16:** the controller finds the airline catalogue itself. The dataset's twelve carriers and their names are already in `mock-gds`'s `StandardCatalogue` (IB Iberia, UX Air Europa, BA British Airways, AF Air France, LH Lufthansa, KL KLM, TP TAP Air Portugal, AZ ITA Airways, LX Swiss, FR Ryanair, U2 easyJet, VY Vueling), and they match the airlines' IATA designators. The controller's choice of the two options E2 named: a static `src/itinerary/carriers.ts` in the bundle, no API change; an unknown code shows the code alone.
 - E3 (suggestions) needs a catalogue endpoint from plan 5 that no task builds: **waiting for the user** (and the first to cut with E6 if the date is at risk).
 
+**Reviews and gates for the remaining tasks (the user's decision of 2026-11-16, for speed):** Tasks 6, 7 and 8 are integrated without a per-task review, after `npm run verify` and the controller's `./gradlew build`; the end-of-plan triple review covers them. Tasks that touch only `frontend/` run `npm run verify` alone before each commit.
+
 ## Out of scope
 
 Booking (§6.8: "Select" goes no further); `SOLUTION.md`, Grafana and the final reviews (plan 7); visual-regression tests; a frontend coverage gate (§6.11, not approved).

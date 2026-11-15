@@ -16,7 +16,7 @@ These rules apply to every AI agent (main session and subagents) working in this
 - Record the red → green evidence in the progress report of the day: the test, the failure message you saw, and what made it pass. Commits stay green (the full suite passes before every commit), so the evidence lives in the report, not in red commits.
 
 ## Before every commit
-1. `./gradlew build` (full suite) is green. If `spotlessCheck` fails, run `./gradlew spotlessApply` and build again. If the change touches `frontend/`, `npm run verify` in `frontend/` (typecheck, lint, format check, tests) is green too.
+1. `./gradlew build` (full suite) is green. If `spotlessCheck` fails, run `./gradlew spotlessApply` and build again. If the change touches `frontend/`, `npm run verify` in `frontend/` (typecheck, lint, format check, tests) is green too. A change that touches only `frontend/` runs `npm run verify` alone; the controller runs `./gradlew build` before integrating it, and CI runs it on every push (the user's decision of 2026-11-16, for speed). A change to `docs/architecture/openapi.json` regenerates `frontend/src/api/schema.d.ts` (`npm run api:generate`) in the same commit and runs both gates.
 2. Review your own diff with the `thermo-nuclear-code-quality-review` skill and fix the findings. Look for an existing mechanism in the codebase or framework before adding a new one, and for anything that fails silently or leaves state non-atomic.
 3. Small commits with clear messages. **No AI attribution of any kind** in commits or PRs (no `Co-Authored-By`, no "Generated with").
 
@@ -26,6 +26,7 @@ Three reviewer subagents, defined in `.claude/agents/`, each with one concern:
   - From plan 5 on (the user's decision of 2026-11-15, to fit the delivery date): one reviewer per task acts as both, `functional-reviewer` then `code-reviewer`, and gives two verdicts. The end-of-plan review keeps three separate reviewers. Independent tasks may run in parallel in their own git worktrees; each is reviewed before it reaches `main`.
 - **At the end of every plan:** all three on the whole plan's diff, adding `risk-reviewer` (security, data loss, silent failures, half-applied state, concurrency, resilience).
 - A task moves on only when both of its reviewers say `APPROVED`; a plan closes only when all three do. Findings are fixed, or the user decides to accept them; record which in the progress report.
+- From 2026-11-16 (the user's decision, for speed): the leaf tasks of plan 6 that no other task builds on (Tasks 6, 7 and 8) are integrated without a per-task review, after their gates and the controller's `./gradlew build`; the end-of-plan triple review covers them. Every other task keeps its per-task review.
 - A Minor finding never opens a fix round of its own: it is recorded and fixed in the end-of-plan review (the user's decision of 2026-11-15, to make the usage limits last). Only Critical and Important findings open a round.
 - Why this split: `docs/ai/README.md`, "Review protocol".
 
