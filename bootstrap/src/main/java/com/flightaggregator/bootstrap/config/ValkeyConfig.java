@@ -7,6 +7,7 @@ import com.flightaggregator.adapter.persistence.ValkeySearchCache;
 import com.flightaggregator.application.port.out.RefreshCoordination;
 import com.flightaggregator.application.port.out.RequestCounter;
 import com.flightaggregator.application.port.out.SearchCache;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.lettuce.core.ClientOptions.DisconnectedBehavior;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -35,9 +36,19 @@ class ValkeyConfig {
     return options -> options.disconnectedBehavior(DisconnectedBehavior.REJECT_COMMANDS);
   }
 
+  /**
+   * Valkey's circuit breaker: after a failed command the stores skip Valkey for {@code
+   * search.valkey-skip}, then one call probes it. It is not in the providers' registry, whose
+   * breakers are named after providers and whose transitions are logged as theirs.
+   */
   @Bean
-  ValkeyFailures valkeyFailures() {
-    return new ValkeyFailures();
+  CircuitBreaker valkeyCircuitBreaker(SearchProperties search) {
+    return CircuitBreaker.of("valkey", ValkeyFailures.circuitBreakerConfig(search.valkeySkip()));
+  }
+
+  @Bean
+  ValkeyFailures valkeyFailures(CircuitBreaker valkeyCircuitBreaker) {
+    return new ValkeyFailures(valkeyCircuitBreaker);
   }
 
   @Bean

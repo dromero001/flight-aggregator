@@ -7,6 +7,8 @@ import io.lettuce.core.ClientOptions;
 import io.lettuce.core.SocketOptions;
 import io.lettuce.core.TimeoutOptions;
 import java.time.Duration;
+import java.util.Properties;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
@@ -47,6 +49,26 @@ public final class ValkeyTestServer {
   }
 
   /**
+   * How many of these commands the server has run, from its {@code INFO commandstats}. A command
+   * sent while it was down runs once it resumes, before this one, which follows it on the
+   * connection; so the count shows whether a call reached Valkey at all.
+   */
+  public static long commandsRun(String... commands) {
+    Properties stats =
+        VALKEY.execute(
+            (RedisCallback<Properties>)
+                connection -> connection.serverCommands().info("commandstats"));
+    long run = 0;
+    for (String command : commands) {
+      String stat = stats.getProperty("cmdstat_" + command);
+      if (stat != null) {
+        run += Long.parseLong(stat.substring("calls=".length(), stat.indexOf(',')));
+      }
+    }
+    return run;
+  }
+
+  /**
    * The call's result with the server frozen, as when Valkey hangs: connections stay open and no
    * command is answered. The test fails unless the call returns within 500 ms, the bound a Valkey
    * outage may add (Review Focus 3). The server resumes before this returns.
@@ -75,8 +97,26 @@ public final class ValkeyTestServer {
         });
   }
 
+  /**
+   * Runs the test with a client of its own, with the same settings, that has not connected yet: it
+   * connects at its first command. The client is closed afterwards.
+   */
+  public static void withNewClient(Consumer<StringRedisTemplate> test) {
+    LettuceConnectionFactory connections = connections();
+    try {
+      test.accept(new StringRedisTemplate(connections));
+    } finally {
+      connections.destroy();
+    }
+  }
+
   private static StringRedisTemplate start() {
     CONTAINER.start();
+    return new StringRedisTemplate(connections());
+  }
+
+  /** A started connection factory that connects at its first command. */
+  private static LettuceConnectionFactory connections() {
     LettuceClientConfiguration client =
         LettuceClientConfiguration.builder()
             .commandTimeout(Duration.ofMillis(250))
@@ -94,6 +134,6 @@ public final class ValkeyTestServer {
             client);
     connections.afterPropertiesSet();
     connections.start();
-    return new StringRedisTemplate(connections);
+    return connections;
   }
 }

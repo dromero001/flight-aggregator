@@ -1,7 +1,12 @@
 package com.flightaggregator.adapter.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.flightaggregator.adapter.persistence.support.ValkeyTestServer;
 import com.flightaggregator.application.port.in.PageCursor;
 import com.flightaggregator.application.port.in.SearchCriteria;
@@ -15,6 +20,7 @@ import com.flightaggregator.domain.Itinerary;
 import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.Money;
 import com.flightaggregator.domain.Provider;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
@@ -22,8 +28,10 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import tools.jackson.core.json.JsonFactory;
 
@@ -73,11 +81,27 @@ class ValkeySearchCacheTest {
   private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
   private final ValkeySearchCache cache =
       new ValkeySearchCache(
-          valkey, new JsonFactory(), Duration.ofMinutes(5), new ValkeyFailures(), meters);
+          valkey,
+          new JsonFactory(),
+          Duration.ofMinutes(5),
+          new ValkeyFailures(
+              CircuitBreaker.of(
+                  "valkey", ValkeyFailures.circuitBreakerConfig(Duration.ofSeconds(10)))),
+          meters);
+
+  private final Logger logger = (Logger) LoggerFactory.getLogger(ValkeySearchCache.class);
+  private final ListAppender<ILoggingEvent> log = new ListAppender<>();
 
   @BeforeEach
-  void startFromAnEmptyValkey() {
+  void startFromAnEmptyValkeyAndCaptureTheLog() {
     ValkeyTestServer.empty();
+    log.start();
+    logger.addAppender(log);
+  }
+
+  @AfterEach
+  void releaseTheLog() {
+    logger.detachAppender(log);
   }
 
   /** Every field of the page comes back as it was put, each leg at its own offset. */
@@ -133,6 +157,43 @@ class ValkeySearchCacheTest {
     assertThat(lookups("hit")).isEqualTo(2);
     assertThat(lookups("miss")).isEqualTo(1);
     assertThat(lookups("error")).isZero();
+  }
+
+  /**
+   * A page this version cannot read, such as one an older version wrote, is not cached for it: the
+   * lookup finds nothing and counts as an error, not a hit, instead of failing the search (§6.2).
+   */
+  @Test
+  void findsNothingInAPageItCannotRead() {
+    SearchKey key = new SearchKey(4, FROM_MADRID, 20);
+    valkey.opsForValue().set(key.value(), "{\"itineraries\":\"not a page\"}");
+
+    assertThat(cache.get(key)).isEmpty();
+    assertThat(lookups("error")).isEqualTo(1);
+    assertThat(lookups("hit") + lookups("miss")).isZero();
+  }
+
+  /**
+   * A page that cannot be read is one WARN that says what it is, and nothing of its content or of
+   * the parser's failure, which quotes the content.
+   */
+  @Test
+  void warnsOfAPageItCannotReadWithoutItsContent() {
+    SearchKey key = new SearchKey(4, FROM_MADRID, 20);
+    valkey.opsForValue().set(key.value(), "not json");
+
+    cache.get(key);
+
+    assertThat(log.list)
+        .extracting(
+            ILoggingEvent::getLevel,
+            ILoggingEvent::getFormattedMessage,
+            ILoggingEvent::getThrowableProxy)
+        .containsExactly(
+            tuple(
+                Level.WARN,
+                "A cached search page cannot be read, so the search runs without it",
+                null));
   }
 
   /** Valkey down, a lookup is a miss, counted as an error rather than a miss (§6.2). */

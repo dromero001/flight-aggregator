@@ -7,15 +7,21 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import tools.jackson.core.json.JsonFactory;
 
 /**
  * The search cache in Valkey: each page a JSON string under its key's value, for the cache's time
  * to live. Each lookup counts once in {@code search.cache}, tagged {@code result=hit|miss|error},
- * so the hit ratio can be read (§6.2, §6.10).
+ * so the hit ratio can be read (§6.2, §6.10). A page this version cannot read, such as one another
+ * version wrote, counts as an error and is one {@code WARN}: Valkey is a cache, so nothing it holds
+ * may fail a search.
  */
 public final class ValkeySearchCache implements SearchCache {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ValkeySearchCache.class);
 
   private final StringRedisTemplate valkey;
   private final JsonFactory json;
@@ -55,8 +61,21 @@ public final class ValkeySearchCache implements SearchCache {
 
   private Optional<SearchPage> lookUp(SearchKey key) {
     String document = valkey.opsForValue().get(key.value());
-    (document == null ? misses : hits).increment();
-    return Optional.ofNullable(document).map(found -> SearchPageJson.read(found, json));
+    if (document == null) {
+      misses.increment();
+      return Optional.empty();
+    }
+    SearchPage page;
+    try {
+      page = SearchPageJson.read(document, json);
+    } catch (IllegalStateException unreadable) {
+      // Neither the page nor the failure, which can quote it, is logged.
+      LOG.warn("A cached search page cannot be read, so the search runs without it");
+      errors.increment();
+      return Optional.empty();
+    }
+    hits.increment();
+    return Optional.of(page);
   }
 
   private Optional<SearchPage> failedLookup() {

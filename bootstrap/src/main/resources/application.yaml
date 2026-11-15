@@ -48,6 +48,10 @@ search:
   freshness-threshold: PT10M
   # A refresh claim (SET NX) holds this long, longer than one refresh takes (Q9).
   refresh-claim-ttl: PT2M
+  # After a Valkey command fails, Valkey is skipped this long, then one call probes it, so an outage
+  # costs a search one command timeout, not one per command (plan 5, the user's decision of
+  # 2026-11-15).
+  valkey-skip: PT10S
 
 ingestion:
   # A run that would build more itineraries publishes nothing (R7).
