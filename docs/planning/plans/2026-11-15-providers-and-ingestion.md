@@ -53,7 +53,7 @@ Roadmap: [plan 4](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 | **User:** the stale-route refresh is plan 5's | It is triggered by search, so it comes with the search that detects it. This plan adds no origin filter to the mock | (user, session 09) |
 | Offers in `provider_offer`, one row per provider offer (before deduplication), with its download position. A provider's offers are replaced in one transaction, only after every page arrived | R1 and §6.5: a failed provider keeps its last good offers whole, and every provider's offer of a flight is stored for plan 5's re-price alternative. The position keeps page order (R10) | (§6.5; R1, R10) |
 | Each run rebuilds every itinerary from the stored offers of all providers, fresh and kept | No merge of old and new itineraries; a provider down only means its offers are older (§4, price freshness) | (§5.3, §6.5) |
-| A run with no stored offers at all publishes nothing | All providers down on the first run must not publish an empty inventory | (§6.5: never replace good data with nothing) |
+| A run with no stored offers at all, or whose offers build no itinerary, publishes nothing (outcome `NOTHING_TO_PUBLISH`; ruling of the Task 2 review) | All providers down on the first run must not publish an empty inventory, and neither may stored offers that have all departed or all conflict | (§6.5: never replace good data with nothing) |
 | Partitioned by range on `departure` itself, with bounds at UTC midnights, plus a `DEFAULT` partition per slot | One definition of the day (R12), no extra column, and `departure > now` prunes partitions directly | (§4.3; R12) |
 | The legs of an itinerary are a `jsonb` column of the itinerary row | Search shows them and re-price re-quotes them, always with their itinerary; a leg table would add ~2.3M rows per slot | (left to the builder, §11) |
 | The airport catalogue is a table seeded by a Flyway migration | Versioned reference data, as §4 asks; a new airport is a new migration | (§4, unknown airports) |
@@ -107,7 +107,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 - Produces (`port.in`):
   - `interface IngestInventory { IngestionReport ingest(); }`
   - `record ProviderReport(Provider provider, Status status, Optional<FailureReason> failure, int offersFetched, Map<DiscardReason, Integer> discarded, int offersUsed, int lostToDeduplication)` with `enum Status { FRESH, KEPT }`. `offersUsed` counts the stored offers (fresh or kept) that took part in the run.
-  - `record IngestionReport(Instant startedAt, Duration duration, Outcome outcome, long generation, long itineraries, List<ProviderReport> providers)` with `enum Outcome { PUBLISHED, NO_OFFERS, CEILING_EXCEEDED }`; providers in `Provider` order.
+  - `record IngestionReport(Instant startedAt, Duration duration, Outcome outcome, long generation, long itineraries, List<ProviderReport> providers)` with `enum Outcome { PUBLISHED, NOTHING_TO_PUBLISH, CEILING_EXCEEDED }`; providers in `Provider` order.
 - `IngestInventoryService(List<FlightProvider>, OfferStore, AirportCatalogue, DiscardedRecords, Clock)`; this task's service ends after storing the offers, and Task 2 adds the build and the publication.
 
 - [ ] **Step 1: `LegKeyTest.rejectsANullComponent`** (code review note): each null component throws `NullPointerException` naming it.
@@ -141,7 +141,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
   - `publishesTheItinerariesOfAllStoredOffers`: Alpha fresh with MAD→LHR, Beta down with a stored LHR→JFK from an earlier run → the writer pushes the direct legs and MAD→LHR→JFK; report `PUBLISHED` with the fake's generation; the itinerary through Beta's leg has Beta's stored `quotedAt` (R3).
   - `buildsWithTheRunsStartInstant`: a stored leg departing before `Clock.now()` produces no itinerary.
   - `reportsConflictingOffersAsDiscarded`: Gamma gives one flight two arrivals → both offers go to `DiscardedRecords` with `CONFLICTING`; `lostToDeduplication` counts an offer beaten by a cheaper one of another provider.
-  - `publishesNothingWithoutOffers`: every provider down and nothing stored → `replaceInventory` is never called, outcome `NO_OFFERS`, generation 0.
+  - `publishesNothingWithoutOffers`: every provider down and nothing stored → `replaceInventory` is never called, outcome `NOTHING_TO_PUBLISH`, generation 0.
   - `stopsWithoutPublishingPastTheCeiling` (R7): ceiling 2 and four itineraries → the fake repository sees the writer throw and publishes nothing; outcome `CEILING_EXCEEDED`.
   - `propagatesARepositoryFailure`: the repository throws `IllegalStateException` → `ingest()` throws it; the offers already stored stay stored.
 - [ ] **Step 2: Implement.** Offers are read per provider in `Provider` order (R10), deduplicated once, then `build(...).forEach(sink)` inside the writer, counting against the ceiling and throwing `IngestionCeiling` past it.
@@ -315,7 +315,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
   - `ingestsWithOneProviderDown`: after a good run, Beta answers 500 → generation 2; MAD→LHR→JFK is still published with Beta's previous `quotedAt`.
   - `ingestsWithTwoProvidersDown`.
   - `keepsTheLastGoodInventoryWithAllThreeDown`: generation 3, the same itineraries, every provider `KEPT`.
-  - `publishesNothingWhenAllThreeAreDownOnTheFirstRun`: generation 0, outcome `NO_OFFERS`.
+  - `publishesNothingWhenAllThreeAreDownOnTheFirstRun`: generation 0, outcome `NOTHING_TO_PUBLISH`.
   - `aSecondRunWhileOneHoldsTheLockIsSkipped` (Review Focus 5): with ShedLock's lock held through `LockProvider` for `ingestion`, `IngestionJob.run()` returns without ingesting (generation unchanged).
 - [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Ingest on a schedule under a database lock, and prove it with providers down"`.
 
