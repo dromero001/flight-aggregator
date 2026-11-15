@@ -190,7 +190,8 @@ public final class IngestInventoryService implements IngestInventory {
         report.offersFetched(),
         withConflicting(report.discarded(), (int) conflicting),
         report.offersUsed() - (int) conflicting,
-        (int) (stored.get(provider).size() - conflicting - kept));
+        (int) (stored.get(provider).size() - conflicting - kept),
+        report.newestQuotedAt());
   }
 
   private ProviderReport fresh(
@@ -219,7 +220,8 @@ public final class IngestInventoryService implements IngestInventory {
         download.legs().size(),
         discardedByReason,
         inCatalogue.size(),
-        0);
+        0,
+        newestQuote(inCatalogue));
   }
 
   private void discard(
@@ -229,6 +231,7 @@ public final class IngestInventoryService implements IngestInventory {
   }
 
   private ProviderReport kept(Provider provider, FailureReason reason, Throwable cause) {
+    List<Leg> stored = store.offers(provider);
     return new ProviderReport(
         provider,
         ProviderReport.Status.KEPT,
@@ -236,8 +239,14 @@ public final class IngestInventoryService implements IngestInventory {
         Optional.ofNullable(cause),
         0,
         Map.of(),
-        store.offers(provider).size(),
-        0);
+        stored.size(),
+        0,
+        newestQuote(stored));
+  }
+
+  /** The newest quote among the offers, empty when there are none. */
+  private static Optional<Instant> newestQuote(List<Leg> offers) {
+    return offers.stream().map(Leg::quotedAt).max(Comparator.naturalOrder());
   }
 
   private static Outcome download(FlightProvider provider) {

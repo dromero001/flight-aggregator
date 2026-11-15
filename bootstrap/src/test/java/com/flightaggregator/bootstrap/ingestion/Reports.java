@@ -18,6 +18,12 @@ final class Reports {
   static final Instant STARTED_AT = Instant.parse("2026-11-20T08:00:00Z");
   static final Duration DURATION = Duration.ofSeconds(90);
 
+  /** The newest quote of a fresh download: its last page arrived 30 seconds into the run. */
+  static final Instant FRESH_QUOTE = STARTED_AT.plusSeconds(30);
+
+  /** The newest quote of kept offers: a run a day before stored them. */
+  static final Instant KEPT_QUOTE = STARTED_AT.minus(Duration.ofDays(1));
+
   private Reports() {}
 
   static IngestionReport published(Publication publication, ProviderReport... providers) {
@@ -33,7 +39,10 @@ final class Reports {
     return new IngestionReport(STARTED_AT, DURATION, outcome, Optional.empty(), List.of(providers));
   }
 
-  /** Four offers fetched, one discarded for its price, three used and one lost to another's. */
+  /**
+   * Four offers fetched, one discarded for its price, three used and one lost to another's; the
+   * newest quoted at {@link #FRESH_QUOTE}.
+   */
   static ProviderReport fresh(Provider provider) {
     return new ProviderReport(
         provider,
@@ -43,10 +52,11 @@ final class Reports {
         4,
         Map.of(DiscardReason.PRICE, 1),
         3,
-        1);
+        1,
+        Optional.of(FRESH_QUOTE));
   }
 
-  /** Two stored offers kept and used. */
+  /** Two stored offers kept and used, the newest quoted at {@link #KEPT_QUOTE}. */
   static ProviderReport kept(Provider provider, FailureReason reason, Throwable cause) {
     return new ProviderReport(
         provider,
@@ -56,6 +66,7 @@ final class Reports {
         0,
         Map.of(),
         2,
-        0);
+        0,
+        Optional.of(KEPT_QUOTE));
   }
 }

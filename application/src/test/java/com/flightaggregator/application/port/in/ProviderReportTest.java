@@ -23,7 +23,8 @@ class ProviderReportTest {
             1,
             discarded,
             0,
-            0);
+            0,
+            Optional.empty());
 
     discarded.put(DiscardReason.PRICE, 5);
 

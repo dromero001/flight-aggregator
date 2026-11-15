@@ -37,6 +37,7 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -108,6 +109,45 @@ class IngestInventoryServiceTest {
     assertThat(betaReport.cause()).containsSame(timedOut);
     assertThat(betaReport.offersFetched()).isZero();
     assertThat(betaReport.offersUsed()).isEqualTo(1);
+  }
+
+  /**
+   * How old each provider's data is: the newest quote among its stored offers, just stored or kept,
+   * so that a run after a restart knows it too. A provider with nothing stored has none.
+   */
+  @Test
+  void reportsTheNewestQuoteOfEachProvidersStoredOffers() {
+    Instant firstPage = Instant.parse("2026-11-20T07:59:58Z");
+    Instant secondPage = Instant.parse("2026-11-20T07:59:59Z");
+    Instant yesterday = Instant.parse("2026-11-19T08:00:05Z");
+    store.with(
+        BETA,
+        List.of(
+            leg(BETA, 5, "MAD", "LHR", "2026-11-25T07:15:00Z", yesterday.minusSeconds(4)),
+            leg(BETA, 6, "MAD", "BCN", "2026-11-25T07:15:00Z", yesterday)));
+    FakeFlightProvider alpha =
+        new FakeFlightProvider(
+            ALPHA,
+            () ->
+                download(
+                    leg(ALPHA, 1, "MAD", "LHR", "2026-11-25T07:15:00Z", secondPage),
+                    leg(ALPHA, 2, "MAD", "BCN", "2026-11-25T07:15:00Z", firstPage)));
+    FakeFlightProvider beta =
+        new FakeFlightProvider(
+            BETA,
+            () -> {
+              throw new ProviderUnavailableException(BETA, FailureReason.HTTP_ERROR, null);
+            });
+    FakeFlightProvider gamma = new FakeFlightProvider(GAMMA, () -> download());
+
+    IngestionReport report = service(alpha, beta, gamma).ingest();
+
+    assertThat(report.providers())
+        .extracting(ProviderReport::provider, ProviderReport::newestQuotedAt)
+        .containsExactly(
+            tuple(ALPHA, Optional.of(secondPage)),
+            tuple(BETA, Optional.of(yesterday)),
+            tuple(GAMMA, Optional.empty()));
   }
 
   @Test

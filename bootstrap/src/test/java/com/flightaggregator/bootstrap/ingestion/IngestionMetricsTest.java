@@ -52,10 +52,11 @@ class IngestionMetricsTest {
     assertThat(downloads(ALPHA, "FRESH")).isEqualTo(1);
     assertThat(downloads(BETA, "KEPT")).isEqualTo(1);
     assertThat(downloads(GAMMA, "FRESH")).isEqualTo(1);
-    // Two days and ten minutes after the run's start; Beta has had no fresh download yet.
-    assertThat(lastFreshSeconds(ALPHA)).isEqualTo(173_400);
-    assertThat(lastFreshSeconds(BETA)).isNaN();
-    assertThat(lastFreshSeconds(GAMMA)).isEqualTo(173_400);
+    // Two days and ten minutes after the run's start: Alpha's and Gamma's newest quotes are 30
+    // seconds younger than that, Beta's kept one a day older.
+    assertThat(lastFreshSeconds(ALPHA)).isEqualTo(173_370);
+    assertThat(lastFreshSeconds(BETA)).isEqualTo(259_800);
+    assertThat(lastFreshSeconds(GAMMA)).isEqualTo(173_370);
     // On 2026-11-22 the last partition, 2026-12-27, is 35 days ahead.
     assertThat(gauge("ingestion.partitions.days.ahead")).isEqualTo(35);
     assertThat(gauge("ingestion.partitions.default.rows")).isEqualTo(2);
@@ -86,6 +87,21 @@ class IngestionMetricsTest {
 
     assertThat(gauge("ingestion.itineraries")).isEqualTo(1234);
     assertThat(gauge("ingestion.partitions.default.rows")).isEqualTo(2);
+  }
+
+  /**
+   * After a restart, the first run gives back how old each provider's data is, from its stored
+   * offers' newest quote, even when it keeps them.
+   */
+  @Test
+  void restoresAProvidersFreshnessFromItsStoredOffersAfterARestart() {
+    metrics.record(
+        unpublished(
+            IngestionReport.Outcome.NOTHING_TO_PUBLISH,
+            kept(BETA, FailureReason.HTTP_ERROR, new IOException("Server error 500"))));
+
+    // The kept offers were quoted a day before the run started, which is now.
+    assertThat(lastFreshSeconds(BETA)).isEqualTo(86_400);
   }
 
   private double gauge(String name) {

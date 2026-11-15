@@ -21,8 +21,9 @@ import java.util.function.ToDoubleFunction;
  * The ingestion's meters, recorded from each run's report, with low-cardinality tags only (§6.10):
  * how long runs take and how they end (§6.4), how many runs in a row did not publish and how old
  * each provider's last fresh download is (§6.5), and the partitions' health (§4.3). A gauge whose
- * value is not known yet, before the first publication or a provider's first fresh download, reads
- * {@code NaN}.
+ * value is not known, before the first publication or while a provider has nothing stored, reads
+ * {@code NaN}. A provider's age comes from its stored offers, so the first run after a restart
+ * restores it.
  */
 public final class IngestionMetrics {
 
@@ -33,7 +34,7 @@ public final class IngestionMetrics {
   private final Clock clock;
   private final AtomicReference<Publication> lastPublication = new AtomicReference<>();
   private final AtomicInteger consecutiveFailures = new AtomicInteger();
-  private final Map<Provider, AtomicReference<Instant>> lastFresh = new EnumMap<>(Provider.class);
+  private final Map<Provider, AtomicReference<Instant>> newestQuote = new EnumMap<>(Provider.class);
 
   public IngestionMetrics(MeterRegistry meters, Clock clock) {
     this.meters = meters;
@@ -44,9 +45,9 @@ public final class IngestionMetrics {
     Gauge.builder("ingestion.consecutive.failures", consecutiveFailures, AtomicInteger::get)
         .register(meters);
     for (Provider provider : Provider.values()) {
-      AtomicReference<Instant> fresh = new AtomicReference<>();
-      lastFresh.put(provider, fresh);
-      Gauge.builder("ingestion.provider.last.fresh.seconds", fresh, this::secondsSince)
+      AtomicReference<Instant> quote = new AtomicReference<>();
+      newestQuote.put(provider, quote);
+      Gauge.builder("ingestion.provider.last.fresh.seconds", quote, this::secondsSince)
           .tag("provider", provider.name())
           .register(meters);
     }
@@ -67,9 +68,7 @@ public final class IngestionMetrics {
               "status",
               provider.status().name())
           .increment();
-      if (provider.status() == ProviderReport.Status.FRESH) {
-        lastFresh.get(provider.provider()).set(report.startedAt());
-      }
+      newestQuote.get(provider.provider()).set(provider.newestQuotedAt().orElse(null));
     }
   }
 
@@ -104,11 +103,11 @@ public final class IngestionMetrics {
   }
 
   /**
-   * The age of a provider's last fresh download, from the start of the run that made it, so it is
-   * never younger than the data.
+   * The age of a provider's last fresh download: of the newest quote among its stored offers, which
+   * that download stored, as the last run reported it.
    */
-  private double secondsSince(AtomicReference<Instant> fresh) {
-    Instant at = fresh.get();
+  private double secondsSince(AtomicReference<Instant> quote) {
+    Instant at = quote.get();
     return at == null ? Double.NaN : Duration.between(at, clock.now()).toMillis() / 1000.0;
   }
 }
