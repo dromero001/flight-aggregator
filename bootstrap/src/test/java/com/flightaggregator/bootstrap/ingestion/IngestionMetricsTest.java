@@ -18,7 +18,6 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
@@ -32,7 +31,7 @@ class IngestionMetricsTest {
   void recordsAPublishedRun() {
     metrics.record(
         published(
-            new Publication(7, 1234, 2, LocalDate.parse("2026-12-27")),
+            new Publication(7, 1234, 2, Instant.parse("2026-12-28T00:00:00Z")),
             fresh(ALPHA),
             kept(BETA, FailureReason.HTTP_ERROR, new IOException("Server error 500")),
             fresh(GAMMA)));
@@ -73,7 +72,7 @@ class IngestionMetricsTest {
         .isEqualTo(1);
 
     metrics.record(
-        published(new Publication(1, 10, 0, LocalDate.parse("2026-12-27")), fresh(ALPHA)));
+        published(new Publication(1, 10, 0, Instant.parse("2026-12-28T00:00:00Z")), fresh(ALPHA)));
 
     assertThat(gauge("ingestion.consecutive.failures")).isZero();
   }
@@ -82,7 +81,8 @@ class IngestionMetricsTest {
   @Test
   void keepsTheLastPublicationThroughARunThatPublishesNothing() {
     metrics.record(
-        published(new Publication(7, 1234, 2, LocalDate.parse("2026-12-27")), fresh(ALPHA)));
+        published(
+            new Publication(7, 1234, 2, Instant.parse("2026-12-28T00:00:00Z")), fresh(ALPHA)));
     metrics.record(unpublished(IngestionReport.Outcome.NOTHING_TO_PUBLISH, fresh(ALPHA)));
 
     assertThat(gauge("ingestion.itineraries")).isEqualTo(1234);

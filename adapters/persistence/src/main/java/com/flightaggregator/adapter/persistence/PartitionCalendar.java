@@ -6,14 +6,13 @@ import java.time.ZoneOffset;
 
 /**
  * The one definition of an itinerary's partition day (R12): the UTC date of its departure instant,
- * whatever offset the provider quoted it in. Public so that the partitions' metrics count days the
- * same way.
+ * whatever offset the provider quoted it in.
  */
-public final class PartitionCalendar {
+final class PartitionCalendar {
 
   private PartitionCalendar() {}
 
-  public static LocalDate dayOf(Instant departure) {
+  static LocalDate dayOf(Instant departure) {
     return LocalDate.ofInstant(departure, ZoneOffset.UTC);
   }
 

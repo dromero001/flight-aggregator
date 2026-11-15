@@ -5,7 +5,6 @@ import com.flightaggregator.application.port.out.ItineraryWriter;
 import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.domain.Itinerary;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -17,7 +16,7 @@ public final class FakeItineraryRepository implements ItineraryRepository {
 
   public static final long GENERATION = 7;
   public static final long ROWS_IN_DEFAULT_PARTITION = 2;
-  public static final LocalDate LAST_PARTITION_DAY = LocalDate.parse("2026-12-27");
+  public static final Instant PARTITIONED_UNTIL = Instant.parse("2026-12-28T00:00:00Z");
 
   private int calls;
   private List<Itinerary> published = List.of();
@@ -29,7 +28,7 @@ public final class FakeItineraryRepository implements ItineraryRepository {
     writer.writeTo(written::add);
     published = List.copyOf(written);
     return new Publication(
-        GENERATION, published.size(), ROWS_IN_DEFAULT_PARTITION, LAST_PARTITION_DAY);
+        GENERATION, published.size(), ROWS_IN_DEFAULT_PARTITION, PARTITIONED_UNTIL);
   }
 
   public int calls() {

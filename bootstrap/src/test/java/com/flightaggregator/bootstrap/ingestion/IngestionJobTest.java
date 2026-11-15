@@ -24,7 +24,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.time.Duration;
-import java.time.LocalDate;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -79,7 +79,8 @@ class IngestionJobTest {
                 },
                 () ->
                     published(
-                        new Publication(1, 10, 0, LocalDate.parse("2026-12-27")), fresh(ALPHA)))
+                        new Publication(1, 10, 0, Instant.parse("2026-12-28T00:00:00Z")),
+                        fresh(ALPHA)))
             .iterator();
     IngestionJob job = job(() -> runs.next().get());
 
@@ -109,7 +110,7 @@ class IngestionJobTest {
             new CannotGetJdbcConnectionException("Failed to obtain JDBC Connection"));
     IngestionJob job =
         new IngestionJob(
-            () -> published(new Publication(1, 10, 0, LocalDate.parse("2026-12-27"))),
+            () -> published(new Publication(1, 10, 0, Instant.parse("2026-12-28T00:00:00Z"))),
             metrics,
             new DefaultLockingTaskExecutor(
                 configuration -> {
@@ -138,7 +139,7 @@ class IngestionJobTest {
     List<LockConfiguration> taken = new ArrayList<>();
     IngestionJob job =
         new IngestionJob(
-            () -> published(new Publication(1, 10, 0, LocalDate.parse("2026-12-27"))),
+            () -> published(new Publication(1, 10, 0, Instant.parse("2026-12-28T00:00:00Z"))),
             metrics,
             new DefaultLockingTaskExecutor(
                 configuration -> {
@@ -169,7 +170,7 @@ class IngestionJobTest {
         job(
             () ->
                 published(
-                    new Publication(7, 1234, 2, LocalDate.parse("2026-12-27")),
+                    new Publication(7, 1234, 2, Instant.parse("2026-12-28T00:00:00Z")),
                     fresh(ALPHA),
                     kept(BETA, FailureReason.HTTP_ERROR, serverError),
                     fresh(GAMMA)));

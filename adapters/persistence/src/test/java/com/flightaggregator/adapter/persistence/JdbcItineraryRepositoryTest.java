@@ -19,7 +19,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.stream.IntStream;
@@ -114,7 +113,8 @@ class JdbcItineraryRepositoryTest {
     Publication publication =
         publish(NOW, List.of(direct(1, "2026-11-25T07:15:00Z"), direct(2, "2026-11-25T08:15:00Z")));
 
-    assertThat(publication).isEqualTo(new Publication(1, 2, 0, LocalDate.parse("2026-12-27")));
+    assertThat(publication)
+        .isEqualTo(new Publication(1, 2, 0, Instant.parse("2026-12-28T00:00:00Z")));
     assertThat(published()).isEqualTo(new Published("b", 1, NOW));
     assertThat(rows("itinerary_b")).isEqualTo(2);
   }
@@ -189,7 +189,8 @@ class JdbcItineraryRepositoryTest {
     Publication publication =
         publish(NOW, List.of(direct(1, "2026-11-25T07:15:00Z"), direct(2, "2026-12-30T07:15:00Z")));
 
-    assertThat(publication).isEqualTo(new Publication(1, 2, 1, LocalDate.parse("2026-12-27")));
+    assertThat(publication)
+        .isEqualTo(new Publication(1, 2, 1, Instant.parse("2026-12-28T00:00:00Z")));
     assertThat(published()).isEqualTo(new Published("b", 1, NOW));
   }
 

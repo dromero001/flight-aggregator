@@ -270,7 +270,7 @@ class IngestInventoryServiceTest {
                 FakeItineraryRepository.GENERATION,
                 3,
                 FakeItineraryRepository.ROWS_IN_DEFAULT_PARTITION,
-                FakeItineraryRepository.LAST_PARTITION_DAY));
+                FakeItineraryRepository.PARTITIONED_UNTIL));
   }
 
   @Test

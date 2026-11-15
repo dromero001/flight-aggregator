@@ -1,6 +1,5 @@
 package com.flightaggregator.bootstrap.ingestion;
 
-import com.flightaggregator.adapter.persistence.PartitionCalendar;
 import com.flightaggregator.application.port.in.IngestionReport;
 import com.flightaggregator.application.port.in.ProviderReport;
 import com.flightaggregator.application.port.out.Clock;
@@ -10,7 +9,6 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -96,10 +94,9 @@ public final class IngestionMetrics {
         .register(meters);
   }
 
-  /** The days from today's partition to the last one, counted as the partitions count them. */
+  /** The whole days from now until the day partitions end: 37 just after a run (§4.3). */
   private double partitionDaysAhead(Publication publication) {
-    return ChronoUnit.DAYS.between(
-        PartitionCalendar.dayOf(clock.now()), publication.lastPartitionDay());
+    return Duration.between(clock.now(), publication.partitionedUntil()).toDays();
   }
 
   /**

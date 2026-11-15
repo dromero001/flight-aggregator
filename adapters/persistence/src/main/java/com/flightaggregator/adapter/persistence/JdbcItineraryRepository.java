@@ -67,7 +67,11 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
     long rowsInDefaultPartition =
         jdbc.sql("SELECT count(*) FROM " + slot.defaultPartition()).query(Long.class).single();
     long generation = switchTo(slot, now);
-    return new Publication(generation, itineraries, rowsInDefaultPartition, lastPartitionDay);
+    return new Publication(
+        generation,
+        itineraries,
+        rowsInDefaultPartition,
+        PartitionCalendar.start(lastPartitionDay.plusDays(1)));
   }
 
   private Slot activeSlot() {

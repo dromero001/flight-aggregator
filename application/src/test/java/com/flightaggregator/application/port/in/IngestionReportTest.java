@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.flightaggregator.application.port.out.Publication;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -33,7 +32,7 @@ class IngestionReportTest {
   /** A run published a generation exactly when its outcome says so. */
   @Test
   void refusesAPublicationThatDisagreesWithTheOutcome() {
-    Publication publication = new Publication(1, 10, 0, LocalDate.parse("2026-12-27"));
+    Publication publication = new Publication(1, 10, 0, Instant.parse("2026-12-28T00:00:00Z"));
 
     assertThatThrownBy(() -> report(IngestionReport.Outcome.PUBLISHED, Optional.empty()))
         .isInstanceOf(IllegalArgumentException.class)
