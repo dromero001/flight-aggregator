@@ -10,16 +10,22 @@ import { itinerarySearchKey, useItinerarySearch } from './useItinerarySearch';
 /** How often the cards' "Updated N min ago" is worked out again (Q7). */
 const FRESHNESS_TICK_MS = 60_000;
 
-/** What a failed search tells the customer (plan 6, Q7). */
-function failureMessage(error: Error): string {
+/**
+ * What a failed search tells the customer (plan 6, Q7), and whether "Try again" (E9) may help: a
+ * rejected filter would be rejected again, and a rate limit says how long to wait.
+ */
+function describeFailure(error: Error): { message: string; canTryAgain: boolean } {
   if (error instanceof ApiError) {
     // A 400's detail names the parameter the API rejected.
-    if (error.status === 400 && error.detail) return error.detail;
+    if (error.status === 400 && error.detail) return { message: error.detail, canTryAgain: false };
     if (error.status === 429 && error.retryAfterSeconds !== undefined) {
-      return `Too many searches from your connection. Try again in ${String(error.retryAfterSeconds)} seconds.`;
+      return {
+        message: `Too many searches from your connection. Try again in ${String(error.retryAfterSeconds)} seconds.`,
+        canTryAgain: false,
+      };
     }
   }
-  return 'Flights could not be loaded. Search again in a moment.';
+  return { message: 'Flights could not be loaded. Search again in a moment.', canTryAgain: true };
 }
 
 /** The line above the cards: the first page loading, no result, or how many are shown. */
@@ -42,6 +48,12 @@ export function ResultsList({ criteria, enabled }: ResultsListProps) {
   const search = useItinerarySearch(criteria, enabled);
   const now = useNow(FRESHNESS_TICK_MS);
   const { itineraries, inventoryChanged } = mergePages(search.data?.pages ?? []);
+  const failure = search.error && describeFailure(search.error);
+
+  function tryAgain() {
+    // Repeats the request that failed: "Load more", or the first page.
+    void (search.isFetchNextPageError ? search.fetchNextPage() : search.refetch());
+  }
 
   function reload() {
     // Drops every loaded page and reads the first one again, on the current generation.
@@ -53,10 +65,15 @@ export function ResultsList({ criteria, enabled }: ResultsListProps) {
       <p className={styles.status} role="status">
         {statusText(search.isLoading, search.data ? itineraries.length : undefined)}
       </p>
-      {search.error && (
-        <p className={styles.failure} role="alert">
-          {failureMessage(search.error)}
-        </p>
+      {failure && (
+        <div className={styles.failure}>
+          <p role="alert">{failure.message}</p>
+          {failure.canTryAgain && (
+            <button className={styles.button} type="button" onClick={tryAgain}>
+              Try again
+            </button>
+          )}
+        </div>
       )}
       {/* Always in the page, so the notice is announced when it appears. */}
       <div aria-live="polite">
