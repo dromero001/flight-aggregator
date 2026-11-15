@@ -8,18 +8,24 @@
 if command -v jq > /dev/null; then
   COMMAND=$(jq -r '.tool_input.command // empty')
 else
-  # Without jq (Git for Windows does not ship it), match the raw JSON: the command is inside it. The
-  # JSON spells a backslash continuation as \\ and \n, which becomes a space, any other line break
-  # as \n, which becomes one, and a tab as \t, which becomes one too.
+  # Without jq (Git for Windows does not ship it), match the raw JSON: the command is inside it. Its
+  # escapes are decoded in order: an escaped backslash (\\) is set aside first, so the \t of
+  # C:\tools is not read as a tab; then \r\n and \n become a line break and \t a tab; then each
+  # escaped backslash becomes one backslash. JSON never holds a raw control character, so \001 is
+  # free to stand in for it.
   COMMAND=$(cat)
-  COMMAND=${COMMAND//\\\\\\n/ }
+  COMMAND=${COMMAND//\\\\/$'\001'}
+  COMMAND=${COMMAND//\\r\\n/$'\n'}
   COMMAND=${COMMAND//\\n/$'\n'}
   COMMAND=${COMMAND//\\t/$'\t'}
+  COMMAND=${COMMAND//$'\001'/\\}
 fi
 
 # grep matches one line at a time, so a line break ends what a pattern can match, as it ends a
 # command in the shell. Only an explicit continuation does not: bash's, a backslash at the end of
 # the line, and PowerShell's, a backtick after a space at the end of the line, each become a space.
+# A Windows line ending (CRLF) is read as a line break first, so it does not hide a continuation.
+COMMAND=${COMMAND//$'\r\n'/$'\n'}
 COMMAND=${COMMAND//\\$'\n'/ }
 COMMAND=${COMMAND//[[:space:]]\`$'\n'/ }
 
