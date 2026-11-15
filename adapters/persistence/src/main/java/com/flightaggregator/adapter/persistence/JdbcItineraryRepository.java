@@ -20,10 +20,10 @@ import tools.jackson.core.json.JsonFactory;
  * inventory_publication} names the one search reads (§6.5). A run is one transaction that first
  * locks the publication row, so two runs never load at once, then empties the other slot, keeps its
  * day partitions from today to today plus {@code partitionDaysAhead}, copies the itineraries in
- * with {@code COPY}, and switches the active slot and the generation. A failure anywhere rolls it
- * all back, and the writer's exception propagates as it was thrown. The writer's {@code writeTo}
- * runs inside the load, on the load's connection, and must not use the storage ports. All DDL
- * touches only the inactive slot, and every table name comes from {@link Slot}.
+ * with {@code COPY}, analyzes the slot, and switches the active slot and the generation. A failure
+ * anywhere rolls it all back, and the writer's exception propagates as it was thrown. The writer's
+ * {@code writeTo} runs inside the load, on the load's connection, and must not use the storage
+ * ports. All DDL touches only the inactive slot, and every table name comes from {@link Slot}.
  */
 public final class JdbcItineraryRepository implements ItineraryRepository {
 
@@ -75,6 +75,9 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
     long itineraries = copy(slot, writer);
     long rowsInDefaultPartition =
         jdbc.sql("SELECT count(*) FROM " + slot.defaultPartition()).query(Long.class).single();
+    // Before the switch, so search never reads the slot without statistics. ANALYZE of the parent
+    // samples every partition.
+    jdbc.sql("ANALYZE " + slot.table()).update();
     long generation = switchTo(slot, now);
     return new Publication(
         generation,

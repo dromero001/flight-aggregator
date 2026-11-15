@@ -46,3 +46,18 @@ Review: functional CHANGES REQUIRED, code APPROVED with follow-ups.
 - Finding: `Instant.parse` already refuses an offset such as `+01:00`, so the explicit `endsWith("Z")` check added in the first round was redundant, and removing it kept every test green (it was dead code); it is gone.
 - Request parsing moved out of `RecordFilter` (now the pure filter value: `all`, `fromOrigin`, `flight`, `matches`) into the record `serving/ListingParams`, bound by name with `@ModelAttribute` in the three controllers, with `toFilter()`; the five positional `@RequestParam` lines are gone. Behaviour unchanged, so this is a refactor under the green suite.
 - Gates: `./gradlew :mock-gds:build` and `./gradlew build` green, 201 tests in `mock-gds`. Thermo-nuclear checklist on the diff: one canonical place for request parsing (next to `Paging`, reusing `Paging.integer` and `InvalidRequestException`), no repeated parameter lists, no silent failures (every malformed part is a 400), no shared mutable state.
+
+## Task 3 — evidence
+
+Persistence groundwork: one provider-time encoding, legs read back, ANALYZE before the switch, six sort indexes per slot.
+
+- `LegsJsonTest.roundTripsLegsExactly` and `failsOnADocumentOfAnotherShape`: red with a stub `LegsJson` (both written before running, so both ran red together): `UnsupportedOperationException` for both (the second therefore failed for the wrong exception type, not yet for its shape). Green = `write` moved unchanged out of `ItineraryRow` (`ItineraryRowTest` untouched and green) and `read`, a strict streaming parse that expects the properties in the order `write` gives them and turns any other shape or a bad value into `IllegalStateException`. The second test was not shown red against a lenient reader; it pins the object-instead-of-array case only.
+- `ProviderTimeTest.roundTripsAnInstantAndItsOffset` (four offsets, through a temporary table): red = `UnsupportedOperationException` from the stub. Green = `instantCell`, `offsetCell`, `read`. `JdbcOfferStore` and `ItineraryRow` then moved onto the helper with their tests unchanged and green (`JdbcOfferStoreTest`, `ItineraryRowTest`).
+- `JdbcItineraryRepositoryTest.analyzesTheLoadedSlotBeforeTheSwitch`: red = `expected: 2.0f but was: -1.0f` (`reltuples` of `itinerary_b_20261125`). Green = `ANALYZE <slot>` after the default-partition count, before `switchTo`.
+- `indexesEverySortOrderOnBothSlots`: red = `expected [six key lists] but was: []`. Green = `V5__itinerary_sort_indexes.sql`: per parent, `(price, id)`, `(departure, id)`, `(duration_seconds, id)` and the same three behind `(origin, destination, ...)`; the test also checks a day partition created by a run, which proves inheritance.
+- Shared file touched: `FlightAggregatorApplicationTest.startsAgainstPostgresAndMigrates` pins the list of applied migrations; it gained version 5 (red in `./gradlew build`: `["5"] not expected`).
+- Gates: `./gradlew build` green. Thermo-nuclear checklist on the diff: the time encoding and the legs JSON each have one canonical home now (no duplicate in the store, the row or the readers); `ANALYZE` runs in the load's transaction so a failure still rolls everything back; no silent failures (`LegsJson.read` throws, with the cause); table names still come only from `Slot`; no new store, so the single-transaction-manager constraint is unchanged.
+
+### Extras for the user to decide
+
+None.

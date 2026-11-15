@@ -129,6 +129,47 @@ class JdbcItineraryRepositoryTest {
     assertThat(rows("itinerary_b")).isEqualTo(2);
   }
 
+  /** The planner's statistics must be there before search reads the slot the switch publishes. */
+  @Test
+  void analyzesTheLoadedSlotBeforeTheSwitch() {
+    publish(NOW, List.of(direct(1, "2026-11-25T07:15:00Z"), direct(2, "2026-11-25T08:15:00Z")));
+
+    // A partition never analyzed reports -1.
+    float estimatedRows =
+        jdbc.sql("SELECT reltuples FROM pg_class WHERE relname = 'itinerary_b_20261125'")
+            .query(Float.class)
+            .single();
+    assertThat(estimatedRows).isEqualTo(2f);
+  }
+
+  /** The key columns of every index of a table but its primary key, e.g. {@code price, id}. */
+  private List<String> sortIndexes(String table) {
+    return jdbc.sql(
+            "SELECT substring(indexdef FROM 'USING btree \\((.*)\\)') FROM pg_indexes"
+                + " WHERE tablename = ? AND indexname NOT LIKE '%pkey' ORDER BY 1")
+        .param(table)
+        .query(String.class)
+        .list();
+  }
+
+  /** Q6: each sort order, keyed by id, alone and behind an origin and destination prefix. */
+  @Test
+  void indexesEverySortOrderOnBothSlots() {
+    publish(NOW, List.of(direct(1, "2026-11-25T07:15:00Z")));
+
+    List<String> expected =
+        List.of(
+            "departure, id",
+            "duration_seconds, id",
+            "origin, destination, departure, id",
+            "origin, destination, duration_seconds, id",
+            "origin, destination, price, id",
+            "price, id");
+    assertThat(sortIndexes("itinerary_a")).isEqualTo(expected);
+    assertThat(sortIndexes("itinerary_b")).isEqualTo(expected);
+    assertThat(sortIndexes("itinerary_b_20261125")).isEqualTo(expected);
+  }
+
   /**
    * Two runs at once (§6.5): while one holds the publication row, the other waits for it before it
    * reads the active slot or touches either slot, and gives up at the lock timeout. Without that

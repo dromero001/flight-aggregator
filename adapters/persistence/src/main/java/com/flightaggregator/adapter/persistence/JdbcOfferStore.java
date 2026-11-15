@@ -11,7 +11,6 @@ import com.flightaggregator.domain.Provider;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -70,10 +69,10 @@ public final class JdbcOfferStore implements OfferStore {
             Integer.toString(leg.flightNumber()),
             leg.origin().code(),
             leg.destination().code(),
-            leg.departure().toInstant().toString(),
-            Integer.toString(leg.departure().getOffset().getTotalSeconds()),
-            leg.arrival().toInstant().toString(),
-            Integer.toString(leg.arrival().getOffset().getTotalSeconds()),
+            ProviderTime.instantCell(leg.departure()),
+            ProviderTime.offsetCell(leg.departure()),
+            ProviderTime.instantCell(leg.arrival()),
+            ProviderTime.offsetCell(leg.arrival()),
             leg.price().amount().toPlainString(),
             leg.quotedAt().toString());
       }
@@ -92,17 +91,10 @@ public final class JdbcOfferStore implements OfferStore {
         rs.getInt("flight_number"),
         new Airport(rs.getString("origin")),
         new Airport(rs.getString("destination")),
-        local(rs, "departure", "departure_offset"),
-        local(rs, "arrival", "arrival_offset"),
+        ProviderTime.read(rs, "departure", "departure_offset"),
+        ProviderTime.read(rs, "arrival", "arrival_offset"),
         new Money(rs.getBigDecimal("price")),
         provider,
         rs.getObject("quoted_at", OffsetDateTime.class).toInstant());
-  }
-
-  /** The stored instant at the offset the provider quoted it in. */
-  private static OffsetDateTime local(ResultSet rs, String instant, String offset)
-      throws SQLException {
-    return rs.getObject(instant, OffsetDateTime.class)
-        .withOffsetSameInstant(ZoneOffset.ofTotalSeconds(rs.getInt(offset)));
   }
 }
