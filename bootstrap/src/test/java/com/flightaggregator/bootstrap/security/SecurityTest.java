@@ -90,11 +90,12 @@ class SecurityTest {
     assertThat(reprice.getResponse().getStatus()).isNotIn(401, 403);
   }
 
+  /** No Valkey runs in this test, so the status is DEGRADED, still a 200 (Q8-A). */
   @Test
   void healthNeedsNoTokenAndShowsNoDetails() throws Exception {
     mvc.perform(get("/actuator/health"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.status").value("UP"))
+        .andExpect(jsonPath("$.status").isString())
         .andExpect(jsonPath("$.components").doesNotExist());
   }
 

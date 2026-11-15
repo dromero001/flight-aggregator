@@ -75,6 +75,8 @@ When no provider's download is fresh, nothing is written and the origin is not m
 
 `IngestionJob` runs at startup and then 30 minutes after each run ends (`ingestion.interval`, fixed delay). It takes the ShedLock row `ingestion` (table `shedlock`, at most 29 minutes, at least 1 minute) so that one instance at a time runs; a run that does not get it, on this instance or another, logs `Skipped an ingestion run: another run holds its lock` at `INFO` and returns at once. A skipped run is neither counted as a success nor as a failure.
 
+An admin can also start a run now (`POST /api/admin/ingestions`): `IngestionJob.launch` runs the same body on a virtual thread of its own, under the same lock, and answers once the run holds it, or at once when another run does (the endpoint's `409`). Every run that ends with a report, published or not, records each provider's status in `ingestion_status` (V7) for `GET /api/admin/status`; a failure to record it is a `WARN` line and never fails the run.
+
 What is caught, exactly:
 
 - **In a provider's download:** a `ProviderUnavailableException` (its `FailureReason`) and any other `RuntimeException` (`UNEXPECTED`). That provider is `KEPT`; the run goes on.

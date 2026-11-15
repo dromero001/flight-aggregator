@@ -18,6 +18,7 @@ import com.flightaggregator.application.port.out.ProviderRun;
 import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.application.port.out.RefreshScheduler;
 import com.flightaggregator.bootstrap.ingestion.IngestionJob;
+import com.flightaggregator.bootstrap.observability.InventoryHealthIndicator;
 import com.flightaggregator.bootstrap.refresh.BackgroundRefresh;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Carrier;
@@ -49,7 +50,10 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.health.actuate.endpoint.HealthDescriptor;
 import org.springframework.boot.health.actuate.endpoint.HealthEndpoint;
+import org.springframework.boot.health.actuate.endpoint.HttpCodeStatusMapper;
+import org.springframework.boot.health.actuate.endpoint.StatusAggregator;
 import org.springframework.boot.health.contributor.Status;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -86,6 +90,8 @@ class FlightAggregatorApplicationTest {
   static final String GAMMA_KEY = "providers.gamma.api-key=test-gamma-key";
 
   @Autowired private HealthEndpoint health;
+  @Autowired private StatusAggregator statusOrder;
+  @Autowired private HttpCodeStatusMapper statusCodes;
   @Autowired private Flyway flyway;
   @Autowired private OfferStore offers;
   @Autowired private IngestionStatusStore statuses;
@@ -110,9 +116,26 @@ class FlightAggregatorApplicationTest {
     PostgresContainers.emptyTheInventory(jdbc);
   }
 
+  /**
+   * Q8-A: DEGRADED is worse than UP and better than DOWN, so PostgreSQL down still makes the
+   * service DOWN, and it answers 200, so the orchestrator does not restart the API for it.
+   */
+  @Test
+  void ranksDegradedBetweenDownAndUpAndAnswersIt200() {
+    assertThat(statusOrder.getAggregateStatus(Status.DOWN, InventoryHealthIndicator.DEGRADED))
+        .isEqualTo(Status.DOWN);
+    assertThat(statusOrder.getAggregateStatus(Status.UP, InventoryHealthIndicator.DEGRADED))
+        .isEqualTo(InventoryHealthIndicator.DEGRADED);
+    assertThat(statusCodes.getStatusCode(InventoryHealthIndicator.DEGRADED)).isEqualTo(200);
+    assertThat(statusCodes.getStatusCode(Status.DOWN)).isEqualTo(503);
+  }
+
   @Test
   void startsAgainstPostgresAndMigrates() {
-    assertThat(health.health().getStatus()).isEqualTo(Status.UP);
+    // No Valkey runs in this test, so the service as a whole is DEGRADED (Q8-A); PostgreSQL is up.
+    assertThat(health.healthForPath("db"))
+        .extracting(HealthDescriptor::getStatus)
+        .isEqualTo(Status.UP);
     assertThat(flyway.info().applied())
         .extracting(migration -> migration.getVersion().getVersion(), MigrationInfo::getState)
         .containsExactly(
