@@ -75,12 +75,13 @@ class IngestInventoryServiceTest {
   void keepsAFailedProvidersOffersWhole() {
     List<Leg> lastGood = List.of(leg(Provider.BETA, 7, "MAD", "LHR"));
     store.with(Provider.BETA, lastGood);
+    IOException timedOut = new IOException("read timed out");
     FakeFlightProvider beta =
         new FakeFlightProvider(
             Provider.BETA,
             () -> {
               throw new ProviderUnavailableException(
-                  Provider.BETA, FailureReason.TIMEOUT, new IOException("read timed out"));
+                  Provider.BETA, FailureReason.TIMEOUT, timedOut);
             });
 
     IngestionReport report = service(beta).ingest();
@@ -90,6 +91,7 @@ class IngestInventoryServiceTest {
     ProviderReport betaReport = report.providers().getFirst();
     assertThat(betaReport.status()).isEqualTo(ProviderReport.Status.KEPT);
     assertThat(betaReport.failure()).contains(FailureReason.TIMEOUT);
+    assertThat(betaReport.cause()).containsSame(timedOut);
     assertThat(betaReport.offersFetched()).isZero();
     assertThat(betaReport.offersUsed()).isEqualTo(1);
   }
@@ -97,11 +99,12 @@ class IngestInventoryServiceTest {
   @Test
   void treatsAnUnexpectedExceptionAsAFailedProvider() {
     List<Leg> gammaLegs = List.of(leg(Provider.GAMMA, 9, "BCN", "LHR"));
+    IllegalStateException boom = new IllegalStateException("boom");
     FakeFlightProvider alpha =
         new FakeFlightProvider(
             Provider.ALPHA,
             () -> {
-              throw new IllegalStateException("boom");
+              throw boom;
             });
     FakeFlightProvider gamma =
         new FakeFlightProvider(Provider.GAMMA, () -> download(gammaLegs.getFirst()));
@@ -111,6 +114,7 @@ class IngestInventoryServiceTest {
     ProviderReport alphaReport = report.providers().getFirst();
     assertThat(alphaReport.status()).isEqualTo(ProviderReport.Status.KEPT);
     assertThat(alphaReport.failure()).contains(FailureReason.UNEXPECTED);
+    assertThat(alphaReport.cause()).containsSame(boom);
     assertThat(store.replacedProviders()).containsExactly(Provider.GAMMA);
     assertThat(store.offers(Provider.GAMMA)).isEqualTo(gammaLegs);
   }

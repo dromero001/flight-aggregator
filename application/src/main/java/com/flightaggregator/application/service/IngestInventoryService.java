@@ -69,7 +69,8 @@ public final class IngestInventoryService implements IngestInventory {
           switch (join(future)) {
             case Outcome.Downloaded(var provider, var download) ->
                 fresh(provider, download, airports);
-            case Outcome.Failed(var provider, var reason) -> kept(provider, reason);
+            case Outcome.Failed(var provider, var reason, var cause) ->
+                kept(provider, reason, cause);
           });
     }
     return new IngestionReport(
@@ -98,6 +99,7 @@ public final class IngestInventoryService implements IngestInventory {
         provider,
         ProviderReport.Status.FRESH,
         Optional.empty(),
+        Optional.empty(),
         download.legs().size(),
         discardedByReason,
         inCatalogue.size(),
@@ -110,11 +112,12 @@ public final class IngestInventoryService implements IngestInventory {
     byReason.merge(record.reason(), 1, Integer::sum);
   }
 
-  private ProviderReport kept(Provider provider, FailureReason reason) {
+  private ProviderReport kept(Provider provider, FailureReason reason, Throwable cause) {
     return new ProviderReport(
         provider,
         ProviderReport.Status.KEPT,
         Optional.of(reason),
+        Optional.ofNullable(cause),
         0,
         Map.of(),
         store.offers(provider).size(),
@@ -125,16 +128,16 @@ public final class IngestInventoryService implements IngestInventory {
   private sealed interface Outcome {
     record Downloaded(Provider provider, ProviderDownload download) implements Outcome {}
 
-    record Failed(Provider provider, FailureReason reason) implements Outcome {}
+    record Failed(Provider provider, FailureReason reason, Throwable cause) implements Outcome {}
   }
 
   private static Outcome download(FlightProvider provider) {
     try {
       return new Outcome.Downloaded(provider.provider(), provider.download());
     } catch (ProviderUnavailableException e) {
-      return new Outcome.Failed(provider.provider(), e.reason());
+      return new Outcome.Failed(provider.provider(), e.reason(), e.getCause());
     } catch (RuntimeException e) {
-      return new Outcome.Failed(provider.provider(), FailureReason.UNEXPECTED);
+      return new Outcome.Failed(provider.provider(), FailureReason.UNEXPECTED, e);
     }
   }
 
