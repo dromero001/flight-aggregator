@@ -160,7 +160,7 @@ class ProviderHttpTest {
     server.stubFor(
         get(urlEqualTo("/slow")).willReturn(aResponse().withFixedDelay(3000).withBody("late")));
 
-    assertThat(failureOf("/slow")).isEqualTo(FailureReason.TIMEOUT);
+    assertThat(failureOf(httpWithShortTimeout(), "/slow")).isEqualTo(FailureReason.TIMEOUT);
 
     server.verify(3, getRequestedFor(urlEqualTo("/slow")));
   }
@@ -171,7 +171,7 @@ class ProviderHttpTest {
         get(urlEqualTo("/stalled"))
             .willReturn(aResponse().withChunkedDribbleDelay(10, 3000).withBody("x".repeat(100))));
 
-    assertThat(failureOf("/stalled")).isEqualTo(FailureReason.TIMEOUT);
+    assertThat(failureOf(httpWithShortTimeout(), "/stalled")).isEqualTo(FailureReason.TIMEOUT);
 
     server.verify(3, getRequestedFor(urlEqualTo("/stalled")));
   }
@@ -253,12 +253,22 @@ class ProviderHttpTest {
     return http(breaker, Duration.ofMillis(10));
   }
 
+  /** A cold JVM can take seconds for a first request, so only the timeout tests use a short one. */
+  private ProviderHttp httpWithShortTimeout() {
+    return http(CircuitBreaker.ofDefaults("alpha"), Duration.ofMillis(10), Duration.ofMillis(500));
+  }
+
   private ProviderHttp http(CircuitBreaker breaker, Duration firstBackoff) {
+    return http(breaker, firstBackoff, Duration.ofSeconds(5));
+  }
+
+  private ProviderHttp http(
+      CircuitBreaker breaker, Duration firstBackoff, Duration requestTimeout) {
     ProviderEndpoint endpoint =
         new ProviderEndpoint(Provider.ALPHA, URI.create(server.baseUrl()), KEY);
     ResilienceSettings settings =
         new ResilienceSettings(
-            Duration.ofMillis(500), Duration.ofSeconds(60), 3, firstBackoff, 1000, 200, 1024);
+            requestTimeout, Duration.ofSeconds(60), 3, firstBackoff, 1000, 200, 1024);
     return new ProviderHttp(endpoint, settings, breaker, clock);
   }
 
