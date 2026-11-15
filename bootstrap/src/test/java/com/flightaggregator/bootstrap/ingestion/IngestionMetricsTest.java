@@ -104,6 +104,20 @@ class IngestionMetricsTest {
     assertThat(lastFreshSeconds(BETA)).isEqualTo(86_400);
   }
 
+  /**
+   * Before the first run nothing is known, which the gauges say with {@code NaN}: an inventory of
+   * zero itineraries or partitions zero days ahead would read as an outage.
+   */
+  @Test
+  void readsNothingKnownBeforeTheFirstRun() {
+    assertThat(gauge("ingestion.itineraries")).isNaN();
+    assertThat(gauge("ingestion.partitions.default.rows")).isNaN();
+    assertThat(gauge("ingestion.partitions.days.ahead")).isNaN();
+    for (Provider provider : Provider.values()) {
+      assertThat(lastFreshSeconds(provider)).as(provider.name()).isNaN();
+    }
+  }
+
   private double gauge(String name) {
     return meters.get(name).gauge().value();
   }
