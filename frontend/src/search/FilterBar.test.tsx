@@ -1,7 +1,20 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+import { axe } from '../test/axe';
 import { FilterBar } from './FilterBar';
+
+test('has no accessibility violations while a field is invalid', async () => {
+  const { container } = render(
+    <FilterBar
+      criteria={{ origin: 'MADR', sort: 'price' }}
+      errors={{ origin: 'Enter a 3-letter airport code, like MAD' }}
+      onSubmit={vi.fn()}
+    />,
+  );
+
+  expect(await axe(container)).toHaveNoViolations();
+});
 
 test('labels every control', () => {
   render(<FilterBar criteria={{ sort: 'price' }} errors={{}} onSubmit={vi.fn()} />);

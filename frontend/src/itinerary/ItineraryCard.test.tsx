@@ -1,8 +1,17 @@
 import { render, screen, within } from '@testing-library/react';
 import { expect, test } from 'vitest';
+import { axe } from '../test/axe';
 import { connecting, direct } from '../test/fixtures';
 import { ItineraryCard } from './ItineraryCard';
 import styles from './ItineraryCard.module.css';
+
+test('has no accessibility violations', async () => {
+  const { container } = render(
+    <ItineraryCard itinerary={connecting()} now={new Date('2026-11-15T09:05:00Z')} />,
+  );
+
+  expect(await axe(container)).toHaveNoViolations();
+});
 
 test('shows a direct flight', () => {
   // Five minutes after the fixture's quote.
