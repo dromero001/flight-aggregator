@@ -20,6 +20,7 @@ public final class FakeItineraryRepository implements ItineraryRepository {
 
   private int calls;
   private List<Itinerary> published = List.of();
+  private final List<Itinerary> updated = new ArrayList<>();
 
   @Override
   public Publication replaceInventory(Instant now, ItineraryWriter writer) {
@@ -29,6 +30,18 @@ public final class FakeItineraryRepository implements ItineraryRepository {
     published = List.copyOf(written);
     return new Publication(
         GENERATION, published.size(), ROWS_IN_DEFAULT_PARTITION, PARTITIONED_UNTIL);
+  }
+
+  /** Remembers the re-quote; the active generation always holds its id. */
+  @Override
+  public synchronized boolean updateInPlace(Itinerary repriced) {
+    updated.add(repriced);
+    return true;
+  }
+
+  /** Every re-quote updated in place, in order. */
+  public synchronized List<Itinerary> updated() {
+    return List.copyOf(updated);
   }
 
   public int calls() {

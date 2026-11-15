@@ -2,6 +2,7 @@ package com.flightaggregator.adapter.persistence;
 
 import static com.flightaggregator.domain.Provider.ALPHA;
 import static com.flightaggregator.domain.Provider.BETA;
+import static com.flightaggregator.domain.Provider.GAMMA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -48,6 +49,52 @@ class JdbcOfferStoreTest {
         Money.euros(price),
         provider,
         Instant.parse("2026-11-20T08:00:00.123456Z"));
+  }
+
+  /** The same offer of another flight: the same number to another destination. */
+  private static Leg to(String destination, Leg leg) {
+    return new Leg(
+        leg.carrier(),
+        leg.flightNumber(),
+        leg.origin(),
+        new Airport(destination),
+        leg.departure(),
+        leg.arrival(),
+        leg.price(),
+        leg.provider(),
+        leg.quotedAt());
+  }
+
+  /**
+   * Every provider's offer of one flight, the cheapest first, read back exactly. The same number
+   * departing at another time, or flying to another destination, is another flight.
+   */
+  @Test
+  void findsEveryProvidersOfferOfAFlight() {
+    Leg alpha = leg(ALPHA, 3170, "2026-11-20T07:15:00+01:00", "120.00");
+    Leg beta = leg(BETA, 3170, "2026-11-20T06:15:00Z", "100.00");
+    Leg gamma = leg(GAMMA, 3170, "2026-11-20T07:15:00+01:00", "110.00");
+    store.replace(ALPHA, List.of(leg(ALPHA, 3171, "2026-11-20T07:15:00+01:00", "50.00"), alpha));
+    store.replace(BETA, List.of(beta, leg(BETA, 3170, "2026-11-21T07:15:00+01:00", "50.00")));
+    store.replace(GAMMA, List.of(to("CDG", gamma), gamma));
+
+    List<Leg> offers = store.offersOf(alpha.key());
+
+    assertThat(offers).containsExactly(beta, gamma, alpha);
+  }
+
+  /** V6: one flight's offers are read through an index, not by scanning every provider's. */
+  @Test
+  void indexesTheOffersByFlight() {
+    List<String> indexes =
+        JdbcClient.create(dataSource)
+            .sql(
+                "SELECT substring(indexdef FROM 'USING btree \\((.*)\\)') FROM pg_indexes"
+                    + " WHERE tablename = 'provider_offer' AND indexname NOT LIKE '%pkey'")
+            .query(String.class)
+            .list();
+
+    assertThat(indexes).containsExactly("carrier, flight_number, origin, departure");
   }
 
   @Test

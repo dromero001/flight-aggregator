@@ -126,6 +126,17 @@ class ItineraryTest {
     assertThat(itinerary.legs()).containsExactly(MAD_LHR, LHR_JFK);
   }
 
+  /** R5: a trip whose first leg has left can no longer be sold, whatever its later legs. */
+  @Test
+  void isSellableUntilItsFirstLegDeparts() {
+    Itinerary itinerary = new Itinerary(List.of(MAD_LHR, LHR_JFK));
+    Instant departure = MAD_LHR.departure().toInstant();
+
+    assertThat(itinerary.isSellable(departure.minusSeconds(1))).isTrue();
+    assertThat(itinerary.isSellable(departure)).isFalse();
+    assertThat(itinerary.isSellable(LHR_JFK.departure().toInstant().minusSeconds(1))).isFalse();
+  }
+
   @Test
   void acceptsThreeConnectingLegs() {
     Itinerary itinerary = new Itinerary(List.of(MAD_LHR, LHR_JFK, JFK_BOG));

@@ -1,6 +1,7 @@
 package com.flightaggregator.application.port.out;
 
 import com.flightaggregator.domain.Leg;
+import com.flightaggregator.domain.LegKey;
 import com.flightaggregator.domain.Provider;
 import java.util.List;
 
@@ -12,4 +13,7 @@ public interface OfferStore {
 
   /** The stored offers of the provider, in the page order they were stored. */
   List<Leg> offers(Provider provider);
+
+  /** Every provider's stored offer of the flight, the cheapest first. */
+  List<Leg> offersOf(LegKey flight);
 }

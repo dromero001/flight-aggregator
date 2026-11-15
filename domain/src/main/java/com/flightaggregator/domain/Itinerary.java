@@ -73,6 +73,11 @@ public record Itinerary(List<Leg> legs) {
         : Optional.empty();
   }
 
+  /** Whether it can still be sold: its first leg departs after {@code now} (R5). */
+  public boolean isSellable(Instant now) {
+    return ConnectionRules.isSellable(legs.getFirst(), now);
+  }
+
   public ItineraryId id() {
     return ItineraryId.of(legs.stream().map(Leg::key).toList());
   }

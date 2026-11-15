@@ -19,6 +19,7 @@ import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.ItineraryRepository;
+import com.flightaggregator.application.port.out.ItineraryWriter;
 import com.flightaggregator.application.port.out.ProviderDownload;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.application.port.out.Publication;
@@ -482,8 +483,16 @@ class IngestInventoryServiceTest {
   void propagatesARepositoryFailure() {
     IllegalStateException failure = new IllegalStateException("database down");
     ItineraryRepository failing =
-        (now, writer) -> {
-          throw failure;
+        new ItineraryRepository() {
+          @Override
+          public Publication replaceInventory(Instant now, ItineraryWriter writer) {
+            throw failure;
+          }
+
+          @Override
+          public boolean updateInPlace(Itinerary repriced) {
+            throw new UnsupportedOperationException("Ingestion updates nothing in place");
+          }
         };
     Leg madLhr = leg(ALPHA, 1, "MAD", "LHR");
     FakeFlightProvider alpha = new FakeFlightProvider(ALPHA, () -> download(madLhr));

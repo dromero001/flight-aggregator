@@ -6,8 +6,6 @@ import com.flightaggregator.application.port.in.SearchCriteria;
 import com.flightaggregator.application.port.in.SeekPosition;
 import com.flightaggregator.application.port.in.SortOrder;
 import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
@@ -27,7 +25,7 @@ record KeysetQuery(String sql, List<Object> parameters) {
     SortKey key = SortKey.of(criteria.sort());
     List<Condition> conditions =
         Stream.of(
-                Optional.of(new Condition("departure > ?", utc(now))),
+                Optional.of(new Condition("departure > ?", ProviderTime.instantParameter(now))),
                 criteria.origin().map(origin -> new Condition("origin = ?", origin.code())),
                 criteria
                     .destination()
@@ -58,10 +56,6 @@ record KeysetQuery(String sql, List<Object> parameters) {
             .toList());
   }
 
-  private static OffsetDateTime utc(Instant instant) {
-    return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
-  }
-
   /** One fixed fragment of the {@code WHERE} clause, and the values of its parameters. */
   private record Condition(String sql, List<Object> values) {
 
@@ -76,7 +70,9 @@ record KeysetQuery(String sql, List<Object> parameters) {
     static SortKey of(SortOrder sort) {
       return switch (sort) {
         case PRICE -> new SortKey("price", position -> position.price().amount());
-        case DEPARTURE -> new SortKey("departure", position -> utc(position.departure()));
+        case DEPARTURE ->
+            new SortKey(
+                "departure", position -> ProviderTime.instantParameter(position.departure()));
         case DURATION ->
             new SortKey("duration_seconds", position -> position.duration().toSeconds());
       };
