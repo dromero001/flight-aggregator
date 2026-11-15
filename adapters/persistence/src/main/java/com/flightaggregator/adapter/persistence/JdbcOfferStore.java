@@ -20,8 +20,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Keeps each provider's last complete download in {@code provider_offer}. A replacement is one
- * transaction, a delete and a bulk {@code COPY}, each bounded by {@link StatementTimeout}, so a
- * failure leaves the previous offers.
+ * transaction, a delete and a bulk {@code COPY}, each bounded by {@link StatementTimeout#STORE}, so
+ * a failure leaves the previous offers.
  */
 public final class JdbcOfferStore implements OfferStore {
 
@@ -63,7 +63,7 @@ public final class JdbcOfferStore implements OfferStore {
   public void replace(Provider provider, List<Leg> offers) {
     transaction.executeWithoutResult(
         status -> {
-          StatementTimeout.boundTheTransaction(jdbc);
+          StatementTimeout.STORE.boundTheTransaction(jdbc);
           jdbc.sql("DELETE FROM provider_offer WHERE provider = ?").param(provider.name()).update();
           copy(provider, offers);
         });
