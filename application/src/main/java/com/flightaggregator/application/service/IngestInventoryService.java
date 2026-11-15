@@ -166,6 +166,17 @@ public final class IngestInventoryService implements IngestInventory {
     };
   }
 
+  private static Map<DiscardReason, Integer> withConflicting(
+      Map<DiscardReason, Integer> discarded, int conflicting) {
+    if (conflicting == 0) {
+      return discarded;
+    }
+    Map<DiscardReason, Integer> merged = new EnumMap<>(DiscardReason.class);
+    merged.putAll(discarded);
+    merged.merge(DiscardReason.CONFLICTING, conflicting, Integer::sum);
+    return merged;
+  }
+
   /** The report with the stored offers that the deduplication left out, conflicting ones apart. */
   private static ProviderReport withLost(
       ProviderReport report, Map<Provider, List<Leg>> stored, Deduplication deduplication) {
@@ -179,8 +190,8 @@ public final class IngestInventoryService implements IngestInventory {
         report.failure(),
         report.cause(),
         report.offersFetched(),
-        report.discarded(),
-        report.offersUsed(),
+        withConflicting(report.discarded(), (int) conflicting),
+        report.offersUsed() - (int) conflicting,
         (int) (stored.get(provider).size() - conflicting - kept));
   }
 

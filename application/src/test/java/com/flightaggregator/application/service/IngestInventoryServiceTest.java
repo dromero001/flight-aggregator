@@ -243,7 +243,7 @@ class IngestInventoryServiceTest {
     Leg threeHours = flyingFor(twoHours, 3);
     FakeFlightProvider gamma = new FakeFlightProvider(GAMMA, () -> download(twoHours, threeHours));
 
-    service(gamma).ingest();
+    IngestionReport report = service(gamma).ingest();
 
     String flight = twoHours.key().toString();
     assertThat(discarded.entries())
@@ -251,6 +251,9 @@ class IngestInventoryServiceTest {
             new Entry(GAMMA, new DiscardedRecord(DiscardReason.CONFLICTING, flight)),
             new Entry(GAMMA, new DiscardedRecord(DiscardReason.CONFLICTING, flight)));
     assertThat(repository.published()).isEmpty();
+    ProviderReport gammaReport = report.providers().getFirst();
+    assertThat(gammaReport.discarded()).isEqualTo(Map.of(DiscardReason.CONFLICTING, 2));
+    assertThat(gammaReport.offersUsed()).isZero();
   }
 
   @Test
