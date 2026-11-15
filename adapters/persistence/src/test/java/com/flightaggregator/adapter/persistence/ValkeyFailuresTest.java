@@ -85,10 +85,11 @@ class ValkeyFailuresTest {
               .build());
   private final ValkeyFailures failures = new ValkeyFailures(breaker);
   private final ValkeySearchCache cache =
-      new ValkeySearchCache(valkey, new JsonFactory(), Duration.ofMinutes(5), failures, meters);
+      new ValkeySearchCache(
+          valkey, new JsonFactory(), Duration.ofMinutes(5), failures, meters, clock::instant);
   private final ValkeyRefreshCoordination coordination =
       new ValkeyRefreshCoordination(
-          valkey, Duration.ofMinutes(2), Duration.ofMinutes(10), failures);
+          valkey, Duration.ofMinutes(2), Duration.ofMinutes(10), failures, clock::instant);
   private final ValkeyRequestCounter counter = new ValkeyRequestCounter(valkey, failures);
 
   private final Logger logger = (Logger) LoggerFactory.getLogger(ValkeyFailures.class);
@@ -232,7 +233,8 @@ class ValkeyFailuresTest {
                   new JsonFactory(),
                   Duration.ofMinutes(5),
                   new ValkeyFailures(neverAnswered),
-                  meters);
+                  meters,
+                  clock::instant);
 
           whileDown(
               HANG_GUARD, () -> concurrently(8, () -> cacheBeforeItsFirstConnection.get(KEY)));

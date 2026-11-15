@@ -67,11 +67,14 @@ class ValkeyConfigTest {
           "search.refresh-claim-ttl", "PT2M",
           "search.valkey-skip", "PT10S");
 
-  /** The Valkey stores over Boot's Lettuce client, with no setting of the application's. */
+  /**
+   * The Valkey stores over Boot's Lettuce client and the application's clock, with no setting of
+   * the application's.
+   */
   private final ApplicationContextRunner withoutSettings =
       new ApplicationContextRunner()
           .withConfiguration(AutoConfigurations.of(DataRedisAutoConfiguration.class))
-          .withUserConfiguration(ValkeyConfig.class)
+          .withUserConfiguration(ValkeyConfig.class, SystemClock.class)
           .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
           .withBean(JsonMapper.class, () -> JsonMapper.builder().build());
 
