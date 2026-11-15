@@ -4,7 +4,7 @@ The single place that says what is in flight, where it lives and what comes next
 
 **Rule:** the controller rewrites this file and pushes it at every checkpoint: a subagent dispatched or returned, a review verdict, a user decision, a task integrated (`CLAUDE.md`, "Continuity"). If something here contradicts `git log`, `git log` wins: say so and fix this file first.
 
-**Last updated:** 2026-11-15 20:11 CET, on the Mac, `main` at `6a5e239` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
+**Last updated:** 2026-11-15 20:14 CET, on the Mac, `main` at `6a5e239` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
 
 ## Resume in five minutes
 
@@ -42,7 +42,7 @@ Every implementer below writes its report in its own worktree, at `.superpowers/
 
 | Task | State | Worktree (Mac) and branch | Pushed as |
 |---|---|---|---|
-| Plan 5 Task 6, the search use case | Re-review of round 2: functional APPROVED, code CHANGES REQUESTED (C6: a stale page thrown away still counts as a cache hit). The user decided: the Valkey adapter caches a page for the shorter of `cache-ttl` and the time to its earliest departure. Fix round 3 sent 20:05 on top of `de1958b`; then a short re-review | `.claude/worktrees/agent-abf03d55db7511dc3`, `worktree-agent-abf03d55db7511dc3` | `wip/plan5-task-6-r1` (at `de1958b`) |
+| Plan 5 Task 6, the search use case | Fix round 3 done (`86b79dc`, green): a cached page lives the shorter of `cache-ttl` and the time to its earliest departure; a page already departing is not stored. Short re-review by the same reviewer sent 20:14 | `.claude/worktrees/agent-abf03d55db7511dc3`, `worktree-agent-abf03d55db7511dc3` | `wip/plan5-task-6-r1` (at `86b79dc`) |
 | Plan 5 Task 5, round 2 | **On `main`** (`afa79f5`, approved twice, CI running). Minors for the end-of-plan review: M1 `ValkeyFailures.java:57`, the dead `recordExceptions(DataAccessException.class)` line (a trap: delete it, or `ignoreException` with one catch); M2 `EpisodeWarning.java:46-47`, the unlogged count appears only with the next episode's WARN, with no start time. Notes: Task 12's health must not read the startup `half_open` as Valkey unavailable; Task 13's `search-api.md` lists the `valkey.circuitbreaker.*` meters | — | `wip/plan5-task-5-r2` (obsolete) |
 | Approved extras (plan 5 Tasks 4 and 8, git guard) | Review: both CHANGES REQUESTED (the guard lets through what `6db5049` blocked: `gh api -X DELETE` on main with a quoted path, PowerShell backtick continuations, unmodelled quotes). The user decided the newline rule: only explicit continuations (`\` in bash, a backtick in PowerShell) join lines. Fix round 1 sent 19:49 (F1, C1, C2, C3 with a meaningful 'gone after the commit' check, C5, F2; C4, C6 if cheap; rebase on `main`); then its re-review | `.claude/worktrees/agent-a47126e03777a95e1`, `worktree-agent-a47126e03777a95e1`, from `6db5049` | `wip/plan5-extras` (at `cb05884`) |
 | Plan 7 Task 1, telemetry backends in compose | **On `main`** (`48027d8`, approved twice after three rounds; CI running). Deferred to the end-of-plan review: C3 (a broken Tempo or Loki config waits 2 minutes), C4 (duplicated test plumbing, inline compose casts), C5 (Dockerfile inputs listed by hand) | — | `wip/plan7-task-1` (obsolete) |
