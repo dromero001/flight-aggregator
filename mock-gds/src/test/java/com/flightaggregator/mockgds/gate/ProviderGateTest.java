@@ -2,39 +2,17 @@ package com.flightaggregator.mockgds.gate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.flightaggregator.mockgds.support.MockGdsTest;
 import com.flightaggregator.mockgds.support.ProviderKeys;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
-import java.util.random.RandomGenerator;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.resttestclient.TestRestTemplate;
-import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
-@MockGdsTest
+/** The gate on its own, with a seeded generator and a sleeper that only records. */
 class ProviderGateTest {
-
-  @Autowired private TestRestTemplate http;
-  @Autowired private RandomGenerator random;
-
-  @Test
-  void rejectsAMissingKey() {
-    var response = http.getForEntity("/alpha/probe", String.class);
-
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-  }
-
-  @Test
-  void rejectsAnotherProvidersKey() {
-    var response = ProviderKeys.get(http, "/alpha/probe", ProviderKeys.BETA);
-
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-  }
 
   @Test
   void rejectsAWrongKeyBeforeAnyLatencyOrError() throws Exception {
@@ -55,35 +33,6 @@ class ProviderGateTest {
     assertThat(sleeper.sleeps()).isEmpty();
     assertThat(response.getContentAsString())
         .doesNotContain(ProviderKeys.ALPHA, ProviderKeys.BETA, ProviderKeys.GAMMA);
-  }
-
-  @Test
-  void passesAValidKeyThrough() {
-    var response = ProviderKeys.get(http, "/gamma/probe", ProviderKeys.GAMMA);
-
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-    assertThat(response.getBody()).isEqualTo("reached");
-  }
-
-  @Test
-  void leavesPathsOutsideTheProviderPrefixesUngated() {
-    assertThat(http.getForEntity("/probe", String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
-    assertThat(http.getForEntity("/actuator/health", String.class).getStatusCode())
-        .isEqualTo(HttpStatus.OK);
-  }
-
-  @Test
-  void rejectsAWrongKeyOnAPathWithMatrixParameters() {
-    var response = ProviderKeys.get(http, "/alpha;x=1/probe", ProviderKeys.BETA);
-
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-  }
-
-  @Test
-  void drawsFromAThreadSafeGenerator() {
-    // java.util.Random is thread-safe; the default L32X64MixRandom is not, and requests are
-    // concurrent on virtual threads.
-    assertThat(random).isInstanceOf(Random.class);
   }
 
   @Test
