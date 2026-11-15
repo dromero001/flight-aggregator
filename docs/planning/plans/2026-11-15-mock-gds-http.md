@@ -5,10 +5,10 @@
 **Goal:** `mock-gds` serves the generated inventory of the three mock providers over HTTP. Each provider has its own format and pagination, its own API key, and a configurable latency and HTTP 500 rate. The service runs as a Docker image in `docker compose`.
 
 **Architecture:** A Spring Boot application inside `mock-gds`, with these parts:
-- `ProviderInventory` generates the dataset once at startup and serves pages of a provider's records, priced at the instant of the request (the price drift of §6.3).
+- `ProviderInventory` generates the dataset once at startup and serves pages of a provider's records, priced at the instant of the request (the price drift of §6.3). As built: `serving/InventoryConfig` generates the dataset once and gives the inventory the generator's own `PriceModel`, so a request is priced with the seed and buckets that built the dataset (`e3887b0`).
 - One pure serializer per provider writes a page in that provider's format, with every malformed record broken in its own way.
 - A thin controller per provider maps its pagination parameters onto the inventory.
-- `ProviderGate`, one interceptor for all three providers, checks the API key, waits the latency and injects the 500s.
+- `ProviderGate`, one interceptor for all three providers, checks the API key, waits the latency and injects the 500s. As built: one gate per provider, each holding its own settings and mapped to its own `/<provider>/**`, in the `gate/` package with `ProviderSettings`, `Sleeper` and `WebConfig` (Task 2 review, `f0cb682`).
 
 **Tech Stack:** Java 25, Spring Boot 4.1.2 (Web MVC, Actuator, Jackson 3 for JSON), the JDK's StAX for XML, Docker with Eclipse Temurin 25 images, docker compose, GitHub Actions and Dependabot.
 
@@ -41,7 +41,7 @@ Roadmap: [plan 3](../roadmap.md).
   - `NEGATIVE_PRICE`: the price is negated.
   - `UNKNOWN_AIRPORT`: the destination is `Defect.UNKNOWN_AIRPORT_CODE`.
 - **API keys (§6.6):** each provider requires its own key. A missing or wrong key gets `401`. Keys come from configuration (environment variables), and none is ever logged.
-- **Latency and errors (user's decision):** by default, uniform latency of 100–5000 ms per request and a 5% rate of HTTP 500s. Both are configurable per provider through environment variables. Tests set them to 0.
+- **Latency and errors (user's decision):** by default, uniform latency of 100–5000 ms per request and a 5% rate of HTTP 500s. Both are configurable per provider through environment variables. Tests set them to 0. **Replaced by the user's decision D1** (below): a long tail, with 90% of the requests at 100–1000 ms and a configurable slow share of 10% at 1000–5000 ms; the 5% of 500s stays.
 - **Gates:** `./gradlew build` is green before every commit, with Spotless, ArchUnit and JaCoCo (90% lines, 80% branches). TDD, one test at a time. The red → green evidence goes to `docs/planning/progress/2026-11-15.md`, section "Mock GDS run (plan 3)".
 - **Scope (`brief-scope`):** only what this plan lists. An extra found mid-task goes to the progress report under "Extras for the user to decide".
 - **Repo rules:** English everywhere. No AI attribution in commits. Push only after `gh api user --jq .login` prints `dromero001` (`CLAUDE.md`).
@@ -52,7 +52,11 @@ Roadmap: [plan 3](../roadmap.md).
 |---|---|
 | **User:** Spring Boot 4.1 serves the mocks | Same stack as the application. Jackson writes JSON, Actuator gives the health check compose needs, and configuration comes from environment variables |
 | **User:** only the full inventory endpoint in this plan | The roadmap's deliverable. The origin filter for the stale-route refresh (§4.1) comes with plan 4, and the single-leg quote for re-price (§6.3) with plan 5, each with the code that uses it |
-| **User:** 100–5000 ms and 5% of 500s by default, per provider | The brief's numbers. With pages of 500, one provider is about 9 requests and roughly 25 s per ingestion. A provider can be set to fail every request, for the outage demo |
+| **User:** 100–5000 ms and 5% of 500s by default, per provider (the latency model is replaced by D1) | The brief's numbers. With pages of 500, one provider is about 9 requests and roughly 25 s per ingestion. A provider can be set to fail every request, for the outage demo |
+| **User, D1 (2026-11-15):** the latency is a long tail, per provider: 90% of the requests wait 100–1000 ms (`fast-latency-min`, `fast-latency-max`), and a configurable slow share of 10% (`slow-share`) waits 1000–5000 ms (`slow-latency-min`, `slow-latency-max`). Built in `140c0cd` | Real GDS latency is long-tailed. With the uniform 100–5000 ms and the 2.5 s client timeout planned for plan 4, about 51% of the requests would time out. With the tail, only the slow share can pass 2.5 s: 6.25% of the requests (10% × 2500/4000) |
+| **User, D2 (an extra the user approved):** `ignoreUnknownFields = false` on `ProviderSettings`, so an unknown key under `mockgds.providers.<provider>` stops startup | A misspelt or outdated setting would otherwise leave its default on in silence. Limit found in the final review's fixes: Spring Boot leaves the system environment and the system properties out of this check (`UnboundElementsSourceFilter`), so it catches properties files and command-line arguments, not compose's environment variables; pinned by `ignoresAnUnknownEnvironmentVariable`. A check that covers the environment is an extra for the user (progress report) |
+| **User, D3:** Dependabot ignores semver-major bumps of google-java-format, as it does for `eclipse-temurin` | A formatter's major version can reformat every file, and Java 26 is not an LTS: both are decisions, not routine updates |
+| Final review: each `ProviderSettings.Entry` validates itself in its compact constructor, naming the property (`fast-latency-min must not exceed fast-latency-max`); the binder adds the provider's prefix (`mockgds.providers.beta`). The fast and slow ranges may overlap | A record cannot be built invalid, as `Leg`, `GeneratorConfig` and `PriceModel` already work. Nothing needs the slow range to start where the fast one ends: the gate draws from one range or the other |
 | Spring Boot's BOM through `platform(libs.spring.boot.dependencies)` and the Boot Gradle plugin from the version catalog, without the `io.spring.dependency-management` plugin | Gradle's native platforms already do what that plugin did, and one version in the catalog drives both. This settles the "BOM decision" left open by plan 1 |
 | The dataset is generated once, at startup, from the system clock. The 30-day window starts on the startup date | Regenerating mid-run would move records under a client that is paging. Limitation, for `SOLUTION.md`: a mock left running for days serves a shrinking window. Prices still drift, because they are computed per request |
 | Paths: `GET /alpha/legs?cursor=&limit=`, `GET /beta/segments?page=&pageSize=` (1-based), `GET /gamma/legs.csv?offset=&limit=`. Default page size 500, maximum 1000. An out-of-range parameter or an unreadable cursor → `400` | One path per provider on one deployable (§6). A strict API, as real GDSs are, so an adapter bug fails loudly |
@@ -115,15 +119,16 @@ Roadmap: [plan 3](../roadmap.md).
 ### Task 2: The provider gate: API key, latency and errors
 
 **Files:**
-- Create: `serving/ProviderSettings.java` (configuration properties), `serving/ProviderGate.java` (a `HandlerInterceptor` for `/alpha/**`, `/beta/**`, `/gamma/**`), `serving/WebConfig.java`
+- Create: `serving/ProviderSettings.java` (configuration properties), `serving/ProviderGate.java` (a `HandlerInterceptor` for `/alpha/**`, `/beta/**`, `/gamma/**`), `serving/WebConfig.java`. As built, all three and `Sleeper` live in `gate/` (`f0cb682`).
 - Modify: `application.yaml` (defaults)
-- Test: `serving/ProviderGateTest.java`, `serving/ProviderSettingsTest.java`
+- Test: `serving/ProviderGateTest.java`, `serving/ProviderSettingsTest.java`. As built: `gate/ProviderGateTest` (the gate alone, no Spring context), `gate/WebConfigTest` (where the gates stand), `gate/ProviderSettingsTest`, and `EndpointAccessTest` (each real endpoint with its own key, another provider's key and none, and Actuator exposing only health; `6774db7`).
 
 **Interfaces:**
 - Produces:
   - `@ConfigurationProperties("mockgds.providers")`: a map from `alpha`, `beta`, `gamma` to `(String apiKey, Duration latencyMin, Duration latencyMax, double errorRate)`.
   - Defaults: 100 ms, 5000 ms and 0.05. `apiKey` has no default, so startup fails without one.
   - Validation: min ≤ max, both ≥ 0, and `errorRate` within [0, 1].
+  - As built (D1, D2, final review): `@ConfigurationProperties(prefix = "mockgds.providers", ignoreUnknownFields = false) record ProviderSettings(Entry alpha, Entry beta, Entry gamma)`, with `record Entry(String apiKey, Duration fastLatencyMin, Duration fastLatencyMax, Duration slowLatencyMin, Duration slowLatencyMax, double slowShare, double errorRate)`. Defaults: 100 ms, 1000 ms, 1000 ms, 5000 ms, 0.1 and 0.05. `Entry` validates itself: a non-blank key, each latency range non-negative with min ≤ max, and both shares within [0, 1] (`NaN` rejected). `toString()` prints `apiKey=***`. The environment variables are `MOCKGDS_PROVIDERS_<PROVIDER>_<APIKEY|FASTLATENCYMIN|FASTLATENCYMAX|SLOWLATENCYMIN|SLOWLATENCYMAX|SLOWSHARE|ERRORRATE>`.
   - The environment variables follow Boot's relaxed binding, for example `MOCKGDS_PROVIDERS_ALPHA_APIKEY`.
   - `ProviderGate` takes a `RandomGenerator` bean (seeded in tests) and a `Sleeper` (`Thread::sleep` in production, recording in tests).
 
@@ -135,7 +140,7 @@ Roadmap: [plan 3](../roadmap.md).
   - `rejectsAMissingKey` → `401`.
   - `rejectsAnotherProvidersKey`: Beta's key on `/alpha/…` → `401`.
   - `rejectsAWrongKeyBeforeAnyLatencyOrError`: with `errorRate` 1.0 and a 5 s latency, a wrong key still gets `401` at once (the recording sleeper recorded nothing), and the response body does not contain any configured key.
-  - `waitsALatencyInsideTheConfiguredRange`: a seeded generator over 1,000 draws stays inside [min, max] and its smallest and largest draws fall within 5% of the range's ends. A request sleeps one draw.
+  - `waitsALatencyInsideTheConfiguredRange`: a seeded generator over 1,000 draws stays inside [min, max] and its smallest and largest draws fall within 5% of the range's ends. A request sleeps one draw. As built (D1): `waitsALatencyInsideTheWholeRange` (10,000 draws of the default model stay in 100–5000 ms and reach both ends within 5%), `waitsOnlyAFastLatencyWhenTheSlowShareIsZero` and `waitsASlowLatencyForTheSlowShareOfRequests` (900 to 1,100 of 10,000 draws above 1000 ms).
   - `failsAtTheConfiguredRate`: rate 0 → never `500`, rate 1 → always `500`, and rate 0.05 over 10,000 seeded draws gives between 4% and 6%.
   - `passesAValidKeyThrough` → the controller's `200`.
   - `leavesActuatorUngated`: `/actuator/health` needs no key.
@@ -146,7 +151,7 @@ Roadmap: [plan 3](../roadmap.md).
 
 **Files:**
 - Create: `alpha/AlphaJson.java` (the serializer), `alpha/AlphaController.java`, `alpha/AlphaCursor.java`
-- Create: `serving/IsoTimes.java`, the shared formatter, used by all three serializers
+- Create: `serving/IsoTimes.java`, the shared formatter, used by all three serializers. As built: `serving/RenderedLeg` holds the formatter and applies each defect, so the serializers only write syntax (Task 3 review); `IsoTimes` was folded into it (`f0cb682`). `serving/Paging`, `InvalidRequestException` and `InvalidRequestAdvice` hold the strict parameter parsing and the single `400` mapping
 - Test: `alpha/AlphaJsonTest.java`, `alpha/AlphaCursorTest.java`, `alpha/AlphaControllerTest.java`
 
 **Interfaces:**
@@ -188,7 +193,7 @@ Roadmap: [plan 3](../roadmap.md).
 <SegmentsResponse page="1" totalPages="9"><Segments><Segment><Carrier code="IB"/><FlightNumber>3170</FlightNumber><Departure airport="MAD">2026-11-20T08:15:00+01:00</Departure><Arrival airport="LHR">2026-11-20T09:30:00+00:00</Arrival><PriceCents>12990</PriceCents></Segment></Segments></SegmentsResponse>
 ```
 
-  - `totalPages` is at least 1. A page beyond `totalPages` gets an empty `<Segments/>`.
+  - `totalPages` is at least 1. A page beyond `totalPages` gets an empty `<Segments/>`. Final review: pinned for an empty inventory by `WhenTheInventoryIsEmpty.reportsOnePage` (an `EmptyInventory` test configuration, imported as Gamma's `FourRecordInventory` is).
 
 - [ ] **Step 1: `BetaXmlTest`, one test at a time:**
   - `writesAValidSegment`: the exact XML above, as a golden string.
@@ -242,7 +247,7 @@ IB,3170,MAD,LHR,2026-11-20T08:15:00+01:00,2026-11-20T09:30:00+00:00,129.90
 ### Task 6: The image, docker compose, CI and documentation
 
 **Files:**
-- Create: `mock-gds/Dockerfile`, `.dockerignore`, `compose.yaml`
+- Create: `mock-gds/Dockerfile`, `.dockerignore`, `compose.yaml`. Final review: the image build never downloads a JDK (`-Porg.gradle.java.installations.auto-download=false`), `.dockerignore` also keeps out `.env` and `.envrc`, compose publishes the port on `127.0.0.1` only, Dependabot leaves major versions of `eclipse-temurin` (and of google-java-format, D3) to a decision, and the coverage gate excludes only `MockGdsApplication` by name
 - Modify: `.github/workflows/ci.yml` (an `images` job building the `mock-gds` image without pushing), `.github/dependabot.yml` (the `docker` ecosystem for `/mock-gds`, with the 14-day cooldown and in the existing style)
 - Modify: `README.md` (how to run the mocks, and their keys and settings), `docs/architecture/README.md` (a "Mock providers" section: endpoints, the three formats with their examples, pagination and end signals, defects, keys, latency and errors)
 
