@@ -59,7 +59,7 @@ Roadmap: [plan 3](../roadmap.md).
 | Alpha's cursor is the next offset in Base64URL, with `nextCursor: null` on the last page. Beta returns `totalPages`. Gamma's end is a page shorter than `limit` | Three different end-of-data signals, so each adapter really translates (§6.7) |
 | JSON through Jackson's streaming writer, XML through the JDK's `XMLStreamWriter`, CSV written by hand | Each serializer decides exactly how a defect breaks its record (an omitted element, a literal bad date). Object mapping would fight the deliberately broken output |
 | Header `X-Api-Key` on all three, with a different value per provider, compared in constant time (`MessageDigest.isEqual`). The key is checked before the latency | A wrong key is rejected at once, and comparing in constant time leaks nothing about the key |
-| `docker compose` gives the keys demo default values (`${ALPHA_API_KEY:-…}`), which the environment can override | One `docker compose up --build` with no manual step (§2) needs some key. These protect local mocks, not real systems, and the README says so. **For the user to confirm** |
+| **User:** `compose.yaml` commits demo keys as defaults (`${ALPHA_API_KEY:-…}`), which the environment can override | The take-home must run with a single `docker compose up --build` (§2), so the keys are committed on purpose. They protect only the local mocks. In a real production environment they would be secrets and never committed: the README says so, and `SOLUTION.md` will (§6.6) |
 | Virtual threads (`spring.threads.virtual.enabled=true`) | A request sleeping up to 5 s holds no platform thread, so the three providers can be downloaded in parallel |
 | Image: a multi-stage `mock-gds/Dockerfile` built from the repo root. Temurin 25 JDK to build, Temurin 25 JRE to run, both pinned by tag and digest. Runs as a non-root user | No local Gradle is needed for `docker compose up --build`, and Dependabot can bump the pins |
 | CI builds the `mock-gds` image without pushing it. Dependabot's `docker` ecosystem covers `/mock-gds`, with the 14-day cooldown | §6.11 step 4 for the first image, and the `docker` ecosystem plan 1 deferred to this plan |
@@ -264,5 +264,5 @@ IB,3170,MAD,LHR,2026-11-20T08:15:00+01:00,2026-11-20T09:30:00+00:00,129.90
   - Add an `images` job: checkout, then `docker build -f mock-gds/Dockerfile .`, with no push. Pin its actions by SHA, like the existing job.
   - Add the `docker` ecosystem for `/mock-gds`.
   - After the push, watch the run (`CLAUDE.md`) and record its id.
-- [ ] **Step 5: Docs** as listed under Files. The README says the demo keys are not secrets: they protect local mocks.
+- [ ] **Step 5: Docs** as listed under Files. The README states that the demo keys are committed on purpose, because the take-home must run with a single `docker compose up --build`; they protect only the local mocks, and in a real production environment they would be secrets and never committed (§6.6).
 - [ ] **Step 6: `./gradlew build` green, review, commit:** `git commit -m "Run the mock providers as an image in docker compose, built in CI"`.
