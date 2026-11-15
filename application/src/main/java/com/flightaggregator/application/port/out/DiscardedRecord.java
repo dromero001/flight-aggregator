@@ -26,7 +26,7 @@ public record DiscardedRecord(DiscardReason reason, String excerpt) {
         case '\r' -> out.append("\\r");
         case '\t' -> out.append("\\t");
         default -> {
-          if (c < ' ' || c == '\u007f') {
+          if (Character.isISOControl(c)) {
             out.append(String.format("\\u%04x", (int) c));
           } else {
             out.append(c);

@@ -34,6 +34,12 @@ class DiscardedRecordTest {
   }
 
   @Test
+  void escapesTheC1ControlCharactersToo() {
+    assertThat(new DiscardedRecord(DiscardReason.SHAPE, "a\u0085b\u009fc").excerpt())
+        .isEqualTo("a\\u0085b\\u009fc");
+  }
+
+  @Test
   void escapesLineBreaksAndOtherControlCharacters() {
     assertThat(new DiscardedRecord(DiscardReason.SHAPE, "a\nERROR forged\r\tb\u0001").excerpt())
         .isEqualTo("a\\nERROR forged\\r\\tb\\u0001");
