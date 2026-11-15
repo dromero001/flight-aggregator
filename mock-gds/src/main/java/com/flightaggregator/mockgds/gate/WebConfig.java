@@ -1,4 +1,4 @@
-package com.flightaggregator.mockgds.serving;
+package com.flightaggregator.mockgds.gate;
 
 import com.flightaggregator.mockgds.model.Provider;
 import java.util.Locale;

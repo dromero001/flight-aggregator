@@ -1,4 +1,4 @@
-package com.flightaggregator.mockgds.serving;
+package com.flightaggregator.mockgds.gate;
 
 import java.time.Duration;
 import java.util.ArrayList;

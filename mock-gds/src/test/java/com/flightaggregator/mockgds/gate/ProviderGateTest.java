@@ -1,4 +1,4 @@
-package com.flightaggregator.mockgds.serving;
+package com.flightaggregator.mockgds.gate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

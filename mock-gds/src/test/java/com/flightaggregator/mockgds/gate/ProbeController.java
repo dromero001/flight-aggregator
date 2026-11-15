@@ -1,9 +1,9 @@
-package com.flightaggregator.mockgds.serving;
+package com.flightaggregator.mockgds.gate;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** A test-only endpoint behind each provider's gate. The real controllers come in later tasks. */
+/** A test-only endpoint behind each provider's gate. */
 @RestController
 class ProbeController {
 

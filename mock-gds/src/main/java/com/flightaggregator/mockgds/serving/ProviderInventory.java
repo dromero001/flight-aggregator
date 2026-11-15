@@ -10,8 +10,8 @@ import java.util.Objects;
 
 /**
  * What each provider serves: its records in dataset order, page by page, each priced at the instant
- * of the request. A malformed record keeps its defect and gets the drifted price of its leg; the
- * serializers apply the defect.
+ * of the request. A malformed record keeps its defect and gets the drifted price of its leg, and
+ * {@link RenderedLeg} applies the defect.
  */
 public final class ProviderInventory {
 
