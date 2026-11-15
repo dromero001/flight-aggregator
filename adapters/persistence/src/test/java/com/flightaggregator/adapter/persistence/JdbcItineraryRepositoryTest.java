@@ -1,11 +1,13 @@
 package com.flightaggregator.adapter.persistence;
 
+import static com.flightaggregator.adapter.persistence.support.ItinerarySlots.partitions;
 import static com.flightaggregator.domain.Provider.ALPHA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import com.flightaggregator.adapter.persistence.support.ItinerarySlots;
 import com.flightaggregator.adapter.persistence.support.PostgresTestDatabase;
 import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.domain.Airport;
@@ -47,15 +49,7 @@ class JdbcItineraryRepositoryTest {
 
   @BeforeEach
   void startFromAFreshDatabase() {
-    jdbc.sql("TRUNCATE itinerary_a, itinerary_b").update();
-    for (String slot : List.of("itinerary_a", "itinerary_b")) {
-      partitions(slot).stream()
-          .filter(partition -> !partition.endsWith("_default"))
-          .forEach(partition -> jdbc.sql("DROP TABLE " + partition).update());
-    }
-    jdbc.sql(
-            "UPDATE inventory_publication SET active_slot = 'a', generation = 0, published_at = NULL")
-        .update();
+    ItinerarySlots.empty(jdbc);
   }
 
   /** {@code IB<number>} from Madrid to London, departing at {@code departure} for two hours. */
@@ -96,16 +90,6 @@ class JdbcItineraryRepositoryTest {
 
   private long rows(String table) {
     return jdbc.sql("SELECT count(*) FROM " + table).query(Long.class).single();
-  }
-
-  /** The partitions of a slot, by name, its DEFAULT partition included. */
-  private List<String> partitions(String slot) {
-    return jdbc.sql(
-            "SELECT relid::text FROM pg_partition_tree(CAST(? AS regclass)) WHERE isleaf"
-                + " ORDER BY 1")
-        .param(slot)
-        .query(String.class)
-        .list();
   }
 
   /** A negative horizon would create no day partition, and every itinerary would go to DEFAULT. */
@@ -278,13 +262,13 @@ class JdbcItineraryRepositoryTest {
 
     // 2026-11-20 to 2026-12-27 is 38 days, so 38 distinct names from the first to the last are
     // every day in between.
-    assertThat(partitions("itinerary_b"))
+    assertThat(partitions(jdbc, "itinerary_b"))
         .hasSize(39)
         .doesNotHaveDuplicates()
         .startsWith("itinerary_b_20261120")
         .endsWith("itinerary_b_20261227", "itinerary_b_default");
     // The DDL touched only the slot it loaded.
-    assertThat(partitions("itinerary_a")).startsWith("itinerary_a_20261119");
+    assertThat(partitions(jdbc, "itinerary_a")).startsWith("itinerary_a_20261119");
   }
 
   @Test
@@ -389,6 +373,6 @@ class JdbcItineraryRepositoryTest {
         .hasMessage("itinerary_b has a partition the repository did not create: " + partition);
 
     assertThat(published()).isEqualTo(new Published("a", 0, null));
-    assertThat(partitions("itinerary_b")).contains(partition);
+    assertThat(partitions(jdbc, "itinerary_b")).contains(partition);
   }
 }

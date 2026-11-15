@@ -1,9 +1,11 @@
 package com.flightaggregator.bootstrap.config;
 
 import com.flightaggregator.adapter.persistence.JdbcAirportCatalogue;
+import com.flightaggregator.adapter.persistence.JdbcItineraryReader;
 import com.flightaggregator.adapter.persistence.JdbcItineraryRepository;
 import com.flightaggregator.adapter.persistence.JdbcOfferStore;
 import com.flightaggregator.application.port.out.AirportCatalogue;
+import com.flightaggregator.application.port.out.ItineraryReader;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.OfferStore;
 import org.springframework.context.annotation.Bean;
@@ -13,12 +15,12 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The PostgreSQL stores. Each store that writes is built from Boot's one transaction manager (a
- * {@code JdbcTransactionManager} over Boot's one {@code DataSource}) and takes its connections and
- * its transactions from it, so its statements and {@code COPY} always run in that manager's
- * transaction: no store can be wired to a second data source. {@code
+ * The PostgreSQL stores. Each store that writes, and the itinerary reader, is built from Boot's one
+ * transaction manager (a {@code JdbcTransactionManager} over Boot's one {@code DataSource}) and
+ * takes its connections and its transactions from it, so its statements and {@code COPY} always run
+ * in that manager's transaction: no store can be wired to a second data source. {@code
  * FlightAggregatorApplicationTest.writesEveryStoreInTheTransactionOfBootsDataSource} proves it in
- * the application.
+ * the application for the stores that write; the reader's constructor takes only the manager.
  */
 @Configuration(proxyBeanMethods = false)
 class PersistenceConfig {
@@ -41,5 +43,10 @@ class PersistenceConfig {
       DataSourceTransactionManager transactions, JsonMapper json) {
     return new JdbcItineraryRepository(
         transactions, json.tokenStreamFactory(), PARTITION_DAYS_AHEAD);
+  }
+
+  @Bean
+  ItineraryReader itineraryReader(DataSourceTransactionManager transactions, JsonMapper json) {
+    return new JdbcItineraryReader(transactions, json.tokenStreamFactory());
   }
 }
