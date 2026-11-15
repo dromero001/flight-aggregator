@@ -13,6 +13,8 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class RecordFieldsTest {
 
@@ -23,14 +25,10 @@ class RecordFieldsTest {
     assertThat(RecordFields.decimalPrice("10.005")).isEqualTo(Money.euros("10.01"));
   }
 
-  @Test
-  void rejectsAnExponentANegativeAndAnOverlongPrice() {
-    for (String text : new String[] {"1e3", "-129.90", "1234567890.00"}) {
-      assertThatThrownBy(() -> RecordFields.decimalPrice(text))
-          .as(text)
-          .isInstanceOfSatisfying(
-              RecordRejected.class, e -> assertThat(e.reason()).isEqualTo(DiscardReason.PRICE));
-    }
+  @ParameterizedTest
+  @ValueSource(strings = {"1e3", "-129.90", "1234567890.00", "999999999.995"})
+  void rejectsAnExponentANegativeAndAnOverlongPrice(String text) {
+    assertRejected(() -> RecordFields.decimalPrice(text), DiscardReason.PRICE);
   }
 
   @Test
@@ -38,14 +36,10 @@ class RecordFieldsTest {
     assertThat(RecordFields.centsPrice("12990")).isEqualTo(Money.euros("129.90"));
   }
 
-  @Test
-  void rejectsCentsThatAreNotWholeDigits() {
-    for (String text : new String[] {"129.90", "-12990", "1e3", "123456789012", ""}) {
-      assertThatThrownBy(() -> RecordFields.centsPrice(text))
-          .as(text)
-          .isInstanceOfSatisfying(
-              RecordRejected.class, e -> assertThat(e.reason()).isEqualTo(DiscardReason.PRICE));
-    }
+  @ParameterizedTest
+  @ValueSource(strings = {"129.90", "-12990", "1e3", "123456789012", ""})
+  void rejectsCentsThatAreNotWholeDigits(String text) {
+    assertRejected(() -> RecordFields.centsPrice(text), DiscardReason.PRICE);
   }
 
   @Test
@@ -56,20 +50,16 @@ class RecordFieldsTest {
     assertThat(time.getOffset().getTotalSeconds()).isEqualTo(3600);
   }
 
-  @Test
-  void rejectsATimeWithoutOffsetOrSeconds() {
-    for (String text :
-        new String[] {
-          "2026-11-20T08:15",
-          "2026-11-20T08:15:00",
-          "2026-11-20T08:15+01:00",
-          "2026-02-30T25:61:00+01:00"
-        }) {
-      assertThatThrownBy(() -> RecordFields.time(text))
-          .as(text)
-          .isInstanceOfSatisfying(
-              RecordRejected.class, e -> assertThat(e.reason()).isEqualTo(DiscardReason.TIME));
-    }
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "2026-11-20T08:15",
+        "2026-11-20T08:15:00",
+        "2026-11-20T08:15+01:00",
+        "2026-02-30T25:61:00+01:00"
+      })
+  void rejectsATimeWithoutOffsetOrSeconds(String text) {
+    assertRejected(() -> RecordFields.time(text), DiscardReason.TIME);
   }
 
   @Test
@@ -79,23 +69,22 @@ class RecordFieldsTest {
     assertThat(RecordFields.airport("MAD")).isEqualTo(new Airport("MAD"));
   }
 
-  @Test
-  void rejectsABadFlightNumberCarrierOrAirport() {
-    for (String text : new String[] {"12345", "-1", "1e2", "", "A1"}) {
-      assertRejected(() -> RecordFields.flightNumber(text), DiscardReason.FLIGHT_NUMBER);
-    }
-    for (String text : new String[] {"ib", "IBE", "I", ""}) {
-      assertRejected(() -> RecordFields.carrier(text), DiscardReason.CARRIER);
-    }
-    for (String text : new String[] {"mad", "MADR", "M1D", ""}) {
-      assertRejected(() -> RecordFields.airport(text), DiscardReason.AIRPORT);
-    }
+  @ParameterizedTest
+  @ValueSource(strings = {"12345", "-1", "1e2", "", "A1"})
+  void rejectsABadFlightNumber(String text) {
+    assertRejected(() -> RecordFields.flightNumber(text), DiscardReason.FLIGHT_NUMBER);
   }
 
-  private static void assertRejected(ThrowingCallable call, DiscardReason reason) {
-    assertThatThrownBy(call)
-        .isInstanceOfSatisfying(
-            RecordRejected.class, e -> assertThat(e.reason()).isEqualTo(reason));
+  @ParameterizedTest
+  @ValueSource(strings = {"ib", "IBE", "I", ""})
+  void rejectsABadCarrier(String text) {
+    assertRejected(() -> RecordFields.carrier(text), DiscardReason.CARRIER);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"mad", "MADR", "M1D", ""})
+  void rejectsABadAirport(String text) {
+    assertRejected(() -> RecordFields.airport(text), DiscardReason.AIRPORT);
   }
 
   @Test
@@ -136,5 +125,11 @@ class RecordFieldsTest {
 
     assertThat(leg.flightNumber()).isEqualTo(3166);
     assertThat(leg.quotedAt()).isEqualTo(quotedAt);
+  }
+
+  private static void assertRejected(ThrowingCallable call, DiscardReason reason) {
+    assertThatThrownBy(call)
+        .isInstanceOfSatisfying(
+            RecordRejected.class, e -> assertThat(e.reason()).isEqualTo(reason));
   }
 }

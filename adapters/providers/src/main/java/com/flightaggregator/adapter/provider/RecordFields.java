@@ -32,14 +32,14 @@ final class RecordFields {
     if (!DECIMAL_PRICE.matcher(text).matches()) {
       throw new RecordRejected(DiscardReason.PRICE);
     }
-    return new Money(new BigDecimal(text));
+    return money(new BigDecimal(text));
   }
 
   static Money centsPrice(String text) {
     if (!CENTS_PRICE.matcher(text).matches()) {
       throw new RecordRejected(DiscardReason.PRICE);
     }
-    return new Money(BigDecimal.valueOf(Long.parseLong(text), 2));
+    return money(BigDecimal.valueOf(Long.parseLong(text), 2));
   }
 
   static OffsetDateTime time(String text) {
@@ -100,6 +100,15 @@ final class RecordFields {
           quotedAt);
     } catch (IllegalArgumentException e) {
       throw new RecordRejected(DiscardReason.LEG);
+    }
+  }
+
+  /** A price the pattern accepts can still be out of the domain's bound, such as 999999999.995. */
+  private static Money money(BigDecimal amount) {
+    try {
+      return new Money(amount);
+    } catch (IllegalArgumentException e) {
+      throw new RecordRejected(DiscardReason.PRICE);
     }
   }
 }
