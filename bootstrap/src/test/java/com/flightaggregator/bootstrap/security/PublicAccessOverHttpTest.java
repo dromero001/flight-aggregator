@@ -32,11 +32,11 @@ class PublicAccessOverHttpTest {
 
   @Autowired private TestRestTemplate http;
 
-  /** Until the endpoint exists the honest answer is 404; it must not be turned into a 401. */
+  /** The search is public (§6.6): answered without a token, from the inventory as it stands. */
   @Test
-  void anAnonymousSearchIsNeverAskedForAToken() {
+  void anAnonymousSearchIsAnswered() {
     assertThat(http.getForEntity("/api/itineraries", String.class).getStatusCode())
-        .isNotEqualTo(HttpStatus.UNAUTHORIZED);
+        .isEqualTo(HttpStatus.OK);
   }
 
   /** Permitting the error page must not open the admin side. */

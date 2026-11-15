@@ -60,4 +60,13 @@ tasks.test {
     ).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir(rootProject.layout.projectDirectory.dir("deploy"))
         .withPathSensitivity(PathSensitivity.RELATIVE)
+    // OpenApiContractTest compares the served contract with the committed one (absent until it is
+    // first written, hence files, not file), and rewrites it when run with -Dopenapi.write=true: such
+    // a run is never taken from the cache, or it would write nothing.
+    inputs.files(rootProject.layout.projectDirectory.file("docs/architecture/openapi.json"))
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    val writeContract = providers.systemProperty("openapi.write").map(String::toBoolean).orElse(false)
+    systemProperty("openapi.write", writeContract.get())
+    outputs.cacheIf { !writeContract.get() }
+    outputs.upToDateWhen { !writeContract.get() }
 }

@@ -35,6 +35,11 @@ spring:
           authorities-claim-expressions: "[realm_access][roles]"
           authority-prefix: ROLE_
 
+springdoc:
+  # The served contract, committed as docs/architecture/openapi.json, lists its keys in order, so the
+  # same API is always the same text (OpenApiContractTest, spec 6.11).
+  writer-with-order-by-keys: true
+
 providers:
   # At most this many calls of one provider at once, downloads and quotes together; one more is
   # rejected, not queued (Q9). Required: see ProvidersProperties.

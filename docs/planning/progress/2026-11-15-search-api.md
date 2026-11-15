@@ -950,3 +950,134 @@ The re-review of fix round 1 (`.superpowers/sdd/2026-11-15-search-api/extras-rev
 - A false positive in the safe direction, noted by the reviewer and unchanged: `ESCAPED_SEPARATOR` also reads a literal backslash before a real separator as escaped, so `git push origin main\\; date +%H:%M` is blocked.
 - Gates: `./gradlew build --rerun-tasks` green, exit 0, 832 tests, none failed. No Java changed in this round.
 - Self-review (thermo-nuclear): the raw branch now decodes the JSON in one ordered pass instead of piecemeal substitutions, and its special continuation substitution is gone; the common part gains one line (CRLF). No new branch in the matching loop. The hook is 84 lines, its tests 139.
+
+## Task 9 — evidence
+
+The search endpoint, its opaque cursor and strict parameters, and the committed OpenAPI contract with its drift test (moved here from Task 13 by the user's decision). One test at a time, in the order of the plan's Steps; a test green on its first run is shown red by a labelled mutation of the production code, then restored.
+
+**Version (§6.1).** `org.springdoc:springdoc-openapi-starter-webmvc-api` **3.2.0**, outside Boot's BOM. Checked on 2026-11-15 against Maven Central:
+- `maven-metadata.xml` gives `<release>3.2.0</release>`; the list ends `3.1.0, 3.1.1, 3.2.0`, with no newer milestone or release candidate.
+- The 3.2.0 POM's `Last-Modified` is Sat, 24 Oct 2026 14:13:30 GMT: 22 days old, so past the 14-day rule.
+- Its parent, `org.springdoc:springdoc-openapi:3.2.0`, is built on `spring-boot-starter-parent` **4.1.2**, our Boot, and declares swagger-core 2.2.55.
+- The Jackson 2 that swagger-core needs resolves to 2.21.7, constrained by the Boot BOM (`./gradlew :bootstrap:dependencies`).
+
+Design notes:
+- **Files as the plan lists them, with three additions:**
+  - `InvalidParameterException`: the web adapter's own parameter error. The advice maps it, so no domain `IllegalArgumentException` is mapped to 400 (global constraints).
+  - `bootstrap/.../config/WebConfig.java`: `@Import`s the controller and the advice. The adapter's package is not scanned, as for the stores in `PersistenceConfig`. The plan gives Task 9 no wiring, but the endpoint must exist in the application for the contract and for the anonymous-access check. Task 10's plan says "Create `WebConfig.java`"; it now modifies it.
+  - Test fixtures `RecordingSearch` (a fake `SearchItineraries`) and `Cursors`.
+- **Dependencies of `adapters/web`:**
+  - `spring-web`, not `spring-webmvc`, and no `jackson-databind`: the code uses only spring-web's annotations and `ProblemDetail`, and Boot's converter writes the records.
+  - springdoc is an `api` dependency (the module applies `java-library`). Its annotations are on the controller that bootstrap's `WebConfig` names, and javac failed on `-Xlint:classfile` without them (`Cannot find annotation method 'responseCode()' in type 'ApiResponse'`).
+  - Tests use `spring-boot-starter-webmvc-test`.
+- **Named `@RequestParam`s, not one bound object.** Spring 7's `ExtendedServletRequestDataBinder` binds request headers into a model attribute, filtering only a few names (`origin` among them). A `Destination`, `Sort` or `Limit` header would set a filter.
+- **`SearchParameters`:**
+  - Each value must match its pattern in full, ASCII only, before it is upper-cased, so `ıst` (dotless i, which upper-cases to `IST`) is refused.
+  - An empty value (`origin=`) is a 400, and so is a repeated one (`origin=MAD&origin=BCN` reaches the parser as `MAD,BCN`).
+  - After the patterns, no domain constructor can throw.
+  - `sort` takes exactly `price`, `departure` or `duration`. `limit` takes 1 to 100 (Q9, default 20).
+- **`CursorCodec`** writes the plan's format. Decoding accepts only what encoding writes:
+  - the base64url alphabet without padding, at most 200 characters;
+  - then each field in its own form: version `1`; generation and duration up to 19 digits, with an overflow refused; the sort order by name; the price with its two decimals; the departure as `Instant.toString()` writes it in the years 1000 to 9999; the id as a canonical lower-case UUID (`UUID.fromString` alone accepts `1-1-1-1-1`).
+  - So a forged cursor can seek only within public data (E3, signing, was rejected), and it cannot bring PostgreSQL a timestamp it would refuse, which would be a 500 (Review Focus 2).
+- **Responses:**
+  - The fields are the plan's. `Price` and `Leg` are records nested in `ItineraryResponse`, and the contract's schemas are `Price` and `Leg`.
+  - `id` is a UUID. Times are `OffsetDateTime` at the provider's offset. `quotedAt` is an instant in UTC. `durationMinutes` is an int64. There is no provider and no leg price.
+- **Problems.** Spring's `ProblemDetail`, returned from a `@RestControllerAdvice`, is written as `application/problem+json` with `instance` set to the path. Only the two web errors are mapped: any other exception stays Boot's 500.
+- **The contract:**
+  - springdoc 3 serves OpenAPI 3.1. `springdoc.writer-with-order-by-keys: true` (`application.yaml`) orders its keys, and the test pretty-prints it with two spaces and LF on every platform.
+  - Every field of the search's answer is `required`, and only `nextCursor` is nullable (`"type": ["string", "null"]`).
+  - The 400 is documented on the operation with `@ApiResponse`, not taken from the advice. Otherwise the 404, 409, 429 and 503 handlers that Tasks 10 and 12 add to the shared advice would be documented on every operation.
+  - The parameters are documented with the parser's own constants (patterns, default sort, default and largest page size, cursor length).
+- **The write path.** `bootstrap/build.gradle.kts` forwards `-Dopenapi.write=true` to the test JVM, and the committed file is a test input.
+  - A write run is never taken from the cache or up to date. Checked: two write runs in a row both executed, and a deleted file was written again byte for byte.
+  - Editing only the committed file reruns the test (mutation below).
+- **Security** (`SecurityConfig` unchanged):
+  - `GET /api/itineraries` answers an anonymous client 200 on a real server (`PublicAccessOverHttpTest`).
+  - `/v3/api-docs` answers 200 through the filter chain (`OpenApiContractTest`).
+  - A throwaway check, not committed, confirmed that nothing else opened: `/v3/api-docs.yaml`, `/v3/api-docs/swagger-config` and `/swagger-ui.html` answer 401, and so does an anonymous `POST /api/itineraries`.
+- **A search read that times out** (the parallel branch's 2 s statement timeout, Spring's `QueryTimeoutException`) is not mapped. A throwaway experiment, not committed, used a real server and a `SearchItineraries` that throws it. It answers **500** with Boot's error body as `application/json`: `{"timestamp":…,"status":500,"error":"Internal Server Error","path":"/api/itineraries"}`. It is not a problem, and Tomcat logs the stack trace at ERROR. A mapping is listed below as an extra.
+
+Cycles:
+
+- `CursorCodecTest.roundTrips` (parameterised over the three sort orders, one departure with milliseconds; checks the plan's text exactly, the base64url alphabet, and decode(encode)):
+  - red, all 3 cases = `java.lang.UnsupportedOperationException` (stub);
+  - green = encode, and a decoder that splits the fields.
+- `rejectsGarbageTamperedAndOverlongCursors` (Review Focus 2, 15 cases, each expecting an `InvalidCursorException` that names the cursor):
+  - red, all 15 cases. The minimal decoder accepted padding, another version, `1E+3`, a year `+100000`, the id `1-1-1-1-1` and an extra field. It threw the wrong exception for the rest: `Illegal base64 character 20`, `ArrayIndexOutOfBoundsException`, `No enum constant ...SortOrder.BEST`, `Money cannot be negative`, `DateTimeParseException` (month 13), `NumberFormatException` (generation overflow, a missing field) and `Last unit does not have enough valid bits`.
+  - green = the alphabet-and-length gate, the strict field pattern, and both parse failures caught.
+  - Two cases were added after green: "a length base64 cannot have" (`AAAAA`) and "the year 0". They passed, and were shown red by mutation:
+    - M1 "no catch of a base64 failure": `AAAAA` failed with `IllegalArgumentException`;
+    - M2 "the year from 0000": "the year 0" was accepted.
+  - Further mutations:
+    - M3 "no alphabet gate": "padded" was accepted.
+    - M4 "no length bound" left the test **green**. The fields' own forms keep any accepted cursor under 180 characters, so the format rejects a 201-character cursor anyway. The 200 bound only spares decoding a long input, and no test can tell it apart. It stays because the plan names it.
+- `SearchParametersTest.normalisesCodesAndAmounts`: red = `expected: SearchQuery[... MAD ... JFK ... 100.00 ... IB ... PRICE], limit=20 ...] but was: null`. Green = upper-cased codes, `Money.euros`, sort `PRICE` and limit 20 by default.
+- `rejectsEachInvalidParameter` (19 cases: the plan's `MADR`, `1e3`, `-1`, `0`, `IBX`, `best`, `limit` 0 and 101, plus `M4D`, empty, `ıst`, `0.00`, `100.999`, `1234567890`, `I`, `PRICE`, `-1` and `twenty` as limits):
+  - red, all 19 cases. The domain's `IllegalArgumentException` leaked (for example `Airport code must be three upper-case letters: MADR`), or the value was accepted (`ıst`, `1e3`, `0`, `best`, every limit).
+  - green = a pattern per parameter, the zero check, the sort table and the limit range, each failure an `InvalidParameterException` whose message starts with the parameter's name.
+  - Mutations after the refactor below: M10 "zero accepted" failed `0` and `0.00`; M11 "no upper bound" failed `101`.
+- `readsTheSortTheLimitAndTheCursor` (beyond the plan's list, required by the cursor line; parameterised over the three sort orders):
+  - red = `but was: SearchQuery[... limit=100, cursor=Optional.empty]`;
+  - green = the cursor decoded by `CursorCodec`;
+  - mutation M5 "`departure` read as `DURATION`" failed its case.
+- `SearchControllerTest.searchesWithNoFilters` (`@WebMvcTest`, `WebTestApplication`, the fake search; the body compared in `JsonCompareMode.STRICT`):
+  - red = `Status expected:<200> but was:<404>`;
+  - green = the mapping, `SearchResponse`, and `ItineraryResponse` as a stub.
+- `writesLocalTimesAndThePriceButNeverTheProvider` (MAD 08:15+01:00, via BCN, to JFK 14:10-05:00; legs at 100.00 and 200.00 from ALPHA and BETA):
+  - red = `ServletException: ... UnsupportedOperationException: not yet` (the stub);
+  - the first green run then failed on the test itself: `durationMinutes Expected: 775 got: 715`. My hand sum was wrong (07:15Z to 19:10Z is 11 h 55 min = 715). The expectation was corrected, not the code.
+  - green = the card's fields, with `Price` and `Leg` nested and the price at 315.00 (300 × 1.05). The strict comparison refuses any extra field, and the body contains no `provider`, `alpha`, `beta`, `100.00` or `200.00`.
+  - mutation M6 "legs' times at UTC": `Expected: 2026-11-20T08:15:00+01:00 got: 2026-11-20T07:15:00Z`.
+- `flagsAChangedInventory`:
+  - red = `JSON path "$.inventoryChanged" expected:<true> but was:<false>`;
+  - green = the flag and `nextCursor` as `CursorCodec.encode` of the page's cursor, which decodes back to it;
+  - mutation M7 "no next cursor" failed it.
+- `answersAProblemForABadCursor`:
+  - red = `Status expected:<400> but was:<200>` (the cursor was not read). With the parameter read, the second red was `ServletException: ... InvalidCursorException`.
+  - green = `ProblemResponses`, which maps it to a `ProblemDetail`.
+  - That run also showed a test-isolation defect: the fake, a singleton in the cached context, kept the earlier tests' queries. `RecordingSearch.reset()` now runs before each test.
+  - M8: `@ResponseStatus` on the handler turned out redundant (green without it), so it was removed.
+- `answersAProblemNamingEachBadParameter` (beyond the plan's list, required by reading the other six parameters; one bad value each):
+  - red = `Status expected:<400> but was:<200>` for all 6;
+  - green = the seven named parameters and the parameter error mapped;
+  - mutation M9 "origin and destination swapped": each case got the other parameter's detail.
+- `PublicAccessOverHttpTest.anAnonymousSearchIsAnswered` (was `anAnonymousSearchIsNeverAskedForAToken`, which accepted the 404 "until the endpoint exists"):
+  - red = `expected: 200 OK but was: 404 NOT_FOUND`;
+  - green = `WebConfig`.
+- `OpenApiContractTest.servedContractMatchesTheCommittedOne` (Step 4):
+  - red = `Expecting path: ../docs/architecture/openapi.json to exist` (with the message that says how to regenerate);
+  - green after `./gradlew :bootstrap:test --tests '*OpenApiContractTest*' -Dopenapi.write=true`.
+  - It then went red by itself whenever a later cycle changed the contract, and the file was regenerated each time.
+  - Mutation "one character of the committed file changed": red with the regeneration message, and the file restored.
+- The contract's faithfulness, beyond the plan's list (the brief asks for every field, nullability and the error responses; Task 13 Step 1 adds the other endpoints):
+  - `marksEveryFieldOfTheSearchRequired` (each of `SearchResponse`, `ItineraryResponse`, `Leg`, `Price`): red = `Expecting actual: [] to contain exactly in any order` (springdoc marks nothing required); green = `@Schema(requiredMode = REQUIRED)` on each record component.
+  - `marksOnlyTheNextCursorNullable`: red = `Expecting actual: [] to contain exactly ["SearchResponse.nextCursor"]`; green = `types = {"string", "null"}`.
+  - `documentsTheProblemOfABadRequest`: red = `expected: "#/components/schemas/ProblemDetail" but was: ""`; green = the operation's `@ApiResponse` for 400 as `application/problem+json`.
+  - `documentsEachParameterAsTheSearchReadsIt`: red = `expected: "^[A-Za-z]{3}$" but was: ""`; green = `@Parameter` with the parser's patterns, the sort enum and its default, `limit` as an integer from 1 to 100 with default 20, and `maxLength` 200 on the cursor.
+
+Refactors under the green suite, from the review of my own diff:
+- `SearchParameters` gained one `matching(value, pattern, rule)` helper, so each parameter is a pattern, a rule and a conversion, with no block lambdas, and its defaults are named constants that the contract shares.
+- `ProblemResponses` has one handler for both errors.
+- The test cursors come from one `Cursors` fixture.
+- `OpenApiContractTest` names the search's schemas once.
+- Javadoc on the new types.
+- M10 and M11 above were run after this refactor.
+
+Gates: `./gradlew build` green (exit 0, Spotless, ArchUnit and the coverage gate included), on each of the task's two commits. Tests: `adapters/web` 53 (new), `bootstrap` 145, `adapters/persistence` 109, `adapters/providers` 197, `application` 82, `domain` 91, architecture 39, `mock-gds` 201; none failed. Thermo-nuclear review of the diff:
+- No file near 1,000 lines: `SearchControllerTest` 243, `OpenApiContractTest` 177, the largest production file `SearchParameters` 102.
+- No branch was added to existing code. `bootstrap/build.gradle.kts`, `application.yaml` and `libs.versions.toml` gain only their lines.
+- Spring's and springdoc's own mechanisms are used: `ProblemDetail` and `@RestControllerAdvice`, `@RequestParam`, `@Schema`/`@Parameter`/`@ApiResponse`, and springdoc's key ordering.
+- Bean Validation was considered and not used. It would split each rule between an annotation and the parser, its 400 detail does not name the parameter (`Validation failure`), and it needs `hibernate-validator`.
+- Nothing is written half-way: the endpoint only reads.
+- What fails without a clear answer: a search read that times out answers Boot's 500, not a problem (above), and an unknown parameter is ignored. Both are listed below.
+
+### Extras for the user to decide
+
+- **A search read that times out answers 503 with `Retry-After`, as a problem.** The parallel branch's 2 s statement timeout surfaces as Spring's `QueryTimeoutException`, which today answers Boot's 500 (above). Value: a client, and plan 6's "Try again", gets a retryable answer instead of a server error. Cost: a handler and a test, a `Retry-After` value to choose, and a choice of layer (an application exception from the reader, or Spring's `TransientDataAccessException` in the web adapter). Left out unless you approve.
+- **Refuse unknown query parameters.** A misspelt filter (`orign=MAD`) is ignored today, so the search silently answers without it. Value: no silently unfiltered results. Cost: a check of the parameter names against the seven, and a test; the dashboard sends only known ones. Left out unless you approve.
+- **Problem details for every framework error** (Boot's `spring.mvc.problemdetails.enabled: true`). An unsupported media type or method answers Boot's error JSON today. Value: one error format for clients. Cost: one setting and a test; Boot's handler and `ProblemResponses` coexist. Left out unless you approve.
+- **An exact `ProblemDetail` schema.** springdoc reads Spring's class without the Jackson mixin that flattens its `properties` map, so the contract lists a `properties` member that Spring never writes. It is optional, so no client breaks. Value: an exact TypeScript type. Cost: a documentation-only schema or an OpenAPI customizer, about 15 lines and a test. Left out unless you approve.
+- **The contract's metadata.** `info` is springdoc's default ("OpenAPI definition", "v0"), and `servers` is `http://localhost`, "Generated server url", from the test's MockMvc. Value: a titled contract and a relative server URL. Cost: an `OpenAPI` bean or two settings, and a regeneration. Left out unless you approve.
+- **`currency` as the enum `["EUR"]` and a pattern on `Price.amount`.** Value: the TypeScript literal type `"EUR"`. Cost: two annotations and a regeneration. Left out unless you approve.
+- Not an extra but unassigned: **E2 (Swagger UI)** is approved by the user, but no task builds it. This task adds only the `-api` starter, as its plan says, and `/swagger-ui.html` stays behind `ADMIN` until a task opens it.
