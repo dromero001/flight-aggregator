@@ -1,7 +1,14 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+import { axe } from '../test/axe';
 import { SortTabs } from './SortTabs';
+
+test('has no accessibility violations', async () => {
+  const { container } = render(<SortTabs value="duration" onChange={vi.fn()} />);
+
+  expect(await axe(container)).toHaveNoViolations();
+});
 
 test('changes the sort with the arrow keys', async () => {
   const onChange = vi.fn();

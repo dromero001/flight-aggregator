@@ -6,7 +6,8 @@ import { MemoryRouter, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { Itinerary, SearchResponse } from '../api/types';
 import { createQueryClient } from '../queryClient';
-import { direct } from '../test/fixtures';
+import { axe } from '../test/axe';
+import { connecting, direct } from '../test/fixtures';
 import { server } from '../test/server';
 import { SearchPage } from './SearchPage';
 
@@ -72,6 +73,18 @@ function renderAt(url: string) {
     </QueryClientProvider>,
   );
 }
+
+test('has no accessibility violations with results on the page', async () => {
+  server.use(
+    http.get(SEARCH, () =>
+      HttpResponse.json(page({ itineraries: [direct(), connecting()], nextCursor: 'page-2' })),
+    ),
+  );
+  const { container } = renderAt('/?origin=MAD');
+  await screen.findByRole('button', { name: 'Load more' });
+
+  expect(await axe(container)).toHaveNoViolations();
+});
 
 test('shows the loading state', () => {
   server.use(

@@ -361,3 +361,17 @@ Added beyond the plan's list (guards for what Q7 and the code already have, not 
 ### Concerns
 - `toApiError` turns an HTTP-date `Retry-After` into `NaN` (Task 2's Minor C-1, waiting for the end-of-plan review); the 429 message would then read "Try again in NaN seconds". The fix belongs in `toApiError`.
 - After the last page loads, "Load more" disappears and the keyboard focus falls back to the page; moving it to the new cards is not in the plan.
+
+### E7: axe in the component tests (approved extra, assigned to Task 5)
+
+- **`eslint-plugin-jsx-a11y`** was already installed and enabled by Task 1 (`jsxA11y.flatConfigs.recommended` in `eslint.config.js`, shown failing there with `jsx-a11y/alt-text`); nothing to add.
+- **`vitest-axe` 0.1.0** (dev), the version Task 1's table recorded: still the newest stable (`npm view vitest-axe time --json`: 0.1.0 on 2022-10-21; the only later releases are `1.0.0-pre.0` to `pre.5`, prereleases). Peer `vitest >=0.16.0` met by 5.0.5. It brings no new `axe-core`: its `^4.4.2` dedupes to the 4.14.0 already in the lockfile (2026-10-05, the newest stable; only canaries are newer). New transitive packages: `chalk` 5.6.2 (2025-09-08) and `lodash-es` 4.18.1 (2026-04-01); `npm ls` clean; `npm audit` unchanged (the 7 moderate `minimatch` findings of Task 1).
+- **`src/test/axe.ts`**: `axe` configured with Q7's tags (`wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`), the matcher registered with `expect.extend`, and its type declared for Vitest 5's `Matchers` (vitest-axe 0.1.0 still declares it on Vitest 0.x's `Vi` namespace, which Vitest 5 does not read). `color-contrast` is off here: jsdom neither lays out nor paints, so the rule cannot decide and printed `Not implemented: HTMLCanvasElement's getContext()` four times; the end-to-end axe run checks contrast in a browser.
+
+Red → green, one assertion per component test file:
+- `SearchPage.test.tsx` `'has no accessibility violations with results on the page'` (two cards and "Load more"): red `Failed to resolve import "vitest-axe" from "src/test/axe.ts"`; green after `npm install --save-dev --save-exact vitest-axe@0.1.0`. Shown red by mutation as well (each card's `<li>` made a `<div>`): `<ul> and <ol> must only directly contain <li>, <script> or <template> elements (list)`; restored.
+- `FilterBar.test.tsx` `'has no accessibility violations while a field is invalid'` (Task 3's component; an origin error with `aria-invalid` and `aria-describedby`): passed on its first run, so red by mutation (the label text removed): `Form elements must have labels (label)` at `input[aria-describedby="origin-error"]`; restored.
+- `SortTabs.test.tsx` `'has no accessibility violations'` (Task 3's component): passed on its first run, so red by mutation (the tab text removed): `Form elements must have labels (label)` at `input[value="price"]`; restored.
+- `ItineraryCard.test.tsx` `'has no accessibility violations'` (Task 4's component, the connecting itinerary): passed on its first run, so red by mutation (the route line's `aria-hidden="true"` made `"yes"`): `ARIA attributes must conform to valid values (aria-valid-attr-value)`; restored.
+
+Checks: `npm run verify` exit 0 (47 tests in 11 files, no stray output). Self-review (thermo-nuclear): one helper holds the configuration, the matcher and its type, so a test imports only `axe`; no existing accessibility helper to reuse (Task 1 had only the lint plugin).
