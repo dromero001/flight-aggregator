@@ -2,6 +2,7 @@ package com.flightaggregator.mockgds.support;
 
 import com.flightaggregator.mockgds.dataset.Dataset;
 import com.flightaggregator.mockgds.dataset.Defect;
+import com.flightaggregator.mockgds.dataset.GeneratorConfig;
 import com.flightaggregator.mockgds.dataset.MalformedLeg;
 import com.flightaggregator.mockgds.dataset.ProviderRecord;
 import com.flightaggregator.mockgds.dataset.ValidLeg;
@@ -14,7 +15,6 @@ import com.flightaggregator.mockgds.serving.PricedRecord;
 import com.flightaggregator.mockgds.serving.ProviderInventory;
 import java.math.BigDecimal;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,9 +55,10 @@ public final class Fixtures {
 
   /** An inventory that serves only these records, priced as the mock prices them. */
   public static ProviderInventory inventoryOf(List<ProviderRecord> records) {
+    var config = GeneratorConfig.defaults();
     return new ProviderInventory(
         new Dataset(records),
-        new PriceModel(42, Duration.ofMinutes(15), ReferenceData.standard()),
+        new PriceModel(config.seed(), config.priceBucket(), ReferenceData.standard()),
         Clock.systemUTC());
   }
 }
