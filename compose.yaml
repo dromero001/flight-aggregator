@@ -5,6 +5,8 @@
 # ALPHA_API_KEY, BETA_API_KEY, GAMMA_API_KEY, POSTGRES_PASSWORD.
 services:
   postgres:
+    # Every service comes back after a crash or a Docker restart, until it is stopped on purpose.
+    restart: unless-stopped
     image: postgres:18.4-trixie@sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636
     environment:
       POSTGRES_DB: flightaggregator
@@ -21,6 +23,7 @@ services:
       start_period: 10s
 
   app:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: bootstrap/Dockerfile
@@ -59,6 +62,7 @@ services:
       start_period: 40s
 
   mock-gds:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: mock-gds/Dockerfile
