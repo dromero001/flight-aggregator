@@ -19,7 +19,7 @@
 
 Roadmap: [plan 7](../roadmap.md), started as soon as plan 6 ends (tasks marked in the task map start earlier). It builds on what plans 4–6 built and does not repeat it: the meters `ingestion.*`, `provider.calls`, `ingestion.records.discarded`, `ingestion.provider.retries`, the breakers' `resilience4j.circuitbreaker.*` (`TaggedCircuitBreakerMetrics`) and `search.cache{result}` (plan 5 Task 5), listed in [Ingestion](../../architecture/ingestion.md); the ECS console logs with `correlation.id` in the MDC (`IngestionJob`); `SecurityConfig`, `GET /api/admin/status`, `POST /api/admin/ingestions` and the `DEGRADED` health (plan 5 Tasks 11–12); the measured figures of plan 5 Task 13; plan 6's Playwright harness and CI `e2e` job (plan 6 Tasks 9–10). Carried notes: plan 4 close-out (the alert rules' NaN and aggregation), E15 (user, plan 4's extras: "optional at the very end, only with a full re-verification").
 
-**Status:** draft for the user's review on the evening of 2026-11-15. Not approved; the open questions below are unanswered. How Prometheus reads the metrics and who opens Grafana were decided by the user while the plan was drafted (spec §6.6, §6.10) and are written into Tasks 1 and 2.
+**Status:** draft for the user's review on the evening of 2026-11-15. Not approved yet. The user answered Q1–Q4 on 2026-11-15 (A on each, the recommendation); the extras and the plan's approval are still open. How Prometheus reads the metrics and who opens Grafana were decided by the user while the plan was drafted (spec §6.6, §6.10) and are written into Tasks 1 and 2.
 
 ## Global Constraints
 
@@ -42,17 +42,20 @@ Roadmap: [plan 7](../roadmap.md), started as soon as plan 6 ends (tasks marked i
 - B. Strict Viewer, with the jump built into the dashboard: a logs panel whose trace link reloads the dashboard with that trace id, and a trace panel that shows it. Nothing beyond the Viewer role, but two more panels to build and test, and logs are searchable only through that panel.
 - C. Anonymous Editor: Explore with no extra setting, but anyone who reaches Grafana can also create and save dashboards.
 - **Recommendation: A.** It is the smallest step beyond the Viewer role that keeps the approved jump, and nothing a Viewer changes can be saved. If the pinned Grafana no longer honours the setting, Task 1 stops and asks. Tasks: 1, 7.
+- **Decided by the user (2026-11-15): A.**
 
 **Q2. How the logs reach Loki** (§6.10: logs searchable in Grafana, with a jump to the trace).
 - A. The app exports its log records over OTLP to the Collector (OpenTelemetry's Logback appender, installed on Boot's `OpenTelemetry`), which forwards them to Loki's OTLP endpoint. The console keeps its ECS JSON for `docker compose logs`. Trace and span ids travel as fields of each record.
 - B. The Collector tails the `app` container's Docker log files and parses the ECS JSON. No change in the app, but on the Mac and on Windows those files live inside Docker Desktop's VM, so the mount differs per machine.
 - C. Grafana Alloy, a new service, reads every container's output through the Docker socket. It covers all containers, but it is a service the user has not approved, and the socket gives control of the host's Docker.
 - **Recommendation: A.** Traces and logs take one protocol through the approved Collector; no host path or socket, so it runs the same on both machines; the trace context is structured instead of parsed from text. Cost: one library if Boot's BOM does not manage the appender (Task 5 checks). Tasks: 1, 5.
+- **Decided by the user (2026-11-15): A.**
 
 **Q3. Which alerts** (§6.5, §4.3, §6.10; the plan 4 close-out note has the rules use min freshness and max failures in a row).
 - A. The three the spec names, `IngestionFailing` (§6.5) and `PartitionHorizonShort` and `RowsInDefaultPartition` (§4.3), plus `ProviderDataStale` per provider.
 - B. The three the spec names only; a provider's freshness stays a metric and a dashboard panel.
 - **Recommendation: A.** A run with one fresh provider resets the failure count, so with B a provider down for a whole day raises no alert, only a WARN line per run and a growing gauge; the close-out note already counts on a freshness rule. Cost: one rule and three promtool cases. Tasks: 3, 6.
+- **Decided by the user (2026-11-15): A.**
 
 **Q4. Values the spec leaves open.**
 
@@ -72,6 +75,7 @@ Roadmap: [plan 7](../roadmap.md), started as soon as plan 6 ends (tasks marked i
 | Cut-off for the optional work | Task 8 starts only if Tasks 1–7 and 9 are approved by 14:00 on Monday; Task 11 only if Task 10 ends by 17:00 | Task 10's reviews, fix round and clean clone need about three hours at the measured pace (roadmap) |
 
 - A. These values. B. Change any row. **Recommendation: A.** Tasks: 1–5, 8, 11.
+- **Decided by the user (2026-11-15): A,** every row as recommended.
 
 ## Decisions this plan takes
 
