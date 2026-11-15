@@ -306,6 +306,47 @@ test('shows the failure for a rate limit without a wait', async () => {
   );
 });
 
+test('searches again with the same filters after a rate-limited search', async () => {
+  const user = userEvent.setup();
+  let requests = 0;
+  server.use(
+    http.get(SEARCH, () => {
+      requests += 1;
+      return requests === 1
+        ? problem(429, 'Too many requests from this address.', { 'Retry-After': '30' })
+        : HttpResponse.json(page({ itineraries: flights(1) }));
+    }),
+  );
+  renderAt('/?origin=MAD');
+  await screen.findByText('Too many searches from your connection. Try again in 30 seconds.');
+
+  // The wait is over; the filters are unchanged, so the URL does not change either.
+  await user.click(screen.getByRole('button', { name: 'Search' }));
+
+  expect(await screen.findByText('Showing 1 flight')).toBeInTheDocument();
+  expect(requests).toBe(2);
+});
+
+test('keeps the shown results when the same filters are searched again', async () => {
+  const user = userEvent.setup();
+  let requests = 0;
+  server.use(
+    http.get(SEARCH, () => {
+      requests += 1;
+      return HttpResponse.json(page({ itineraries: flights(1) }));
+    }),
+  );
+  renderAt('/?origin=MAD');
+  await screen.findByText('Showing 1 flight');
+
+  await user.click(screen.getByRole('button', { name: 'Search' }));
+  // Long enough for a request the page should not have sent to arrive.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  // Only a failed search is asked again; "Reload" is the way to fresh results (Q4-A).
+  expect(requests).toBe(1);
+});
+
 test('does not search while a filter is invalid', async () => {
   let requests = 0;
   server.use(
