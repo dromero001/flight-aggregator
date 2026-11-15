@@ -210,3 +210,9 @@ Review (`task-2-review.md`): functional CHANGES REQUESTED (F1), code CHANGES REQ
   - the `ProvidersConfigTest` comment is gone, with the restated value;
   - the `PagedProvider` and `ProvidersConfig` Javadoc keep only what they own: the limit's behaviour, and the class proxy.
 - Corrected in place: the Task 2 gates line that claimed a missing setting already stopped startup is marked as corrected, and the "left as they are" line as superseded. The extra "refuse a limit below 1" is marked as built by the ruling.
+
+## User decisions (2026-11-15, after Tasks 2 and 11)
+
+- **Keycloak's own administrator account is removed.** Task 11 had given Keycloak an administrator console account with a committed demo password; nothing in the app or the demo needs it (the realm is imported from `deploy/keycloak/flight-aggregator-realm.json`, and the admin token comes from the client-credentials client). Removed in a follow-up commit, with the README.
+- **An admin call with Keycloak down and no cached keys keeps answering 500.** The proposed 503 is not built.
+- **The learning test `ConcurrencyLimitScopeTest` stays,** as a guard: the per-provider limit relies on how Spring 7.0.10 counts `@ConcurrencyLimit` (per method, or per bean on the class).
