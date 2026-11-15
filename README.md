@@ -82,7 +82,8 @@ The documentation is split by what each part shows.
   - [2 — Domain](docs/planning/plans/2026-11-14-domain.md)
   - [3 — Mock GDS over HTTP](docs/planning/plans/2026-11-15-mock-gds-http.md)
   - [4 — Providers and ingestion](docs/planning/plans/2026-11-15-providers-and-ingestion.md)
-  - [5 — Search API](docs/planning/plans/2026-11-15-search-api.md) (draft, under the user's review)
+  - [5 — Search API](docs/planning/plans/2026-11-15-search-api.md)
+  - [6 — Dashboard](docs/planning/plans/2026-11-15-dashboard.md)
 - Progress reports:
   - [2026-11-13](docs/planning/progress/2026-11-13.md)
   - [2026-11-14](docs/planning/progress/2026-11-14.md)

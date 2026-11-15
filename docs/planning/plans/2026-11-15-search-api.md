@@ -25,7 +25,7 @@
 
 Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progress/2026-11-14.md), "Pending for later plans" (R5, R11; the `LegKey` null checks were closed by plan 4 Task 1), and plan 4's ledger notes (bulkhead, `ANALYZE`, one provider-time helper, the refresh); each task names what it closes. Plan 4 must be closed first: this plan builds on its `IngestionJob`, ShedLock lock `ingestion`, `V4__shedlock.sql` and the compose `app` service.
 
-**Status:** draft for the user's review on 2026-11-15. The open questions below are answered before execution.
+**Status:** approved by the user on 2026-11-15 (session 09), with every open question answered as recommended. Extras: E1 replaced by a confidential **client-credentials** client with a service account holding `ADMIN` (not the deprecated password grant), documented in the README's "Admin access" section and in `SOLUTION.md` so that reviewers can reproduce the admin calls without the author; E2 (Swagger UI) approved; E3 and E4 rejected. Before execution, Task 2 is rewritten on plan 4's final provider structure (one `PagedProvider`, a `CircuitBreakerRegistry`, no `WiredProvider`), and the out-of-scope note on plan 4's extras is updated.
 
 ## Global Constraints
 
@@ -135,7 +135,7 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 ## Out of scope
 
-- The dashboard, its Keycloak client and login, and the TypeScript types (plan 6). Prometheus, Grafana, alerts and OTel (plan 7). Plan 4's open extras E4–E6 stay with the user.
+- The dashboard, its Keycloak client and login, and the TypeScript types (plan 6). Prometheus, Grafana, alerts and OTel (plan 7). Plan 4's extras are decided (E4–E8, E11, E13 and E14 built in plan 4; the rest rejected).
 
 ## Review Focus
 
