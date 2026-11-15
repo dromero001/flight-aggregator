@@ -41,7 +41,9 @@ Roadmap: [plan 4](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - **Scope (`brief-scope`):** only what this plan lists. An extra found mid-task goes to the progress report under "Extras for the user to decide".
 - **Repo rules:** English everywhere. No AI attribution in commits. Push only after `direnv exec . gh api user --jq .login` prints `dromero001`.
 
-## Decisions this plan takes (for the user's review)
+**Status:** approved by the user for execution on 2026-11-15 at 04:20 (session 09), after the review recorded in the decisions below.
+
+## Decisions this plan takes (reviewed by the user)
 
 | Decision | Why | Source |
 |---|---|---|
