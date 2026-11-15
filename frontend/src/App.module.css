@@ -1,0 +1,15 @@
+.topBar {
+  padding: var(--space-3);
+  background: var(--color-ink);
+  color: var(--color-cabin);
+  font-family: var(--font-codes);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.main {
+  max-width: var(--column-width);
+  padding: var(--space-4) var(--space-3);
+}

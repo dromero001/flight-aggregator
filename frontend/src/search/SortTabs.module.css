@@ -1,0 +1,46 @@
+.group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  padding: 0;
+  margin-bottom: var(--space-1);
+  color: var(--color-tarmac);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.option {
+  display: inline-flex;
+}
+
+/* The radio stays in the page for the keyboard; its label is the tab. */
+.radio {
+  position: absolute;
+  opacity: 0;
+}
+
+.tab {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.radio:checked + .tab {
+  border-color: var(--color-ink);
+  background: var(--color-ink);
+  color: var(--color-cabin);
+  font-weight: 600;
+}
+
+.radio:focus-visible + .tab {
+  outline: 3px solid var(--color-ink);
+  outline-offset: 2px;
+}

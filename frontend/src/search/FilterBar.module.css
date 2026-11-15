@@ -1,0 +1,66 @@
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.field {
+  flex: 1 1 8rem;
+}
+
+.label {
+  display: block;
+  color: var(--color-tarmac);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  margin-top: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--color-hold);
+}
+
+.error {
+  margin: var(--space-1) 0 0;
+  color: var(--color-hold);
+  font-size: 0.875rem;
+}
+
+.submit {
+  align-self: flex-end;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-ink);
+  border-radius: var(--radius);
+  background: var(--color-beacon);
+  color: var(--color-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Filters stack under 640 px (spec 6.8). */
+@media (max-width: 640px) {
+  .form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .field {
+    flex: none;
+  }
+
+  .submit {
+    align-self: stretch;
+  }
+}

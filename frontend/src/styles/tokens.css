@@ -1,0 +1,23 @@
+:root {
+  /* Boarding-pass palette (plan 6, Q6) */
+  --color-ink: #1b2a41;
+  --color-cabin: #f5f7fa;
+  --color-tarmac: #5c6b7a;
+  --color-beacon: #e8a33d;
+  --color-cleared: #1e7f4f;
+  --color-hold: #b3261e;
+  --color-surface: #ffffff;
+  --color-border: #c9d1da;
+
+  --font-text: 'Barlow', system-ui, sans-serif;
+  --font-codes: 'Barlow Condensed', 'Barlow', system-ui, sans-serif;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+  --space-5: 2.5rem;
+
+  --radius: 4px;
+  --column-width: 880px;
+}

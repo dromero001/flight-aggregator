@@ -1,0 +1,26 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-cabin);
+  color: var(--color-ink);
+  font-family: var(--font-text);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+h1 {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-codes);
+  font-size: 2rem;
+  font-weight: 600;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-ink);
+  outline-offset: 2px;
+}
