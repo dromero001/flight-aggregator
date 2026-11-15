@@ -247,6 +247,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 **Decided by the user on 2026-11-15, after the implementation:** `SearchConfig` is wired in this task with a provisional `RefreshScheduler` (one WARN per request, nothing else), so the application starts and Tasks 7 and 9 stay parallel; Task 7 replaces it, and both beans together stop startup, so it cannot linger. No refresh is requested before the first publication (no `publishedAt`; the first run loads every origin).
 
+**Decided by the user on 2026-11-15, after the task's review:** a page served from the cache keeps only the itineraries still sellable at `now` (`isSellable(now)`), so a cached page never lists a departed flight (§4.1); and a refresh is claimed and requested only for an origin in the airport catalogue, checked in this service, so Task 7 receives only known origins.
+
 **Depends on:** 4, 5. **Parallel:** with 8; 7 and 9 start from its commit.
 
 **Files:**
