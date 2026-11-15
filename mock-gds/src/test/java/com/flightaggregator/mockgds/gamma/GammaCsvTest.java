@@ -1,22 +1,18 @@
 package com.flightaggregator.mockgds.gamma;
 
+import static com.flightaggregator.mockgds.support.Fixtures.ib3170;
+import static com.flightaggregator.mockgds.support.Fixtures.pageWithEveryDefect;
+import static com.flightaggregator.mockgds.support.Fixtures.priced;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.flightaggregator.mockgds.dataset.DatasetGenerator;
-import com.flightaggregator.mockgds.dataset.Defect;
 import com.flightaggregator.mockgds.dataset.GeneratorConfig;
-import com.flightaggregator.mockgds.dataset.MalformedLeg;
-import com.flightaggregator.mockgds.dataset.ValidLeg;
-import com.flightaggregator.mockgds.model.Leg;
 import com.flightaggregator.mockgds.model.Provider;
 import com.flightaggregator.mockgds.reference.ReferenceData;
 import com.flightaggregator.mockgds.serving.InventoryPage;
-import com.flightaggregator.mockgds.serving.PricedRecord;
 import com.flightaggregator.mockgds.serving.ProviderInventory;
-import java.math.BigDecimal;
 import java.time.Clock;
-import java.time.OffsetDateTime;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +20,7 @@ class GammaCsvTest {
 
   @Test
   void writesTheHeaderAndAValidRow() {
-    var page = new InventoryPage(List.of(priced(validLeg())), 0, 1);
+    var page = new InventoryPage(List.of(priced(ib3170(Provider.GAMMA))), 0, 1);
 
     var csv = GammaCsv.write(page);
 
@@ -36,18 +32,11 @@ class GammaCsvTest {
 
   @Test
   void writesEachDefectInItsOwnRow() {
-    var leg = validLeg();
-    var records = new ArrayList<PricedRecord>();
-    records.add(priced(leg));
-    for (var defect : Defect.values()) {
-      records.add(new PricedRecord(new MalformedLeg(leg, defect), leg.priceEur()));
-    }
-
-    var csv = GammaCsv.write(new InventoryPage(records, 0, 5));
+    var csv = GammaCsv.write(pageWithEveryDefect(Provider.GAMMA));
 
     var lines = csv.split("\r\n", -1);
     assertThat(lines).hasSize(7);
-    var rows = java.util.Arrays.stream(lines, 1, 6).map(line -> line.split(",", -1)).toList();
+    var rows = Arrays.stream(lines, 1, 6).map(line -> line.split(",", -1)).toList();
     assertThat(rows).allSatisfy(cells -> assertThat(cells).hasSize(7));
     assertThat(rows.get(0)[1]).isEqualTo("3170");
     assertThat(rows.get(1)[1]).isEmpty();
@@ -78,21 +67,5 @@ class GammaCsvTest {
       assertThat(line.split(",", -1)).hasSize(7).noneMatch(cell -> cell.contains("\""));
       assertThat(line).doesNotContain("\n").doesNotContain("\r");
     }
-  }
-
-  private static Leg validLeg() {
-    return new Leg(
-        "IB",
-        3170,
-        "MAD",
-        "LHR",
-        OffsetDateTime.parse("2026-11-20T08:15:00+01:00"),
-        OffsetDateTime.parse("2026-11-20T09:30:00Z"),
-        new BigDecimal("129.90"),
-        Provider.GAMMA);
-  }
-
-  private static PricedRecord priced(Leg leg) {
-    return new PricedRecord(new ValidLeg(leg), leg.priceEur());
   }
 }

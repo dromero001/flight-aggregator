@@ -1,17 +1,12 @@
 package com.flightaggregator.mockgds.alpha;
 
+import static com.flightaggregator.mockgds.support.Fixtures.ib3170;
+import static com.flightaggregator.mockgds.support.Fixtures.pageWithEveryDefect;
+import static com.flightaggregator.mockgds.support.Fixtures.priced;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.flightaggregator.mockgds.dataset.Defect;
-import com.flightaggregator.mockgds.dataset.MalformedLeg;
-import com.flightaggregator.mockgds.dataset.ValidLeg;
-import com.flightaggregator.mockgds.model.Leg;
 import com.flightaggregator.mockgds.model.Provider;
 import com.flightaggregator.mockgds.serving.InventoryPage;
-import com.flightaggregator.mockgds.serving.PricedRecord;
-import java.math.BigDecimal;
-import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -22,7 +17,7 @@ class AlphaJsonTest {
 
   @Test
   void writesAValidLeg() {
-    var page = new InventoryPage(List.of(priced(validLeg())), 0, 1);
+    var page = new InventoryPage(List.of(priced(ib3170(Provider.ALPHA))), 0, 1);
 
     var json = AlphaJson.write(page);
 
@@ -36,14 +31,7 @@ class AlphaJsonTest {
 
   @Test
   void writesEachDefectInItsOwnRecord() throws Exception {
-    var leg = validLeg();
-    var records = new ArrayList<PricedRecord>();
-    records.add(priced(leg));
-    for (var defect : Defect.values()) {
-      records.add(new PricedRecord(new MalformedLeg(leg, defect), leg.priceEur()));
-    }
-
-    var json = AlphaJson.write(new InventoryPage(records, 0, 5));
+    var json = AlphaJson.write(pageWithEveryDefect(Provider.ALPHA));
 
     var legs = new ObjectMapper().readTree(json).get("legs");
     assertThat(legs).hasSize(5);
@@ -65,7 +53,7 @@ class AlphaJsonTest {
 
   @Test
   void endsWithANullCursor() throws Exception {
-    var page = new InventoryPage(List.of(priced(validLeg())), 4, 5);
+    var page = new InventoryPage(List.of(priced(ib3170(Provider.ALPHA))), 4, 5);
 
     var cursor = new ObjectMapper().readTree(AlphaJson.write(page)).get("nextCursor");
 
@@ -74,7 +62,7 @@ class AlphaJsonTest {
 
   @Test
   void pointsToTheNextOffsetUnlessLast() throws Exception {
-    var page = new InventoryPage(List.of(priced(validLeg())), 2, 5);
+    var page = new InventoryPage(List.of(priced(ib3170(Provider.ALPHA))), 2, 5);
 
     var cursor = new ObjectMapper().readTree(AlphaJson.write(page)).get("nextCursor");
 
@@ -85,21 +73,5 @@ class AlphaJsonTest {
     var copy = leg.deepCopy();
     ((ObjectNode) copy).remove(field);
     return copy;
-  }
-
-  private static Leg validLeg() {
-    return new Leg(
-        "IB",
-        3170,
-        "MAD",
-        "LHR",
-        OffsetDateTime.parse("2026-11-20T08:15:00+01:00"),
-        OffsetDateTime.parse("2026-11-20T09:30:00Z"),
-        new BigDecimal("129.90"),
-        Provider.ALPHA);
-  }
-
-  private static PricedRecord priced(Leg leg) {
-    return new PricedRecord(new ValidLeg(leg), leg.priceEur());
   }
 }

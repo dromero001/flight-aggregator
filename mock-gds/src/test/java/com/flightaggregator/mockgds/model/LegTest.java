@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 
 class LegTest {
@@ -17,7 +18,7 @@ class LegTest {
     var alpha = leg(DEPARTURE, new BigDecimal("129.90"), Provider.ALPHA);
     var beta =
         leg(
-            DEPARTURE.withOffsetSameInstant(java.time.ZoneOffset.UTC),
+            DEPARTURE.withOffsetSameInstant(ZoneOffset.UTC),
             new BigDecimal("119.00"),
             Provider.BETA);
 

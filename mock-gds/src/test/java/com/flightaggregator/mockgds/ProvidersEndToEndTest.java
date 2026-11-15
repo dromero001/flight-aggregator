@@ -9,18 +9,17 @@ import com.flightaggregator.mockgds.dataset.ProviderRecord;
 import com.flightaggregator.mockgds.model.Provider;
 import com.flightaggregator.mockgds.support.MockGdsTest;
 import com.flightaggregator.mockgds.support.ProviderKeys;
-import java.io.StringReader;
+import com.flightaggregator.mockgds.support.Xml;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
-import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.w3c.dom.Element;
-import org.xml.sax.InputSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -50,7 +49,7 @@ class ProvidersEndToEndTest {
             Provider.GAMMA, downloadGamma());
 
     for (var provider : Provider.values()) {
-      assertThat(dataset.recordsFor(provider)).isNotEmpty();
+      assertThat(dataset.recordsFor(provider)).as(provider.name()).hasSizeGreaterThan(PAGE);
       assertThat(downloaded.get(provider))
           .as(provider.name())
           .containsExactlyElementsOf(
@@ -75,7 +74,7 @@ class ProvidersEndToEndTest {
   private static String departure(String text) {
     try {
       return OffsetDateTime.parse(text).toInstant().toString();
-    } catch (java.time.format.DateTimeParseException e) {
+    } catch (DateTimeParseException e) {
       return text;
     }
   }
@@ -106,7 +105,7 @@ class ProvidersEndToEndTest {
     var totalPages = 1;
     for (var page = 1; page <= totalPages; page++) {
       var root =
-          xml(
+          Xml.parse(
               ProviderKeys.get(
                       http, "/beta/segments?pageSize=" + PAGE + "&page=" + page, ProviderKeys.BETA)
                   .getBody());
@@ -127,13 +126,6 @@ class ProvidersEndToEndTest {
       }
     }
     return rows;
-  }
-
-  private static Element xml(String text) throws Exception {
-    return DocumentBuilderFactory.newInstance()
-        .newDocumentBuilder()
-        .parse(new InputSource(new StringReader(text)))
-        .getDocumentElement();
   }
 
   private List<Row> downloadGamma() {
