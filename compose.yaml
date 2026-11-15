@@ -1,0 +1,29 @@
+# Runs the three mock providers: docker compose up --build
+# The keys below are demo defaults, committed on purpose so that the project runs with that single
+# command (spec 6.6). They protect only these local mocks. Override any of them from the shell or a
+# .env file: ALPHA_API_KEY, BETA_API_KEY, GAMMA_API_KEY.
+services:
+  mock-gds:
+    build:
+      context: .
+      dockerfile: mock-gds/Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      MOCKGDS_PROVIDERS_ALPHA_APIKEY: ${ALPHA_API_KEY:-demo-alpha-key}
+      MOCKGDS_PROVIDERS_BETA_APIKEY: ${BETA_API_KEY:-demo-beta-key}
+      MOCKGDS_PROVIDERS_GAMMA_APIKEY: ${GAMMA_API_KEY:-demo-gamma-key}
+    healthcheck:
+      # The JRE image has no curl or wget: read the health response over a plain TCP socket with bash.
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/localhost/8080
+          && printf 'GET /actuator/health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3
+          && grep -q '"status":"UP"' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

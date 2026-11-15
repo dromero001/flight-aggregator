@@ -1,0 +1,9 @@
+**/build
+**/.gradle
+.git
+.gradle
+.idea
+.superpowers
+.claude
+docs
+**/node_modules

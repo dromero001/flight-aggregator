@@ -33,3 +33,11 @@ jobs:
           path: |
             **/build/reports/
             **/build/test-results/
+
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Builds the mock-gds image to prove the Dockerfile works; nothing is pushed.
+      - run: docker build -f mock-gds/Dockerfile .

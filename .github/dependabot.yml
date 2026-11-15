@@ -20,3 +20,13 @@ updates:
       github-actions:
         patterns:
           - "*"
+  - package-ecosystem: "docker"
+    directory: "/mock-gds"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 14
+    groups:
+      docker:
+        patterns:
+          - "*"

@@ -4,6 +4,7 @@ Technical documentation of the system, filled in as it is built:
 
 - **Hexagonal modules and their dependency rules** (Gradle enforces the module direction, ArchUnit the package rules), with Mermaid diagrams.
 - **The ingestion and search flows**, from the providers to the dashboard.
+- **The mock providers**: the three GDS mocks that the system ingests.
 - **The domain glossary** (ubiquitous language): leg, offer, itinerary, dead leg, connection, minimum connection time, interlining, markup.
 
 The reasoning behind each decision lives in the [design spec](../planning/design-spec.md); `SOLUTION.md`, at the repository root, summarises it for the reader.
@@ -97,3 +98,47 @@ Glossary:
 - **Minimum connection time (MCT):** the shortest time in which a traveller can change planes: 45 minutes here, at every airport.
 - **Interlining:** one itinerary with legs of different airlines, or from different providers. It is valid, as at real online travel agencies; the Carrier filter still requires every leg to be operated by that carrier.
 - **Markup:** what the aggregator adds to the providers' prices: 5% of the sum of the legs, included in the final price.
+
+## Mock providers
+
+`mock-gds` is a Spring Boot application, independent of the other modules (§6), that serves one generated inventory through three legacy formats. It runs in Docker (`mock-gds/Dockerfile`, `compose.yaml`), on port 8081 of the host. Every provider serves the same inventory of legs, each one priced at the request instant, in the dataset's order.
+
+| Provider | Endpoint | Format | Pagination | End of the data |
+|---|---|---|---|---|
+| Alpha | `GET /alpha/legs` | JSON | `cursor` (opaque, from `nextCursor`) and `limit` | `"nextCursor": null` |
+| Beta | `GET /beta/segments` | XML | `page` (from 1) and `pageSize` | `page` reaches `totalPages`; a page beyond is an empty `<Segments/>` |
+| Gamma | `GET /gamma/legs.csv` | CSV | `offset` (from 0) and `limit` | a page shorter than `limit`; a header-only page when the total is a multiple of `limit` |
+
+`limit` and `pageSize` default to 500 and go from 1 to 1000; anything else, or a parameter that is not a plain integer, answers `400`. Times are ISO-8601 with a numeric offset (`2026-11-20T08:15:00+01:00`, never `Z`). Prices are in euros: Alpha writes a decimal string, Beta an integer number of cents, Gamma a decimal.
+
+Alpha:
+
+```json
+{"legs":[{"carrier":"AF","flightNumber":1079,"origin":"CDG","destination":"JFK","departureTime":"2026-11-15T09:00:00+01:00","arrivalTime":"2026-11-15T10:50:00-05:00","price":"484.62"}],"nextCursor":"MQ"}
+```
+
+Beta:
+
+```xml
+<SegmentsResponse page="1" totalPages="1808"><Segments><Segment><Carrier code="AF"/><FlightNumber>1079</FlightNumber><Departure airport="CDG">2026-11-15T09:00:00+01:00</Departure><Arrival airport="JFK">2026-11-15T10:50:00-05:00</Arrival><PriceCents>41362</PriceCents></Segment></Segments></SegmentsResponse>
+```
+
+Gamma (lines end with `\r\n`):
+
+```csv
+airline,flight_number,from,to,departs_at,arrives_at,price_eur
+AF,1079,CDG,JFK,2026-11-15T09:00:00+01:00,2026-11-15T10:50:00-05:00,377.28
+```
+
+**Defects.** Some records are malformed on purpose, and each defect breaks only its own record, so the rest of the page stays parseable:
+
+| Defect | Effect |
+|---|---|
+| `MISSING_FIELD` | the flight number is omitted |
+| `BAD_DATE` | the departure is `2026-02-30T25:61:00+01:00` |
+| `NEGATIVE_PRICE` | the price is negated |
+| `UNKNOWN_AIRPORT` | the destination is `ZZZ` |
+
+**Keys.** Each provider needs its own key in the `X-Api-Key` header; a missing or wrong one answers `401`. Keys come from environment variables (`MOCKGDS_PROVIDERS_<PROVIDER>_APIKEY`), the application does not start without them, and none is ever logged. `compose.yaml` commits demo keys as overridable defaults so that the project runs with one command (§6.6); the [README](../../README.md#run-the-mock-providers) says why that is safe here and why it would not be in production.
+
+**Latency and errors.** Each request waits a random time between `LATENCYMIN` and `LATENCYMAX` (100 to 5000 ms by default) and fails with HTTP 500 at the `ERRORRATE` (5% by default), per provider. The tests set both to zero. The `images` job in CI builds the image on every push, without publishing it, and Dependabot watches its base images.

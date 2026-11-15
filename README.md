@@ -6,6 +6,41 @@ Flight aggregation & cache optimization system: ingests itineraries from three l
 
 > Work in progress. Architecture, assumptions and trade-offs will be documented in `SOLUTION.md`.
 
+## Run the mock providers
+
+The three mock GDS providers run as one image, built from `mock-gds/Dockerfile`:
+
+```bash
+docker compose up --build
+```
+
+They listen on `http://localhost:8081`. Each provider asks for its own key in the `X-Api-Key` header, and answers `401` without it:
+
+| Provider | Endpoint | Format | Demo key |
+|---|---|---|---|
+| Alpha | `GET /alpha/legs?limit=&cursor=` | JSON | `demo-alpha-key` |
+| Beta | `GET /beta/segments?pageSize=&page=` | XML | `demo-beta-key` |
+| Gamma | `GET /gamma/legs.csv?limit=&offset=` | CSV | `demo-gamma-key` |
+
+```bash
+curl -H "X-Api-Key: demo-alpha-key" "http://localhost:8081/alpha/legs?limit=2"
+```
+
+**The demo keys are committed on purpose**: the take-home must run with a single `docker compose up --build`. They protect only these local mocks. In a real production environment they would be secrets, injected at deploy time and never committed. Change one with `ALPHA_API_KEY`, `BETA_API_KEY` or `GAMMA_API_KEY` in the shell or a `.env` file.
+
+By default each request waits a random 100 to 5000 ms and fails with HTTP 500 for 5% of the requests. Both settings are per provider. Override them with a `compose.override.yaml` next to `compose.yaml`, which `docker compose` merges on its own. This one makes Beta fail every request and Alpha answer at once:
+
+```yaml
+services:
+  mock-gds:
+    environment:
+      MOCKGDS_PROVIDERS_BETA_ERRORRATE: "1"
+      MOCKGDS_PROVIDERS_ALPHA_LATENCYMIN: 0ms
+      MOCKGDS_PROVIDERS_ALPHA_LATENCYMAX: 0ms
+```
+
+The names follow `MOCKGDS_PROVIDERS_<ALPHA|BETA|GAMMA>_<APIKEY|LATENCYMIN|LATENCYMAX|ERRORRATE>`. The [architecture overview](docs/architecture/README.md#mock-providers) describes the formats.
+
 ## Documentation
 
 The documentation is split by what each part shows.
