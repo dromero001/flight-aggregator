@@ -19,6 +19,8 @@ dependencies {
     // The admin side is an OAuth2 resource server (§6.6).
     implementation(libs.spring.boot.starter.security)
     implementation(libs.spring.boot.starter.oauth2.resource.server)
+    // Valkey on Lettuce: the search cache, refresh claims and request counters (§6.2).
+    implementation(libs.spring.boot.starter.data.redis)
     implementation(libs.resilience4j.circuitbreaker)
     // Binds the breakers' state and calls to Micrometer (§6.1, §6.10).
     implementation(libs.resilience4j.micrometer)
@@ -30,6 +32,7 @@ dependencies {
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.testcontainers)
     testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.testcontainers.redis)
     testImplementation(testFixtures(project(":adapters:persistence")))
     testImplementation(libs.wiremock.standalone)
     testImplementation(libs.spring.boot.starter.webmvc.test)

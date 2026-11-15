@@ -46,6 +46,12 @@ jackson-core = { module = "tools.jackson.core:jackson-core" }
 flyway-core = { module = "org.flywaydb:flyway-core" }
 flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
+spring-data-redis = { module = "org.springframework.data:spring-data-redis" }
+spring-boot-starter-data-redis = { module = "org.springframework.boot:spring-boot-starter-data-redis" }
+lettuce-core = { module = "io.lettuce:lettuce-core" }
+micrometer-core = { module = "io.micrometer:micrometer-core" }
+logback-classic = { module = "ch.qos.logback:logback-classic" }
+testcontainers-redis = { module = "com.redis:testcontainers-redis" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
