@@ -185,9 +185,28 @@ Gates: `./gradlew build` green. Thermo-nuclear review of the diff, and what it c
 - The quote's failures go through the same `PageMalformed` → `MALFORMED_PAGE` path as a download's page; "more than one record" needs no code of its own (the page of one record already refuses a second).
 - Test duplication removed: the flight and the path expansion of the six provider tests are in `Fixtures`; the four limit tests share `limitedTo(limit)` and `inFlight(calls...)`.
 - Javadoc made true again: `ProviderUnavailableException` and `FailureReason` now say "download or quote"; `ProvidersProperties` says that `concurrency-limit` is declared for the binder while the annotation reads the environment; `PagedProvider` says why it is not `final`.
-- Nothing fails silently: every call is counted, an unexpected failure as `UNEXPECTED`, and the failure is rethrown unchanged. A missing `providers.concurrency-limit` fails startup of the application (it was seen failing every full-context test), and `ProvidersConfigTest` now loads Boot's AOP defaults, so a `final` adapter or a lost limit fails it.
-- Left as they are: `ProvidersProperties.concurrencyLimit` is bound but not read by production code (the brief's `@DefaultValue("4")`, needed by `ignoreUnknownFields = false`); the value 4 is stated twice, in the record and in `application.yaml`, and `defaultsToFourConcurrentCallsPerProvider` pins only the record's.
+- Nothing fails silently: every call is counted, an unexpected failure as `UNEXPECTED`, and the failure is rethrown unchanged. Corrected in fix round 1: a missing `providers.concurrency-limit` did not stop startup, as this line claimed; once `provider()` was exempt, the context started and every call failed at its first use. Fix round 1 makes startup stop. Also, `ProvidersConfigTest` now loads Boot's AOP defaults, so a `final` adapter or a lost limit fails it.
+- Superseded by fix round 1 (the default is gone and `application.yaml` is the one source): `ProvidersProperties.concurrencyLimit` is bound but not read by production code (the brief's `@DefaultValue("4")`, needed by `ignoreUnknownFields = false`); the value 4 is stated twice, in the record and in `application.yaml`, and `defaultsToFourConcurrentCallsPerProvider` pins only the record's.
 
 ### Extras for the user to decide
 
-- Refusing a `providers.concurrency-limit` below 1 at startup. Today 0 would fail every call (`IllegalStateException`, counted `UNEXPECTED`) and -1 would silently remove the limit. Cost: one check in `ProvidersProperties` and a test. Left out unless you approve.
+- Built in fix round 1, by the controller's ruling on C1 (no longer an extra): refusing a `providers.concurrency-limit` below 1 at startup. Before it, 0 would fail every call (`IllegalStateException`, counted `UNEXPECTED`) and -1 would silently remove the limit.
+
+## Task 2 — fix round 1
+
+Review (`task-2-review.md`): functional CHANGES REQUESTED (F1), code CHANGES REQUESTED (C1). The controller's ruling: `application.yaml` is the one source of the limit; the dead `@DefaultValue("4")` goes, and a missing value or one below 1 stops startup, naming `providers.concurrency-limit`. The minors (F2, F3, F4, C2, C3) are deferred to the end-of-plan review.
+
+- Refactor under green first: `ProvidersConfigTest`'s runner is split in two. `withoutLimit` has the endpoints and Boot's AOP defaults. `runner` adds the application's own `application.yaml` through `ConfigDataApplicationContextInitializer`, so the tests read the limit from where production reads it and no longer restate it. The suite stayed green.
+- C1, `ProvidersConfigTest.refusesToStartWithoutAConcurrencyLimit`: red = `Expecting: <Started application [AnnotationConfigApplicationContext@3e47d465 ...]> to have failed`. That is the reviewer's Probe A: the context starts and every call fails at its first use. Green = `ProvidersProperties.concurrencyLimit` loses `@DefaultValue("4")`, and the compact constructor refuses a value below 1 with `providers.concurrency-limit must be set to 1 or more, not 0` (a missing setting binds as 0). `ProvidersPropertiesTest.defaultsToFourConcurrentCallsPerProvider` then failed with a `BindException`. It pinned the dead default, so it is deleted; `readsTheConcurrencyLimit` stays.
+- C1, `ProvidersConfigTest.refusesAConcurrencyLimitBelowOne(0, -1)`: passed on first run, because the same check covers it. Red under the mutation "the check disabled", which failed it for 0 and for -1, and also failed `refusesToStartWithoutAConcurrencyLimit`.
+- F1, `ProvidersConfigTest.limitsEachProviderToTheApplicationsFourCalls`. Set-up: the real `application.yaml`; Alpha answers after 1 s; four downloads are held, each on its own thread, until Alpha's journal holds 4 requests; then a fifth download. It passed on first run. Red under two mutations of `application.yaml`:
+  - `concurrency-limit: 5`: `Expecting code to raise a throwable.` (the fifth call went through);
+  - `concurrency-limit: 3`: `ConditionTimeoutException` (the fourth call was rejected and never reached Alpha).
+
+  Restored to 4. `inFlight` now starts each call on its own virtual thread, because the common pool might run fewer than four at once on a small machine.
+- The explanation now lives in one place, the `ProvidersProperties` Javadoc:
+  - the yaml comment says only "Required: see ProvidersProperties";
+  - `ingestion.md` says "set in `application.yaml`; startup stops without it";
+  - the `ProvidersConfigTest` comment is gone, with the restated value;
+  - the `PagedProvider` and `ProvidersConfig` Javadoc keep only what they own: the limit's behaviour, and the class proxy.
+- Corrected in place: the Task 2 gates line that claimed a missing setting already stopped startup is marked as corrected, and the "left as they are" line as superseded. The extra "refuse a limit below 1" is marked as built by the ruling.

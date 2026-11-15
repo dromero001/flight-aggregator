@@ -16,9 +16,10 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * the default it meant to change. Boot's report of it prints its value, so no secret belongs under
  * a misspelt key.
  *
- * <p>{@code concurrency-limit} is declared here so that the binder accepts it; {@code
- * PagedProvider}'s {@code @ConcurrencyLimit} reads it from the environment, not from here, so
- * {@code application.yaml} states it too.
+ * <p>{@code concurrency-limit} has no default here: {@code PagedProvider}'s
+ * {@code @ConcurrencyLimit} reads it from the environment, at a provider's first call, so {@code
+ * application.yaml} is its one source. It is declared so that the binder accepts it, and checked so
+ * that startup stops when it is missing or below 1, instead of every provider call failing.
  */
 @ConfigurationProperties(prefix = "providers", ignoreUnknownFields = false)
 record ProvidersProperties(
@@ -30,7 +31,7 @@ record ProvidersProperties(
     @DefaultValue("3") int maxAttempts,
     @DefaultValue("1000") int pageSize,
     @DefaultValue("200") int maxPages,
-    @DefaultValue("4") int concurrencyLimit) {
+    int concurrencyLimit) {
 
   /** The wait before the second attempt, doubled before each further one (plan 4). */
   private static final Duration FIRST_BACKOFF = Duration.ofMillis(200);
@@ -42,6 +43,11 @@ record ProvidersProperties(
     require(alpha, "alpha");
     require(beta, "beta");
     require(gamma, "gamma");
+    if (concurrencyLimit < 1) {
+      // A missing setting binds as 0.
+      throw new IllegalArgumentException(
+          "providers.concurrency-limit must be set to 1 or more, not " + concurrencyLimit);
+    }
   }
 
   /** The provider's endpoint, named after it. */

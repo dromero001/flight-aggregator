@@ -36,12 +36,6 @@ class ProvidersPropertiesTest {
     assertThat(bind(Map.of("providers.concurrency-limit", "3")).concurrencyLimit()).isEqualTo(3);
   }
 
-  /** Q9: 4 calls at once per provider. */
-  @Test
-  void defaultsToFourConcurrentCallsPerProvider() {
-    assertThat(bind(Map.of()).concurrencyLimit()).isEqualTo(4);
-  }
-
   /** The providers' settings as Boot binds them, every endpoint set. */
   private static ProvidersProperties bind(Map<String, String> settings) {
     Map<String, String> all = new HashMap<>(settings);

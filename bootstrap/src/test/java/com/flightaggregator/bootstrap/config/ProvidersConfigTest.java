@@ -38,9 +38,12 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.aop.AopAutoConfiguration;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.ApplicationContext;
 import org.springframework.resilience.InvocationRejectedException;
@@ -60,8 +63,11 @@ class ProvidersConfigTest {
   private static final String BETA_NONE =
       "<SegmentsResponse page=\"1\" totalPages=\"1\"><Segments/></SegmentsResponse>";
 
-  /** Boot's AOP defaults, as in the application: they decide how the providers are proxied. */
-  private final ApplicationContextRunner runner =
+  /**
+   * The endpoints only, with Boot's AOP defaults, as in the application: they decide how the
+   * providers are proxied.
+   */
+  private final ApplicationContextRunner withoutLimit =
       new ApplicationContextRunner()
           .withConfiguration(AutoConfigurations.of(AopAutoConfiguration.class))
           .withUserConfiguration(ProvidersConfig.class, SystemClock.class)
@@ -72,9 +78,11 @@ class ProvidersConfigTest {
               "providers.beta.base-url=http://beta.test/",
               "providers.beta.api-key=beta-key",
               "providers.gamma.base-url=http://gamma.test/",
-              "providers.gamma.api-key=gamma-key",
-              // As application.yaml states it, for PagedProvider's @ConcurrencyLimit.
-              "providers.concurrency-limit=4");
+              "providers.gamma.api-key=gamma-key");
+
+  /** The rest of the settings from the application's own {@code application.yaml}. */
+  private final ApplicationContextRunner runner =
+      withoutLimit.withInitializer(new ConfigDataApplicationContextInitializer());
 
   private final WireMockServer server =
       new WireMockServer(WireMockConfiguration.options().dynamicPort());
@@ -121,6 +129,34 @@ class ProvidersConfigTest {
               assertThat(context).hasFailed();
               assertThat(context.getStartupFailure())
                   .hasStackTraceContaining("providers.download-timout");
+            });
+  }
+
+  /**
+   * Without the limit, every provider call would fail at its first use, while the application
+   * looked healthy; so startup stops instead, naming the setting.
+   */
+  @Test
+  void refusesToStartWithoutAConcurrencyLimit() {
+    withoutLimit.run(
+        context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("providers.concurrency-limit");
+        });
+  }
+
+  /** 0 would fail every call, and -1 would remove the limit without a word. */
+  @ParameterizedTest
+  @ValueSource(ints = {0, -1})
+  void refusesAConcurrencyLimitBelowOne(int limit) {
+    runner
+        .withPropertyValues("providers.concurrency-limit=" + limit)
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .hasStackTraceContaining("providers.concurrency-limit");
             });
   }
 
@@ -305,22 +341,49 @@ class ProvidersConfigTest {
   }
 
   /**
-   * Every provider at the WireMock server, under a limit of {@code limit} calls each, Alpha
-   * answering every request after 1 s, so that each of its calls holds its share meanwhile.
+   * Q9 as the application configures it: its {@code application.yaml} lets 4 calls of a provider
+   * run at once, and rejects a fifth.
    */
+  @Test
+  void limitsEachProviderToTheApplicationsFourCalls() {
+    busy(runner)
+        .run(
+            context -> {
+              FlightProvider alpha = provider(context, Provider.ALPHA);
+              List<CompletableFuture<Void>> held =
+                  inFlight(alpha::download, alpha::download, alpha::download, alpha::download);
+
+              assertThatThrownBy(alpha::download).isInstanceOf(InvocationRejectedException.class);
+
+              held.forEach(CompletableFuture::join);
+            });
+  }
+
+  /** As {@link #busy}, under a limit of {@code limit} calls per provider. */
   private ApplicationContextRunner limitedTo(int limit) {
+    return busy(runner.withPropertyValues("providers.concurrency-limit=" + limit));
+  }
+
+  /**
+   * Every provider at the WireMock server, Alpha answering every request after 1 s, so that each of
+   * its calls holds its share of the limit meanwhile.
+   */
+  private ApplicationContextRunner busy(ApplicationContextRunner providers) {
     server.stubFor(
         get(urlPathEqualTo("/alpha/legs"))
             .willReturn(aResponse().withFixedDelay(1000).withBody(ALPHA_LAST_PAGE)));
-    return runner
-        .withPropertyValues(against(server))
-        .withPropertyValues("providers.concurrency-limit=" + limit);
+    return providers.withPropertyValues(against(server));
   }
 
-  /** Starts each call on its own thread and returns once Alpha has received all of them. */
+  /**
+   * Starts each call on a thread of its own, never queued behind another, and returns once Alpha
+   * has received all of them.
+   */
   private List<CompletableFuture<Void>> inFlight(Runnable... calls) {
     List<CompletableFuture<Void>> started =
-        Stream.of(calls).map(CompletableFuture::runAsync).toList();
+        Stream.of(calls)
+            .map(call -> CompletableFuture.runAsync(call, task -> Thread.ofVirtual().start(task)))
+            .toList();
     await().atMost(Duration.ofSeconds(5)).until(() -> alphaRequests() == calls.length);
     return started;
   }
