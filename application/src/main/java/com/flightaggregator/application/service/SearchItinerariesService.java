@@ -7,6 +7,7 @@ import com.flightaggregator.application.port.in.SearchPage;
 import com.flightaggregator.application.port.in.SearchQuery;
 import com.flightaggregator.application.port.in.SeekPosition;
 import com.flightaggregator.application.port.in.SortOrder;
+import com.flightaggregator.application.port.out.AirportCatalogue;
 import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.InventoryState;
 import com.flightaggregator.application.port.out.ItineraryReader;
@@ -28,20 +29,23 @@ import java.util.Optional;
  * the page's generation, and a cursor of another generation still seeks from its position, now in
  * the active generation, with the page flagged as changed (Q1). Only first pages of searches
  * without Max Price are cached, under the active generation (Q3, §6.2); a page read from a newer
- * generation than that, when a run publishes between the two reads, is served but not cached.
+ * generation than that, when a run publishes between the two reads, is served but not cached. A
+ * cached page is served without what has departed since it was cached (§4.1).
  *
- * <p>A search with an origin then asks for that origin's background refresh when its last
- * publication or refresh, whichever is later, is more than the freshness threshold old, and this
- * instance wins the origin's claim (§6.4, §6.2). It comes after the page is ready, so a search that
- * fails to read claims nothing, and it never fails or holds up the search beyond the ports' own
- * bounds: the coordination fails open (§6.2), and {@link RefreshScheduler#request} returns at once
- * without throwing. Before the first publication nothing is refreshed: the first run is loading
- * every origin.
+ * <p>A search from an origin in the airport catalogue then asks for that origin's background
+ * refresh when its last publication or refresh, whichever is later, is more than the freshness
+ * threshold old, and this instance wins the origin's claim (§6.4, §6.2); an origin the system does
+ * not know is never refreshed, so no client can have the providers download made-up origins. It
+ * comes after the page is ready, so a search that fails to read claims nothing, and it never fails
+ * or holds up the search beyond the ports' own bounds: the coordination fails open (§6.2), and
+ * {@link RefreshScheduler#request} returns at once without throwing. Before the first publication
+ * nothing is refreshed: the first run is loading every origin.
  */
 public final class SearchItinerariesService implements SearchItineraries {
 
   private final ItineraryReader reader;
   private final SearchCache cache;
+  private final AirportCatalogue airports;
   private final RefreshCoordination coordination;
   private final RefreshScheduler refreshes;
   private final Clock clock;
@@ -50,12 +54,14 @@ public final class SearchItinerariesService implements SearchItineraries {
   public SearchItinerariesService(
       ItineraryReader reader,
       SearchCache cache,
+      AirportCatalogue airports,
       RefreshCoordination coordination,
       RefreshScheduler refreshes,
       Clock clock,
       Duration freshnessThreshold) {
     this.reader = reader;
     this.cache = cache;
+    this.airports = airports;
     this.coordination = coordination;
     this.refreshes = refreshes;
     this.clock = clock;
@@ -94,7 +100,7 @@ public final class SearchItinerariesService implements SearchItineraries {
     SearchKey key = new SearchKey(generation, query.criteria(), query.limit());
     Optional<SearchPage> cached = cache.get(key);
     if (cached.isPresent()) {
-      return cached.get();
+      return stillSellable(cached.get(), now);
     }
     StoredPage stored = read(query, now);
     SearchPage page = pageOf(query, stored);
@@ -102,6 +108,17 @@ public final class SearchItinerariesService implements SearchItineraries {
       cache.put(key, page);
     }
     return page;
+  }
+
+  /**
+   * §4.1: a cached page without what has departed since it was cached. It may hold fewer rows than
+   * the page size; its cursor stays as cached, since it seeks after the page's last row and the
+   * next page's read applies the departure cutoff again.
+   */
+  private static SearchPage stillSellable(SearchPage cached, Instant now) {
+    List<Itinerary> sellable =
+        cached.itineraries().stream().filter(itinerary -> itinerary.isSellable(now)).toList();
+    return new SearchPage(sellable, cached.next(), cached.inventoryChanged());
   }
 
   private StoredPage read(SearchQuery query, Instant now) {
@@ -122,7 +139,9 @@ public final class SearchItinerariesService implements SearchItineraries {
   }
 
   private void requestRefreshIfStale(Airport origin, InventoryState state, Instant now) {
-    if (isStale(origin, state, now) && coordination.claim(origin)) {
+    if (airports.airports().contains(origin)
+        && isStale(origin, state, now)
+        && coordination.claim(origin)) {
       refreshes.request(origin);
     }
   }
