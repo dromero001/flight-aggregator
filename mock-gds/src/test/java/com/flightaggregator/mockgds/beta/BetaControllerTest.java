@@ -4,17 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.flightaggregator.mockgds.dataset.Dataset;
 import com.flightaggregator.mockgds.model.Provider;
+import com.flightaggregator.mockgds.serving.ProviderInventory;
+import com.flightaggregator.mockgds.support.Fixtures;
 import com.flightaggregator.mockgds.support.MockGdsTest;
 import com.flightaggregator.mockgds.support.ProviderKeys;
 import com.flightaggregator.mockgds.support.Xml;
+import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.TestRestTemplate;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.bean.override.convention.TestBean;
 
 @MockGdsTest
 class BetaControllerTest {
@@ -85,8 +88,13 @@ class BetaControllerTest {
   }
 
   @Nested
-  @Import(EmptyInventory.class)
   class WhenTheInventoryIsEmpty {
+
+    @TestBean private ProviderInventory inventory;
+
+    static ProviderInventory inventory() {
+      return Fixtures.inventoryOf(List.of());
+    }
 
     /** A client reading pages 1 to totalPages still reads page 1, and learns it is the last. */
     @Test
