@@ -302,3 +302,13 @@ Worktree branch `worktree-agent-a7d9badffb86559a3`, from `main` at `59cdf88` (pl
 
 ### Extras for the user to decide
 - **E1 ("+1" next-day arrival) and E2 (airline names) are approved but no task builds them.** Both belong on this card; the plan's Task 4 does not list them, so they are not built here. E2 also needs a carrier catalogue the API does not expose yet. The controller decides which task takes them.
+
+## Task 4 — review
+
+The double review (`.superpowers/sdd/2026-11-15-dashboard/task-4-review.md`) answered functional APPROVED and code APPROVED, with no Critical or Important finding. The reviewer ran `npm run verify` in a scratch clone (26 tests, green), confirmed that `vi.stubEnv('TZ', …)` changes the zone for `Date` and `Intl` under Vitest's default pool with the machine set to New York, UTC and Madrid, saw the zone mutations go red, confirmed the added layover case is needed (the plan's own case uses two equal offsets), checked exact price formatting with a 19-digit value and the card at 960 and 390 px against Q6. The implementer's choices were judged harmless (the backend writes `stops` as legs minus one). E1 and E2 were rightly left out: no task assigns them. Six Minors wait for the end-of-plan review:
+- F-1: under Vitest's `threads` or `vmThreads` pool the zone stub has no effect; assert the zone inside the test.
+- F-2: the price test also passes with `Number(amount)`, so "no float" is not pinned.
+- F-3: the freshness text wraps at 960 px; the notches do not cut through the border as the CSS comment says.
+- C-1: a malformed date throws (no error boundary) while a malformed amount shows `€NaN`; pick one policy.
+- C-2: the stops text and the "IB 3166" label are built in the component, not in `format.ts`; Task 6 needs the label again.
+- C-3: the visually hidden class lives in the card's CSS module only.
