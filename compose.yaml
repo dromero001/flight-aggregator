@@ -8,7 +8,8 @@ services:
       context: .
       dockerfile: mock-gds/Dockerfile
     ports:
-      - "8081:8080"
+      # Loopback only: the demo keys are public, so the mock is not published on the network.
+      - "127.0.0.1:8081:8080"
     environment:
       MOCKGDS_PROVIDERS_ALPHA_APIKEY: ${ALPHA_API_KEY:-demo-alpha-key}
       MOCKGDS_PROVIDERS_BETA_APIKEY: ${BETA_API_KEY:-demo-beta-key}
