@@ -46,11 +46,12 @@ tasks.bootJar {
     archiveFileName = "bootstrap.jar"
 }
 
-// ComposeFileTest reads compose.yaml and RealmClientCredentialsTest the Keycloak realm file: a
-// change to either alone must run the tests again.
+// ComposeFileTest reads compose.yaml, and other tests the files compose mounts from deploy/ (the
+// Keycloak realm, the telemetry configuration): a change to any of them alone must run the tests
+// again.
 tasks.test {
     inputs.file(rootProject.layout.projectDirectory.file("compose.yaml"))
         .withPathSensitivity(PathSensitivity.RELATIVE)
-    inputs.file(rootProject.layout.projectDirectory.file("deploy/keycloak/flight-aggregator-realm.json"))
+    inputs.dir(rootProject.layout.projectDirectory.dir("deploy"))
         .withPathSensitivity(PathSensitivity.RELATIVE)
 }

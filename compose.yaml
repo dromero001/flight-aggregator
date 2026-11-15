@@ -146,5 +146,93 @@ services:
       retries: 5
       start_period: 30s
 
+  # The telemetry backends (spec 6.10), configured from deploy/. Their images are the ones the tests
+  # run (ObservabilityImages). The app depends on none of them: telemetry is never in a request's path.
+  # They keep their data on the container's own disk, so `docker compose down` resets it (plan 7, Q4:
+  # no volumes). Prometheus's image declares an anonymous volume for its data: a new container gets a
+  # new one, and `docker compose down -v` removes the old ones.
+  otel-collector:
+    restart: unless-stopped
+    image: otel/opentelemetry-collector:0.164.0@sha256:28b6d41ac51bff6b41ba5e8fe503569ffb9d6a1ea90f7a78419e86f34e44f750
+    # Not published: only the app, on the compose network, sends it traces and logs.
+    volumes:
+      - ./deploy/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    # No health check yet: the image holds only the Collector's binary, with no shell or HTTP client
+    # to probe it with. Pending the user's decision (progress report of plan 7, Task 1).
+
+  prometheus:
+    restart: unless-stopped
+    image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+    ports:
+      # Its alerts page, on the loopback interface (plan 7, Q4).
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./deploy/prometheus:/etc/prometheus:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  tempo:
+    restart: unless-stopped
+    image: grafana/tempo:3.1.1@sha256:64e2fbd56d9c2b3412a4b430a58ea59e91a670b1e75f920a0c702213ad145044
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    # Not published: the Collector writes to it and Grafana reads it on the compose network.
+    volumes:
+      - ./deploy/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+    healthcheck:
+      # The image has no shell or HTTP client: Tempo's own binary probes its /ready.
+      test: ["CMD", "/tempo", "-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  loki:
+    restart: unless-stopped
+    image: grafana/loki:3.7.9@sha256:0db216b630ae1f348a1584c67f3cead8b4c1fc839169a39501db664744158e28
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    # Not published: the Collector writes to it and Grafana reads it on the compose network.
+    volumes:
+      - ./deploy/loki/loki.yaml:/etc/loki/loki.yaml:ro
+    healthcheck:
+      # The image has no shell or HTTP client: Loki's own binary probes its /ready.
+      test: ["CMD", "/usr/bin/loki", "-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  grafana:
+    restart: unless-stopped
+    image: grafana/grafana:13.3.0@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
+    ports:
+      # Loopback only; 3000 is the dashboard (plan 7, Q4).
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    environment:
+      # The team reads the dashboards and alerts without an account, as anonymous Viewers (spec 6.6,
+      # the user's decision of 2026-11-15).
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # Opens Explore to Viewers, where a log line jumps to its trace; they may change a panel on
+      # screen but never save it (plan 7, Q1-A). Deprecated by Grafana, still honoured by 13.3.
+      GF_USERS_VIEWERS_CAN_EDIT: "true"
+      # No Grafana account is committed (spec 6.6): the built-in administrator cannot sign in.
+      GF_AUTH_BASIC_ENABLED: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+
 volumes:
   postgres-data:
