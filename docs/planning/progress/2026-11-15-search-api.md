@@ -61,3 +61,18 @@ Persistence groundwork: one provider-time encoding, legs read back, ANALYZE befo
 ### Extras for the user to decide
 
 None.
+
+## Task 3 — fix round 1
+
+Review: functional CHANGES REQUESTED, code CHANGES REQUESTED (F1/C1 critical, F2, F3). F4, F5 and the code minors are deferred to the end-of-plan review.
+
+- F1/C1: `LegsJsonTest.readsTheLegsAsPostgresReturnsThem` (write, `SELECT CAST(? AS jsonb)::text`, read): red = `IllegalStateException: ... expected property carrier but found price`. Green = `read` rewritten to collect each leg object into a name to value map (any order), with the nine names in one `PROPERTIES` set shared with `write`'s constants.
+- F2, one test at a time, each red for its own reason against the order-independent reader, which started lenient:
+  - `failsOnAMissingProperty`: red = `NullPointerException` (not `IllegalStateException`); green = the leg's names must contain the set.
+  - `failsOnAnUnknownProperty`: red = `Expecting code to raise a throwable`; green = the check became equality with the set.
+  - `failsOnADuplicateProperty`: red = no throwable; green = `put` returning a previous value fails.
+  - `failsOnAValueOfTheWrongType` (flightNumber as a string): red = no throwable; green = the token must be a number for `flightNumber` and a string otherwise.
+  - `failsOnContentAfterTheDocument` (`[...] []`): red = no throwable; green = the next token after the array must be the end.
+  - `wrapsAValueThatDoesNotParseWithItsCause` (price `cheap`): red = raw `NumberFormatException`; green = `IllegalArgumentException | DateTimeException` wrapped with the cause.
+  - The earlier `failsOnADocumentOfAnotherShape` (object instead of array) stays; the `START_ARRAY` check keeps it green.
+- F3: `docs/architecture/ingestion.md`, "The slots": step 6 `ANALYZE`, `UPDATE` becomes 7, and a paragraph on V5's six indexes and their inheritance by every partition.

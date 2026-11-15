@@ -5,6 +5,7 @@ import static com.flightaggregator.domain.Provider.BETA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.flightaggregator.adapter.persistence.support.PostgresTestDatabase;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Carrier;
 import com.flightaggregator.domain.Itinerary;
@@ -14,6 +15,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import tools.jackson.core.json.JsonFactory;
 
 class LegsJsonTest {
@@ -54,9 +56,79 @@ class LegsJsonTest {
     assertThat(new Itinerary(read).id()).isEqualTo(new Itinerary(legs).id());
   }
 
+  /** The column is jsonb, which gives the keys back in its own order, not the order written. */
+  @Test
+  void readsTheLegsAsPostgresReturnsThem() {
+    List<Leg> legs = List.of(MAD_LHR, LHR_JFK);
+    String reordered =
+        JdbcClient.create(PostgresTestDatabase.dataSource())
+            .sql("SELECT CAST(? AS jsonb)::text")
+            .param(LegsJson.write(legs, JSON))
+            .query(String.class)
+            .single();
+
+    assertThat(LegsJson.read(reordered, JSON)).isEqualTo(legs);
+  }
+
   @Test
   void failsOnADocumentOfAnotherShape() {
     assertThatThrownBy(() -> LegsJson.read("{\"carrier\":\"IB\"}", JSON))
         .isInstanceOf(IllegalStateException.class);
+  }
+
+  /** One leg as {@code write} gives it, to be broken one property at a time. */
+  private static final String LEG =
+      "{\"carrier\":\"IB\",\"flightNumber\":3166,\"origin\":\"MAD\",\"destination\":\"LHR\","
+          + "\"departure\":\"2026-11-20T08:15:00+01:00\",\"arrival\":\"2026-11-20T09:30:00+00:00\","
+          + "\"price\":\"129.90\",\"provider\":\"ALPHA\",\"quotedAt\":\"2026-11-15T10:00:00Z\"}";
+
+  @Test
+  void failsOnAMissingProperty() {
+    String withoutCarrier = "[" + LEG.replace("\"carrier\":\"IB\",", "") + "]";
+
+    assertThatThrownBy(() -> LegsJson.read(withoutCarrier, JSON))
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void failsOnAnUnknownProperty() {
+    String document = "[" + LEG.replace("\"carrier\"", "\"extra\":\"x\",\"carrier\"") + "]";
+
+    assertThatThrownBy(() -> LegsJson.read(document, JSON))
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void failsOnADuplicateProperty() {
+    String document =
+        "[" + LEG.replace("\"carrier\":\"IB\"", "\"carrier\":\"IB\",\"carrier\":\"BA\"") + "]";
+
+    assertThatThrownBy(() -> LegsJson.read(document, JSON))
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void failsOnAValueOfTheWrongType() {
+    String document = "[" + LEG.replace("3166", "\"3166\"") + "]";
+
+    assertThatThrownBy(() -> LegsJson.read(document, JSON))
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void failsOnContentAfterTheDocument() {
+    String document = "[" + LEG + "] []";
+
+    assertThatThrownBy(() -> LegsJson.read(document, JSON))
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void wrapsAValueThatDoesNotParseWithItsCause() {
+    String badPrice = "[" + LEG.replace("129.90", "cheap") + "]";
+
+    assertThatThrownBy(() -> LegsJson.read(badPrice, JSON))
+        .isInstanceOf(IllegalStateException.class)
+        .hasCauseInstanceOf(NumberFormatException.class);
   }
 }

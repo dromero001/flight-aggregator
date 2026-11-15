@@ -29,7 +29,10 @@ Search will read `itinerary_a` or `itinerary_b`, whichever `inventory_publicatio
 3. `TRUNCATE` the inactive slot, then drop its day partitions before today.
 4. Create the day partitions from today to today plus 37 (`CREATE TABLE IF NOT EXISTS ... PARTITION OF`). A slot is `PARTITION BY RANGE (departure)` with one partition per UTC day, defined once in `PartitionCalendar`, and a `DEFAULT` partition for any departure beyond them (§4.3). The truncate comes first because PostgreSQL refuses to create a partition while the default one holds rows in its range.
 5. `COPY` the itineraries in, as they are built.
-6. `UPDATE inventory_publication` to the new slot, with `generation + 1`. The `Publication` it returns states `partitionedUntil`, the instant the last day partition ends.
+6. `ANALYZE` the slot (the parent, which samples every partition), so search never reads it without statistics.
+7. `UPDATE inventory_publication` to the new slot, with `generation + 1`. The `Publication` it returns states `partitionedUntil`, the instant the last day partition ends.
+
+Each slot carries six sort indexes (migration V5, Q6-B): the three sort orders, price, departure and duration, each keyed by `id` as the tie-breaker, alone and behind an `origin, destination` prefix. They are created on the partitioned parent, so every day partition, present or created by a run, and the `DEFAULT` partition have them.
 
 Search keeps reading the old slot until the transaction commits, then reads the new one. Any failure rolls the whole transaction back, so the published slot is never touched by a failed run. A provider's offer replacement is bounded the same way (`statement_timeout` 5 min). Every connection reads with a 120 s socket timeout and TCP keepalive on (`spring.datasource.hikari.data-source-properties` in `application.yaml`, whatever the URL), so a database that stops answering fails a run instead of blocking it.
 
