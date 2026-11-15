@@ -24,3 +24,9 @@ replay_pid*.log
 
 # Git worktrees of parallel agent tasks (local only)
 .claude/worktrees/
+
+# Frontend (npm project in frontend/)
+node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/

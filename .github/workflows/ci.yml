@@ -42,3 +42,26 @@ jobs:
       # Builds the images to prove the Dockerfiles work; nothing is pushed.
       - run: docker build -f mock-gds/Dockerfile .
       - run: docker build -f bootstrap/Dockerfile .
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      # Typecheck (strict), ESLint, Prettier and Vitest, in that order (spec 6.11).
+      - run: npm run verify
+      # cancelled() too: a job that hits timeout-minutes is cancelled, and its reports matter most.
+      - if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frontend-reports
+          path: frontend/test-results/

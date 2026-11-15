@@ -300,7 +300,7 @@ Modules (Gradle subprojects). Gradle enforces the direction between modules; Arc
 | `adapters/web` | REST search API, cursor encoding, validation, auth, OpenAPI | `application` |
 | `bootstrap` | Spring Boot app, wiring, scheduler, configuration, observability | all |
 | `mock-gds` | One deployable serving the three mock providers, with a seeded dataset, configurable latency and 500 rate | — |
-| `frontend` | Dashboard | web API |
+| `frontend` | Dashboard. A standalone npm project (React, TypeScript, Vite), outside Gradle: its checks are `npm run verify` and its own CI job | web API |
 
 ## 7. Phases and definition of done
 

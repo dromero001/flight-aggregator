@@ -13,7 +13,8 @@ dependencyResolutionManagement {
 }
 
 // The mock providers, the hexagonal modules from the design (§6), and the architecture and coverage
-// gates. The frontend is added when its first task starts.
+// gates. The frontend is not a Gradle module: it is a standalone npm project in `frontend/` with its own
+// checks (`npm run verify`) and CI job (plan 6, Q1-A), so `./gradlew build` needs no Node.
 include("mock-gds")
 include("domain")
 include("application")
