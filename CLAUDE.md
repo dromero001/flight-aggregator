@@ -26,6 +26,7 @@ Three reviewer subagents, defined in `.claude/agents/`, each with one concern:
   - From plan 5 on (the user's decision of 2026-11-15, to fit the delivery date): one reviewer per task acts as both, `functional-reviewer` then `code-reviewer`, and gives two verdicts. The end-of-plan review keeps three separate reviewers. Independent tasks may run in parallel in their own git worktrees; each is reviewed before it reaches `main`.
 - **At the end of every plan:** all three on the whole plan's diff, adding `risk-reviewer` (security, data loss, silent failures, half-applied state, concurrency, resilience).
 - A task moves on only when both of its reviewers say `APPROVED`; a plan closes only when all three do. Findings are fixed, or the user decides to accept them; record which in the progress report.
+- A Minor finding never opens a fix round of its own: it is recorded and fixed in the end-of-plan review (the user's decision of 2026-11-15, to make the usage limits last). Only Critical and Important findings open a round.
 - Why this split: `docs/ai/README.md`, "Review protocol".
 
 ## Pushing
