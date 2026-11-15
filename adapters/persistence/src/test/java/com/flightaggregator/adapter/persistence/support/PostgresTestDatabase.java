@@ -1,0 +1,40 @@
+package com.flightaggregator.adapter.persistence.support;
+
+import javax.sql.DataSource;
+import org.flywaydb.core.Flyway;
+import org.postgresql.ds.PGSimpleDataSource;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.testcontainers.utility.DockerImageName;
+
+/**
+ * One PostgreSQL container per JVM, migrated once with the production migrations. Each test class
+ * truncates the tables it uses.
+ */
+public final class PostgresTestDatabase {
+
+  /** Same image as the compose file: tag and digest of the multi-arch index. */
+  private static final String IMAGE =
+      "postgres:18.4-trixie@sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636";
+
+  @SuppressWarnings("resource") // Stopped by Testcontainers' Ryuk when the JVM ends.
+  private static final PostgreSQLContainer CONTAINER =
+      new PostgreSQLContainer(DockerImageName.parse(IMAGE).asCompatibleSubstituteFor("postgres"));
+
+  private static final DataSource DATA_SOURCE = start();
+
+  private PostgresTestDatabase() {}
+
+  public static DataSource dataSource() {
+    return DATA_SOURCE;
+  }
+
+  private static DataSource start() {
+    CONTAINER.start();
+    PGSimpleDataSource dataSource = new PGSimpleDataSource();
+    dataSource.setUrl(CONTAINER.getJdbcUrl());
+    dataSource.setUser(CONTAINER.getUsername());
+    dataSource.setPassword(CONTAINER.getPassword());
+    Flyway.configure().dataSource(dataSource).load().migrate();
+    return dataSource;
+  }
+}

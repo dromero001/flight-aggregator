@@ -33,7 +33,7 @@ Port rules:
 - The domain depends on nothing, and the application layer may use Spring while the domain never does.
 - Only `bootstrap` wires adapters to the application.
 
-ArchUnit rules, in `HexagonalRules` (`architecture-tests`), run by `./gradlew build`. Rules 1, 2, 5, 6 and 7 are checked against real classes since the domain has them (they fail if they match none); rule 2 is checked against the application's classes since plan 4's first task (so the application uses no SLF4J and no Micrometer); rules 3 and 4 still run with `allowEmptyShould(true)` until the adapter layers have classes (plan 4). The strict group is `forRoot` minus the lenient rules, matched by description, so a new rule is strict by default; a meta-test fails if a lenient rule is not in `forRoot`, or if another rule shares its description and would drop out of the strict group with it:
+ArchUnit rules, in `HexagonalRules` (`architecture-tests`), run by `./gradlew build`. Every rule is checked against real classes and fails if it matches none (rules 3 and 4 since plan 4's persistence adapter):
 
 1. `domainDependsOnlyOnTheJdk`: the domain depends only on the JDK and itself.
 2. `applicationDependsOnlyOnTheDomainAndSpring`: the application layer depends only on the JDK, Spring, the domain and itself.
