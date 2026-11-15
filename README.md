@@ -12,7 +12,7 @@ Flight aggregation & cache optimization system: ingests itineraries from three l
 docker compose up --build
 ```
 
-This starts the three mock providers, PostgreSQL and the aggregator (`bootstrap/Dockerfile`, `-Xmx512m`). The aggregator ingests the providers at startup, then every 30 minutes, and publishes about one million itineraries into PostgreSQL; the first run takes about 12 to 15 seconds. Its health is on `http://localhost:8080/actuator/health`, published on the loopback interface only. PostgreSQL is not published. How a run works, and what each failure does: [Ingestion](docs/architecture/ingestion.md).
+This starts the three mock providers, PostgreSQL, Keycloak (the token issuer of the [admin side](#admin-access)) and the aggregator (`bootstrap/Dockerfile`, `-Xmx512m`). The aggregator ingests the providers at startup, then every 30 minutes, and publishes about one million itineraries into PostgreSQL; the first run takes about 12 to 15 seconds. Its health is on `http://localhost:8080/actuator/health`, published on the loopback interface only. PostgreSQL is not published. How a run works, and what each failure does: [Ingestion](docs/architecture/ingestion.md).
 
 **The database password is a committed demo default too**, the same deliberate exception as the provider keys below (spec 6.6): `POSTGRES_PASSWORD` in the shell or a `.env` file overrides it. It protects only a database that no port exposes outside the compose network; in production it would be a secret injected at deploy time. PostgreSQL sets the password only when it creates its volume: to change it after the first start, remove the volume with `docker compose down -v` (which deletes the stored inventory) and start again.
 
@@ -63,6 +63,40 @@ The names follow `MOCKGDS_PROVIDERS_<ALPHA|BETA|GAMMA>_<SETTING>`:
 | `ERRORRATE` | `0.05` | the share of requests that fail with HTTP 500 |
 
 No latency may be negative, each minimum must not exceed its maximum, and both shares go from 0 to 1. A value outside these rules stops the mock at startup with a message that names the setting. So does a `MOCKGDS_PROVIDERS_` variable that is not in this table, such as a misspelt or outdated name: the message names the variable, never its value. Only the spellings in the table are accepted. Outside the environment, Spring Boot itself rejects an unknown setting in a properties file or a command-line argument, and its report prints the value, but it ignores one in a JVM system property. The [architecture overview](docs/architecture/README.md#mock-providers) describes the formats.
+
+## Admin access
+
+Search and re-price are public. The admin side is OAuth2: the aggregator is a resource server that accepts JWTs signed by Keycloak (started by `docker compose up --build`, on `http://localhost:8180`, realm `flight-aggregator`, imported from [`deploy/keycloak/flight-aggregator-realm.json`](deploy/keycloak/flight-aggregator-realm.json)) and requires the realm role `ADMIN` in `realm_access.roles`. Public: `GET /api/itineraries`, `POST /api/itineraries/{id}/reprice`, `GET /v3/api-docs`, and `GET /actuator/health` (its status only; the components are shown to `ADMIN`). Everything else, `/api/admin/**` and the other Actuator endpoint (`/actuator/metrics`) included, needs `ADMIN`. (`/api/admin/*` arrives with plan 5 Task 12; until then `/actuator/metrics` is the admin endpoint to call.)
+
+**1. Get a token** with the `admin-service` client, a confidential client whose service account holds `ADMIN` (client-credentials grant):
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8180/realms/flight-aggregator/protocol/openid-connect/token \
+  -d grant_type=client_credentials -d client_id=admin-service -d client_secret=demo-admin-service-secret \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+```
+
+(or pipe the response through `jq -r .access_token`). The token lasts 5 minutes; ask for another when it expires.
+
+**2. Call an admin endpoint with it:**
+
+```bash
+curl -i -H "Authorization: Bearer $TOKEN" http://localhost:8080/actuator/metrics
+```
+
+| Request | Answer |
+|---|---|
+| no `Authorization` header, or a token that is invalid, expired or issued by another realm | `401 Unauthorized` |
+| a valid token whose holder lacks the `ADMIN` role | `403 Forbidden` |
+| a valid token with the `ADMIN` role | `200 OK` |
+
+`curl -i http://localhost:8080/actuator/metrics` gives the 401. No account in the demo realm lacks `ADMIN`, so the 403 is proven by the tests (`SecurityTest`), not by a command.
+
+**The client secret is a committed demo default on purpose**, the same deliberate exception as the provider keys and the database password (spec 6.6): the take-home must run with a single `docker compose up --build`, and a reviewer must be able to call the admin endpoints without the author. It protects only a Keycloak whose port is bound to the loopback interface. In production it would be a secret injected at deploy time. Override it with `ADMIN_SERVICE_CLIENT_SECRET` in the shell or a `.env` file, before the first start: Keycloak imports the realm only once (`docker compose down -v` removes its data). The same goes for Keycloak's own administrator (`KEYCLOAK_ADMIN_PASSWORD`, default `demo-keycloak-admin-password`, console on `http://localhost:8180`), and the realm's `admin` user has the demo password `demo-admin-password`.
+
+**Why client credentials.** The grant is for machines acting as themselves: scripts, CI, a reviewer's `curl`. People will sign in through the dashboard's browser login (authorization code with PKCE, plan 6), which has its own public client. The resource-owner password grant was rejected: OAuth 2.1 removes it, because the client would handle the user's password.
+
+**Two addresses, on purpose.** Tokens name the issuer `http://localhost:8180/realms/flight-aggregator` (`KC_HOSTNAME`), the address a browser uses, while the aggregator, inside the compose network, fetches the signing keys from `http://keycloak:8080/...` (`security.jwt.jwk-set-uri`). It checks the signature against the second and the issuer against the first (`security.jwt.issuer`).
 
 ## Documentation
 

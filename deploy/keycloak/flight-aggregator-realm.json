@@ -1,0 +1,51 @@
+{
+  "realm": "flight-aggregator",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "ADMIN",
+        "description": "Administers the flight aggregator: admin endpoints and Actuator"
+      }
+    ]
+  },
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo-admin-password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["ADMIN"]
+    },
+    {
+      "username": "service-account-admin-service",
+      "enabled": true,
+      "serviceAccountClientId": "admin-service",
+      "realmRoles": ["ADMIN"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "admin-service",
+      "name": "Admin service (machine access)",
+      "description": "Confidential client for scripts and tools: client_credentials grant, its service account holds ADMIN",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${ADMIN_SERVICE_CLIENT_SECRET:demo-admin-service-secret}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    }
+  ]
+}

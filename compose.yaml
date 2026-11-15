@@ -2,7 +2,11 @@
 # The keys and the database password below are demo defaults, committed on purpose so that the
 # project runs with that single command (spec 6.6). They protect only these local containers, whose
 # ports are bound to the loopback interface. Override any of them from the shell or a .env file:
-# ALPHA_API_KEY, BETA_API_KEY, GAMMA_API_KEY, POSTGRES_PASSWORD.
+# ALPHA_API_KEY, BETA_API_KEY, GAMMA_API_KEY, POSTGRES_PASSWORD, ADMIN_SERVICE_CLIENT_SECRET.
+# The same holds for the secret of the admin-service client in the imported Keycloak realm
+# (deploy/keycloak/flight-aggregator-realm.json) and for the demo passwords of Keycloak's own
+# administrator and of the realm's admin user: committed on purpose so that a reviewer can call the
+# admin endpoints without the author (README, "Admin access"). In production they would be secrets.
 services:
   postgres:
     # Every service comes back after a crash or a Docker restart, until it is stopped on purpose.
@@ -47,6 +51,9 @@ services:
       PROVIDERS_BETA_APIKEY: ${BETA_API_KEY:-demo-beta-key}
       PROVIDERS_GAMMA_BASEURL: http://mock-gds:8080
       PROVIDERS_GAMMA_APIKEY: ${GAMMA_API_KEY:-demo-gamma-key}
+      # The signatures are checked against Keycloak on the compose network; the issuer is its public
+      # name (SECURITY_JWT_ISSUER keeps application.yaml's http://localhost:8180/realms/flight-aggregator).
+      SECURITY_JWT_JWK_SET_URI: http://keycloak:8080/realms/flight-aggregator/protocol/openid-connect/certs
     healthcheck:
       test:
         - CMD
@@ -59,6 +66,37 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 40s
+
+  keycloak:
+    restart: unless-stopped
+    image: quay.io/keycloak/keycloak:26.8.1@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332
+    command: ["start-dev", "--import-realm"]
+    environment:
+      # The issuer of every token: the address a browser reaches Keycloak by, not the one the app uses.
+      KC_HOSTNAME: http://localhost:8180
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-demo-keycloak-admin-password}
+      # Read by the realm file's ${ADMIN_SERVICE_CLIENT_SECRET:...} placeholder at import.
+      ADMIN_SERVICE_CLIENT_SECRET: ${ADMIN_SERVICE_CLIENT_SECRET:-demo-admin-service-secret}
+    ports:
+      - "127.0.0.1:8180:8080"
+    volumes:
+      - ./deploy/keycloak/flight-aggregator-realm.json:/opt/keycloak/data/import/flight-aggregator-realm.json:ro
+    healthcheck:
+      # The image has no curl: read the readiness answer of the management port over a TCP socket.
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/localhost/9000
+          && printf 'GET /health/ready HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3
+          && grep -q '"status": "UP"' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 10
       start_period: 40s
 
   mock-gds:

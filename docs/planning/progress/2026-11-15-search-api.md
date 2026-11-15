@@ -76,3 +76,27 @@ Review: functional CHANGES REQUESTED, code CHANGES REQUESTED (F1/C1 critical, F2
   - `wrapsAValueThatDoesNotParseWithItsCause` (price `cheap`): red = raw `NumberFormatException`; green = `IllegalArgumentException | DateTimeException` wrapped with the cause.
   - The earlier `failsOnADocumentOfAnotherShape` (object instead of array) stays; the `START_ARRAY` check keeps it green.
 - F3: `docs/architecture/ingestion.md`, "The slots": step 6 `ANALYZE`, `UPDATE` becomes 7, and a paragraph on V5's six indexes and their inheritance by every partition.
+
+## Task 11 — evidence
+
+OAuth2 for the admin side, and Keycloak in compose. Image: `quay.io/keycloak/keycloak:26.8.1`, the newest patch of the newest minor whose tag is at least 14 days old (pushed 2026-10-31, 15 days before today; `26.8.2` is 3 days old), pinned by the digest of its multi-arch index `sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332` (`docker buildx imagetools inspect`; quay.io tag list). Spring Security, the resource server and `spring-security-test` come from the Boot 4.1.2 BOM.
+
+- `KeycloakRolesTest.mapsRealmRolesToAuthorities`: red = `cannot find symbol class KeycloakRoles`; green = the converter. `givesNoAuthorityWithoutTheClaim`: passed on first run; red under the mutation "no claim gives ROLE_ADMIN" (1 of 2 failed); green with the empty list.
+- `SecurityTest.searchAndRepriceNeedNoToken`: red = `Expecting actual: 401 not to be in: [401, 403]` (the starter locks every path); green = `SecurityConfig` (public matchers, `anyRequest().hasRole("ADMIN")`, JWT decoder, stateless, CSRF off). The paths do not exist yet (Tasks 9 and 10), so the test checks only that no token is asked for.
+- `healthNeedsNoTokenAndShowsNoDetails`: passed on first run (Boot hides details by default); red under the mutation `show-details=always` (`Expected no value at JSON path "$.components" but found: {db=...`). `healthShowsItsDetailsToTheAdmin`: passed on first run once `when-authorized` + `roles: ADMIN` were set; red under `show-details: never`.
+- `metricsAnswer401WithoutAToken`, `metricsAnswer403WithoutTheAdminRole`: passed on first run (metrics was not yet exposed, but the rule answers before the 404); red under the mutation `anyRequest().permitAll()` (`Status expected:<401> but was:<404>`, `<403> but was:<404>`).
+- `metricsAnswer200WithTheAdminRealmRole`: red = `Status expected:<200> but was:<404>`; green = `include: health,metrics`. `FlightAggregatorApplicationTest` (the test of the exposure) now expects `health,metrics`.
+- `rejectsATokenOfAnotherIssuer` and `acceptsASignedTokenOfTheIssuerWithTheAdminRealmRole` (real RS256 tokens, keys served by WireMock as Keycloak's JWKS): passed on first run; red under the mutation `JwtValidators.createDefault()` (no issuer check) for the first.
+- `ComposeFileTest.runsTheKeycloakImageTheTestsRun`: red = NullPointerException (no `keycloak` service); green = the service, with the image of `KeycloakImage.NAME`.
+- `RealmClientCredentialsTest.acceptsTheClientCredentialsTokenOfTheRealmsAdminClient` (real Keycloak in Testcontainers importing `deploy/keycloak/flight-aggregator-realm.json`, token by client credentials, `GET /actuator/metrics` through the application's decoder): passed on first run; red under the mutation "the service account has no realm role" (1 of 1 failed). The mutation first stayed green because Gradle considered the test up to date: the realm file was not a test input; it is now (`bootstrap/build.gradle.kts`, next to `compose.yaml`).
+- Step 3, `docker compose up keycloak --wait`: healthy; `.well-known/openid-configuration` names `"issuer": "http://localhost:8180/realms/flight-aggregator"` (the public one, from `KC_HOSTNAME`; its `jwks_uri` is public too, the application uses the internal one). A client-credentials token has `iss` that issuer and `realm_access: {'roles': ['ADMIN']}`.
+- Whole stack (`docker compose up --build --wait app keycloak`, then `down -v`): `GET /actuator/metrics` without a token 401, with `Bearer abc` 401, with the client-credentials token 200; `GET /actuator/health` without a token `{"groups":[...],"status":"UP"}`, with the token the components too. This is the README's "Admin access" section, run as written.
+
+Realm file: realm `flight-aggregator`, realm role `ADMIN`, user `admin` (demo password, ADMIN), confidential client `admin-service` (service account with `ADMIN`; standard, implicit and direct-access flows off); its secret `${ADMIN_SERVICE_CLIENT_SECRET:demo-admin-service-secret}`, imported by Keycloak's placeholder substitution; compose passes the variable, so the committed default is overridable. The dashboard's public PKCE client is plan 6's.
+
+Gates: `./gradlew build` green (see the commit). Thermo-nuclear checklist on the diff: one canonical mechanism used for each part (Boot's resource-server auto-configuration, `JwtAuthenticationConverter`, Actuator's `show-details`/`roles`, Keycloak's `--import-realm` and placeholder substitution), no new abstraction; nothing fails silently (a bad token is a 401, a missing role a 403; the decoder fetches the keys lazily, so a Keycloak that is down means 401 for admin calls only and search is unaffected); no shared state. One finding fixed: the realm file was not a Gradle test input.
+
+### Extras for the user to decide
+
+- Make `app` wait for Keycloak (`depends_on: keycloak: service_healthy`): not needed, the keys are fetched on the first admin request. Left out.
+- Public health shows `groups` (`liveness`, `readiness`) besides `status`: Boot's own output, not removed.

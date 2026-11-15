@@ -33,5 +33,19 @@ management:
   endpoints:
     web:
       exposure:
-        # Boot's default, stated: the other endpoints wait for admin authentication (plan 5).
-        include: health
+        # Health is public with its status only; everything else here needs the ADMIN role
+        # (SecurityConfig, spec 6.6).
+        include: health,metrics
+  endpoint:
+    health:
+      # The components behind the status are for an administrator only.
+      show-details: when-authorized
+      roles: ADMIN
+
+security:
+  jwt:
+    # Where the application fetches Keycloak's signing keys (compose sets the internal URL), and the
+    # issuer a token must name (the public one, fixed by KC_HOSTNAME). Defaults suit a Keycloak
+    # published on localhost:8180 with the application run outside compose.
+    jwk-set-uri: http://localhost:8180/realms/flight-aggregator/protocol/openid-connect/certs
+    issuer: http://localhost:8180/realms/flight-aggregator

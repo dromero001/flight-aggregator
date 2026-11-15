@@ -235,11 +235,12 @@ class FlightAggregatorApplicationTest {
 
   /**
    * The production values, as the application's own configuration gives them, before this test's
-   * settings override any of them (it turns the schedule off). Only {@code health} is exposed,
-   * Boot's default, stated so that a change of default cannot widen it.
+   * settings override any of them (it turns the schedule off). Only {@code health} and {@code
+   * metrics} are exposed (the latter for the ADMIN role alone), so that a change of default cannot
+   * widen it.
    */
   @Test
-  void configuresTheProductionIngestionAndExposesOnlyHealth() {
+  void configuresTheProductionIngestionAndExposesOnlyHealthAndMetrics() {
     PropertySource<?> application =
         environment.getPropertySources().stream()
             .filter(source -> source.getName().contains("application.yaml"))
@@ -250,7 +251,7 @@ class FlightAggregatorApplicationTest {
     assertThat(application.getProperty("ingestion.interval")).hasToString("PT30M");
     assertThat(application.getProperty("ingestion.schedule.enabled")).hasToString("true");
     assertThat(application.getProperty("management.endpoints.web.exposure.include"))
-        .hasToString("health");
+        .hasToString("health,metrics");
   }
 
   private long generation() {
