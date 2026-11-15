@@ -135,6 +135,7 @@ The documentation is split by what each part shows.
   - [2026-11-15](docs/planning/progress/2026-11-15.md)
   - [2026-11-15, plan 5 (search API)](docs/planning/progress/2026-11-15-search-api.md)
   - [2026-11-15, plan 6 (dashboard)](docs/planning/progress/2026-11-15-dashboard.md)
+  - [2026-11-15, plan 7 (observability and delivery)](docs/planning/progress/2026-11-15-observability-and-delivery.md)
 
 ### 3. AI usage — how the agent was steered
 - [How this project uses AI](docs/ai/README.md): the process, the skills, plugins and hooks, and why each one
