@@ -27,34 +27,10 @@ public record ProviderSettings(Entry alpha, Entry beta, Entry gamma) {
     };
   }
 
+  /** A provider without any setting has no key either. */
   private static void require(Entry entry, String provider) {
-    if (entry == null || entry.apiKey() == null || entry.apiKey().isBlank()) {
+    if (entry == null) {
       throw new IllegalArgumentException("mockgds.providers." + provider + ".api-key must be set");
-    }
-    if (entry.fastLatencyMin().isNegative()) {
-      throw new IllegalArgumentException(
-          "mockgds.providers." + provider + ".fast-latency-min must not be negative");
-    }
-    // The four latency bounds in order: the slow range starts where the fast range ends, or later.
-    if (entry.fastLatencyMin().compareTo(entry.fastLatencyMax()) > 0) {
-      throw new IllegalArgumentException(
-          "mockgds.providers." + provider + ".fast-latency-min must not exceed fast-latency-max");
-    }
-    if (entry.fastLatencyMax().compareTo(entry.slowLatencyMin()) > 0) {
-      throw new IllegalArgumentException(
-          "mockgds.providers." + provider + ".fast-latency-max must not exceed slow-latency-min");
-    }
-    if (entry.slowLatencyMin().compareTo(entry.slowLatencyMax()) > 0) {
-      throw new IllegalArgumentException(
-          "mockgds.providers." + provider + ".slow-latency-min must not exceed slow-latency-max");
-    }
-    if (!(entry.slowShare() >= 0 && entry.slowShare() <= 1)) {
-      throw new IllegalArgumentException(
-          "mockgds.providers." + provider + ".slow-share must be within [0, 1]");
-    }
-    if (!(entry.errorRate() >= 0 && entry.errorRate() <= 1)) {
-      throw new IllegalArgumentException(
-          "mockgds.providers." + provider + ".error-rate must be within [0, 1]");
     }
   }
 
@@ -70,6 +46,32 @@ public record ProviderSettings(Entry alpha, Entry beta, Entry gamma) {
       @DefaultValue("5000ms") Duration slowLatencyMax,
       @DefaultValue("0.1") double slowShare,
       @DefaultValue("0.05") double errorRate) {
+
+    /** Each failure names its property; the binder adds the provider's prefix. */
+    public Entry {
+      if (apiKey == null || apiKey.isBlank()) {
+        throw new IllegalArgumentException("api-key must be set");
+      }
+      requireRange("fast-latency", fastLatencyMin, fastLatencyMax);
+      requireRange("slow-latency", slowLatencyMin, slowLatencyMax);
+      requireShare("slow-share", slowShare);
+      requireShare("error-rate", errorRate);
+    }
+
+    private static void requireRange(String name, Duration min, Duration max) {
+      if (min.isNegative()) {
+        throw new IllegalArgumentException(name + "-min must not be negative: " + min);
+      }
+      if (min.compareTo(max) > 0) {
+        throw new IllegalArgumentException(name + "-min must not exceed " + name + "-max");
+      }
+    }
+
+    private static void requireShare(String name, double share) {
+      if (!(share >= 0 && share <= 1)) {
+        throw new IllegalArgumentException(name + " must be within [0, 1]: " + share);
+      }
+    }
 
     /** Redacts the key, so logging the settings can never leak it. */
     @Override
