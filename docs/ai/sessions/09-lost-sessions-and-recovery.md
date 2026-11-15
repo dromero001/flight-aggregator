@@ -123,3 +123,5 @@ On Sunday at 12:30 the user asked how far behind the roadmap the work was. The h
 ## 10. Lesson
 
 The cut itself was not the risk. The risk was state that lived only in the conversation: a design change without a recorded decision, and commits without evidence or review. The reviews caught it because the recovery treated the plan as open until the record proved otherwise.
+
+- **Night rules (2026-11-15, about 21:50).** Asked to propose rules so the work continues overnight, the user chose: the plans as written, with every proposed extra recorded as pending to confirm in the morning; two implementers at once; build only the extras already approved; plan 6 Task 2 on the search contract confirmed; the controller runs the API's hands-on check itself. Also: "Make sure you continue working when it is reset." What it changed: a recurring session cron resumes subagents cut by the usage limit, and the rules live in `continuation.md` so any session can apply them.
