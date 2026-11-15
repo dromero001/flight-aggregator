@@ -36,6 +36,11 @@ public final class DatasetGenerator {
     this.decisions = new OfferDecisions(config);
   }
 
+  /** The model that prices the generated records, to price them again at a later instant. */
+  public PriceModel prices() {
+    return prices;
+  }
+
   public Dataset generate(Clock clock) {
     Instant now = clock.instant();
     LocalDate firstDay = LocalDate.ofInstant(now, ZoneOffset.UTC);

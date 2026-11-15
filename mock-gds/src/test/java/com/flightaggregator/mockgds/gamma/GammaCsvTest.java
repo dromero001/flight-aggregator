@@ -9,7 +9,6 @@ import com.flightaggregator.mockgds.dataset.MalformedLeg;
 import com.flightaggregator.mockgds.dataset.ValidLeg;
 import com.flightaggregator.mockgds.model.Leg;
 import com.flightaggregator.mockgds.model.Provider;
-import com.flightaggregator.mockgds.pricing.PriceModel;
 import com.flightaggregator.mockgds.reference.ReferenceData;
 import com.flightaggregator.mockgds.serving.InventoryPage;
 import com.flightaggregator.mockgds.serving.PricedRecord;
@@ -67,13 +66,9 @@ class GammaCsvTest {
   /** Pins why the cells are written unquoted: no cell of the default dataset needs quoting. */
   @Test
   void noCellOfTheDefaultDatasetNeedsQuoting() {
-    var config = GeneratorConfig.defaults();
-    var reference = ReferenceData.standard();
+    var generator = new DatasetGenerator(GeneratorConfig.defaults(), ReferenceData.standard());
     var clock = Clock.systemUTC();
-    var dataset = new DatasetGenerator(config, reference).generate(clock);
-    var inventory =
-        new ProviderInventory(
-            dataset, new PriceModel(config.seed(), config.priceBucket(), reference), clock);
+    var inventory = new ProviderInventory(generator.generate(clock), generator.prices(), clock);
 
     var csv = GammaCsv.write(inventory.page(Provider.GAMMA, 0, Integer.MAX_VALUE));
 
