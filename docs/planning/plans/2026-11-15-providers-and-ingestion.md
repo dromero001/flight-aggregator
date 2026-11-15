@@ -159,7 +159,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 - Produces:
   - Table `provider_offer(provider text, position int, carrier char(2), flight_number int, origin char(3), destination char(3), departure timestamptz, departure_offset int, arrival timestamptz, arrival_offset int, price numeric(11,2), quoted_at timestamptz, primary key (provider, position))`; offsets in seconds.
   - Table `airport(code char(3) primary key)`, seeded with the 32 airports of the mock's `StandardCatalogue` (copied as data; the persistence module does not depend on `mock-gds`).
-  - `JdbcOfferStore(DataSource, TransactionTemplate)`, `JdbcAirportCatalogue(JdbcClient)`.
+  - `JdbcOfferStore(DataSourceTransactionManager)` (its `DataSource` and `TransactionTemplate` come from the manager, E6), `JdbcAirportCatalogue(JdbcClient)`.
   - `final class CopyRows implements AutoCloseable`: `static CopyRows open(Connection connection, String copySql)`, `void row(String... cells)` (null → `\N`; backslash, tab, newline and carriage return escaped), `long finish()`. It runs on the connection of the current Spring transaction (`DataSourceUtils.getConnection`), unwrapped to `PGConnection`.
   - `PostgresTestDatabase`: one Testcontainers `PostgreSQLContainer` per JVM (same image and digest as Task 11), migrated with Flyway once, giving a `DataSource`; each test class truncates what it uses.
 
@@ -185,7 +185,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 - Produces:
   - Tables `itinerary_a`, `itinerary_b`, identical, `PARTITION BY RANGE (departure)`, each with a `DEFAULT` partition: `id uuid, departure timestamptz, departure_offset int, arrival timestamptz, arrival_offset int, origin char(3), destination char(3), duration_seconds int, stops smallint, single_carrier char(2) null, price numeric(11,2), quoted_at timestamptz, legs jsonb, primary key (id, departure)`. Day partitions are named `itinerary_<slot>_<yyyymmdd>`.
   - Table `inventory_publication(id smallint primary key check (id = 1), active_slot char(1) not null check (active_slot in ('a','b')), generation bigint not null, published_at timestamptz)`, seeded `(1, 'a', 0, null)`.
-  - `JdbcItineraryRepository(DataSource, TransactionTemplate, JsonFactory, int partitionDaysAhead)` with `partitionDaysAhead` = 37 in production.
+  - `JdbcItineraryRepository(DataSourceTransactionManager, JsonFactory, int partitionDaysAhead)` (E6; a negative horizon is refused, E5) with `partitionDaysAhead` = 37 in production.
   - `PartitionCalendar`: `static LocalDate dayOf(Instant departure)` (UTC date), `static Instant start(LocalDate day)`.
   - Leg JSON, pinned by `ItineraryRowTest`: `[{"carrier":"IB","flightNumber":3166,"origin":"MAD","destination":"LHR","departure":"2026-11-20T08:15:00+01:00","arrival":"2026-11-20T09:30:00+00:00","price":"129.90","provider":"ALPHA","quotedAt":"2026-11-15T10:00:00.123456Z"}]`.
 
