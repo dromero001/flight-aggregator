@@ -6,8 +6,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 /**
- * Per-provider gate settings, bound from {@code mockgds.providers.<provider>.*}. An unknown key
- * stops startup, so a misspelt or outdated setting cannot silently leave its default on.
+ * Per-provider gate settings, bound from {@code mockgds.providers.<provider>.*}. An unknown key in
+ * a properties file or a command-line argument stops startup, so a misspelt or outdated setting
+ * there cannot silently leave its default on. Boot does not check environment variables this way.
  */
 @ConfigurationProperties(prefix = "mockgds.providers", ignoreUnknownFields = false)
 public record ProviderSettings(Entry alpha, Entry beta, Entry gamma) {

@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.flightaggregator.mockgds.model.Provider;
 import java.time.Duration;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.boot.test.util.TestPropertyValues;
+import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.env.SystemEnvironmentPropertySource;
 
 class ProviderSettingsTest {
 
@@ -122,7 +124,7 @@ class ProviderSettingsTest {
             });
   }
 
-  /** A misspelt or outdated setting stops startup instead of silently leaving its default on. */
+  /** A misspelt or outdated property stops startup instead of silently leaving its default on. */
   @Test
   void failsToStartOnAnUnknownSetting() {
     runner
@@ -135,20 +137,34 @@ class ProviderSettingsTest {
                     .hasStackTraceContaining("mockgds.providers.alpha.latency-min"));
   }
 
-  /** The same through an environment variable, the way compose passes the settings. */
+  /**
+   * Boot leaves the system environment out of the unknown-key check (its
+   * UnboundElementsSourceFilter holds the source benign, since it carries every variable of the
+   * machine), so a misspelt variable is ignored while a known one binds. Pinned, so the docs never
+   * promise otherwise.
+   */
   @Test
-  void failsToStartOnAnUnknownSettingFromTheEnvironment() {
+  void ignoresAnUnknownEnvironmentVariable() {
+    var environment =
+        new SystemEnvironmentPropertySource(
+            StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
+            Map.of(
+                "MOCKGDS_PROVIDERS_ALPHA_LATENCYMIN", "0ms",
+                "MOCKGDS_PROVIDERS_ALPHA_ERRORRATE", "1"));
     runner
         .withPropertyValues(KEYS)
         .withInitializer(
             context ->
-                TestPropertyValues.of("MOCKGDS_PROVIDERS_ALPHA_LATENCYMIN=0ms")
-                    .applyTo(context.getEnvironment(), TestPropertyValues.Type.SYSTEM_ENVIRONMENT))
+                context
+                    .getEnvironment()
+                    .getPropertySources()
+                    .replace(environment.getName(), environment))
         .run(
-            context ->
-                assertThat(context)
-                    .getFailure()
-                    .hasStackTraceContaining("mockgds.providers.alpha.latencymin"));
+            context -> {
+              assertThat(context).hasNotFailed();
+              assertThat(context.getBean(ProviderSettings.class).alpha().errorRate())
+                  .isEqualTo(1.0);
+            });
   }
 
   @Test
