@@ -111,6 +111,8 @@ Glossary:
 
 `limit` and `pageSize` default to 500 and go from 1 to 1000; anything else, or a parameter that is not a plain integer, answers `400`. Times are ISO-8601 with a numeric offset (`2026-11-20T08:15:00+01:00`, never `Z`). Prices are in euros: Alpha writes a decimal string, Beta an integer number of cents, Gamma a decimal.
 
+The examples below are trimmed to one record. Prices differ per provider and per request: each is the drifted price at the request instant.
+
 Alpha:
 
 ```json
@@ -134,7 +136,7 @@ AF,1079,CDG,JFK,2026-11-15T09:00:00+01:00,2026-11-15T10:50:00-05:00,377.28
 
 | Defect | Effect |
 |---|---|
-| `MISSING_FIELD` | the flight number is omitted |
+| `MISSING_FIELD` | the flight number is omitted (an absent field in Alpha and Beta, an empty cell in Gamma's CSV) |
 | `BAD_DATE` | the departure is `2026-02-30T25:61:00+01:00` |
 | `NEGATIVE_PRICE` | the price is negated |
 | `UNKNOWN_AIRPORT` | the destination is `ZZZ` |

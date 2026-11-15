@@ -3,14 +3,15 @@
 FROM eclipse-temurin:25.0.4.1_1-jdk-noble@sha256:a9c5ddd386f629518bd500ecfabf7d1e5d32d7ffed735d5c3b1604ae92c830f4 AS build
 WORKDIR /workspace
 # settings.gradle.kts includes every module, and Gradle refuses an included project whose directory
-# is missing. The other modules stay out of the image: empty directories are enough.
+# is missing. The other modules stay out of the image: empty directories, derived from the settings,
+# are enough (the mock-gds copy below overwrites its own).
 COPY gradlew settings.gradle.kts gradle.properties ./
 COPY gradle gradle
 COPY buildSrc buildSrc
+RUN sed -n 's/^include("\(.*\)")/\1/p' settings.gradle.kts | tr ':' '/' | xargs mkdir -p
 COPY mock-gds mock-gds
-RUN mkdir -p domain application adapters/providers adapters/persistence adapters/web bootstrap architecture-tests coverage
 # Tests run in CI, not here.
-RUN ./gradlew :mock-gds:bootJar --no-daemon
+RUN --mount=type=cache,target=/root/.gradle ./gradlew :mock-gds:bootJar --no-daemon
 
 FROM eclipse-temurin:25.0.4.1_1-jre-noble@sha256:ce8543ddd3070ccbeaac2106a74c9387ddeb8d47a1c43348345715c1ef245c7f
 RUN useradd --system --uid 10001 --no-create-home mockgds

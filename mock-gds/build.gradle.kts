@@ -12,3 +12,8 @@ dependencies {
     testImplementation(libs.spring.boot.resttestclient)
     testImplementation(libs.spring.boot.restclient)
 }
+
+// The Dockerfile copies this exact name, whatever the project version.
+tasks.bootJar {
+    archiveFileName = "mock-gds.jar"
+}
