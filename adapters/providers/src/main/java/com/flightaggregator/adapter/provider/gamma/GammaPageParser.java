@@ -1,12 +1,12 @@
 package com.flightaggregator.adapter.provider.gamma;
 
-import com.flightaggregator.adapter.provider.LoggedText;
 import com.flightaggregator.adapter.provider.ParsedPage;
 import com.flightaggregator.adapter.provider.RecordFields;
 import com.flightaggregator.adapter.provider.RecordRejected;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
 import com.flightaggregator.application.port.out.FailureReason;
+import com.flightaggregator.application.port.out.ProviderText;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.Provider;
@@ -110,10 +110,10 @@ final class GammaPageParser {
     private static int required(String line, List<String> header, String name) {
       int index = header.indexOf(name);
       if (index < 0) {
-        throw malformed("The header " + LoggedText.quoted(line) + " has no column " + name);
+        throw malformed("The header " + ProviderText.quoted(line) + " has no column " + name);
       }
       if (index != header.lastIndexOf(name)) {
-        throw malformed("The header " + LoggedText.quoted(line) + " repeats the column " + name);
+        throw malformed("The header " + ProviderText.quoted(line) + " repeats the column " + name);
       }
       return index;
     }

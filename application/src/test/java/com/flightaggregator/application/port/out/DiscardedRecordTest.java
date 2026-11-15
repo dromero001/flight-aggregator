@@ -42,6 +42,12 @@ class DiscardedRecordTest {
   @Test
   void escapesLineBreaksAndOtherControlCharacters() {
     assertThat(new DiscardedRecord(DiscardReason.SHAPE, "a\nERROR forged\r\tb\u0001").excerpt())
-        .isEqualTo("a\\nERROR forged\\r\\tb\\u0001");
+        .isEqualTo("a\\u000aERROR forged\\u000d\\u0009b\\u0001");
+  }
+
+  /** A record holding a backslash and an n is told apart from one holding a line break. */
+  @Test
+  void escapesABackslashOfTheRecord() {
+    assertThat(new DiscardedRecord(DiscardReason.SHAPE, "a\\nb").excerpt()).isEqualTo("a\\\\nb");
   }
 }

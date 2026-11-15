@@ -7,11 +7,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
-import com.flightaggregator.adapter.provider.LoggedText;
 import com.flightaggregator.adapter.provider.ParsedPage;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
 import com.flightaggregator.application.port.out.FailureReason;
+import com.flightaggregator.application.port.out.ProviderText;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Carrier;
@@ -275,7 +275,8 @@ class BetaPageParserTest {
             e ->
                 assertThat(e.getCause().getMessage())
                     .isEqualTo(
-                        "Expected <SegmentsResponse>, not the element " + LoggedText.quoted(name)));
+                        "Expected <SegmentsResponse>, not the element "
+                            + ProviderText.quoted(name)));
   }
 
   @Test

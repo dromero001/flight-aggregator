@@ -1,12 +1,12 @@
 package com.flightaggregator.adapter.provider.beta;
 
-import com.flightaggregator.adapter.provider.LoggedText;
 import com.flightaggregator.adapter.provider.ParsedPage;
 import com.flightaggregator.adapter.provider.RecordFields;
 import com.flightaggregator.adapter.provider.RecordRejected;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
 import com.flightaggregator.application.port.out.FailureReason;
+import com.flightaggregator.application.port.out.ProviderText;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.Provider;
@@ -115,7 +115,7 @@ final class BetaPageParser {
   private static void expectName(XMLStreamReader xml, String name) throws XMLStreamException {
     if (!xml.getLocalName().equals(name)) {
       throw new XMLStreamException(
-          "Expected <" + name + ">, not the element " + LoggedText.quoted(xml.getLocalName()));
+          "Expected <" + name + ">, not the element " + ProviderText.quoted(xml.getLocalName()));
     }
   }
 

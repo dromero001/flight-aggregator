@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import com.flightaggregator.application.port.out.DiscardedRecord;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.ProviderDownload;
+import com.flightaggregator.application.port.out.ProviderText;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.Provider;
@@ -128,7 +129,7 @@ public final class PagedDownload {
       if (!seen.add(position.get())) {
         throw paginationLimit(
             "The position "
-                + LoggedText.quoted(position.get())
+                + ProviderText.quoted(position.get())
                 + " came back after "
                 + number
                 + " pages");

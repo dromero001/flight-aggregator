@@ -5,11 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
-import com.flightaggregator.adapter.provider.LoggedText;
 import com.flightaggregator.adapter.provider.ParsedPage;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
 import com.flightaggregator.application.port.out.FailureReason;
+import com.flightaggregator.application.port.out.ProviderText;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Carrier;
@@ -173,7 +173,7 @@ class AlphaPageParserTest {
                 assertThat(e.getCause().getMessage())
                     .isEqualTo(
                         "The page's nextCursor is neither a string nor null: "
-                            + LoggedText.quoted("[\"" + "a".repeat(500) + "\"]")));
+                            + ProviderText.quoted("[\"" + "a".repeat(500) + "\"]")));
   }
 
   private static String pageOf(String... records) {

@@ -1,12 +1,12 @@
 package com.flightaggregator.adapter.provider.alpha;
 
-import com.flightaggregator.adapter.provider.LoggedText;
 import com.flightaggregator.adapter.provider.ParsedPage;
 import com.flightaggregator.adapter.provider.RecordFields;
 import com.flightaggregator.adapter.provider.RecordRejected;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
 import com.flightaggregator.application.port.out.FailureReason;
+import com.flightaggregator.application.port.out.ProviderText;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.Provider;
@@ -61,7 +61,7 @@ final class AlphaPageParser {
       throw malformed(
           new IllegalStateException(
               "The page's nextCursor is neither a string nor null: "
-                  + LoggedText.quoted(cursor.toString())));
+                  + ProviderText.quoted(cursor.toString())));
     }
     return Optional.of(cursor.asString());
   }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.flightaggregator.application.port.out.FailureReason;
+import com.flightaggregator.application.port.out.ProviderText;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Provider;
 import io.github.resilience4j.timelimiter.TimeLimiter;
@@ -56,7 +57,7 @@ class PagedDownloadTest {
             e ->
                 assertThat(e.getCause().getMessage())
                     .isEqualTo(
-                        "The position " + LoggedText.quoted(hostile) + " came back after 2 pages")
+                        "The position " + ProviderText.quoted(hostile) + " came back after 2 pages")
                     .doesNotContain("\r", "\n")
                     .hasSizeLessThan(260));
   }
