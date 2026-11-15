@@ -360,6 +360,29 @@ class IngestInventoryServiceTest {
     assertThat(gammaReport.offersUsed()).isZero();
   }
 
+  /**
+   * A kept provider's conflicting offers were reported when they were downloaded: they still take
+   * no part, but are not reported or counted again on every run that keeps them.
+   */
+  @Test
+  void reportsTheConflictsOfAFreshDownloadOnly() {
+    Leg twoHours = leg(GAMMA, 1, "MAD", "LHR");
+    store.with(GAMMA, List.of(twoHours, flyingFor(twoHours, 3)));
+    FakeFlightProvider gamma =
+        new FakeFlightProvider(
+            GAMMA,
+            () -> {
+              throw new ProviderUnavailableException(GAMMA, FailureReason.HTTP_ERROR, null);
+            });
+
+    IngestionReport report = service(gamma).ingest();
+
+    assertThat(discarded.entries()).isEmpty();
+    ProviderReport gammaReport = report.providers().getFirst();
+    assertThat(gammaReport.discarded()).isEmpty();
+    assertThat(gammaReport.offersUsed()).isZero();
+  }
+
   @Test
   void countsAnOfferBeatenByACheaperOneOfAnotherProvider() {
     Leg dearer = leg(ALPHA, 1, "MAD", "LHR");

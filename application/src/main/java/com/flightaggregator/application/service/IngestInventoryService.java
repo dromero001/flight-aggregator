@@ -85,7 +85,10 @@ public final class IngestInventoryService implements IngestInventory {
     Map<Provider, List<Leg>> stored = storedOffers();
     List<Leg> offers = stored.values().stream().flatMap(List::stream).toList();
     Deduplication deduplication = LegDeduplicator.deduplicate(offers);
-    deduplication.conflicting().forEach(this::discardConflicting);
+    Set<Provider> fresh = freshProviders(runs);
+    deduplication.conflicting().stream()
+        .filter(conflicting -> fresh.contains(conflicting.provider()))
+        .forEach(this::discardConflicting);
     List<ProviderReport> reports =
         runs.stream().map(run -> run.report(stored.get(run.provider()), deduplication)).toList();
     if (offers.isEmpty()) {
@@ -136,6 +139,14 @@ public final class IngestInventoryService implements IngestInventory {
     return stored;
   }
 
+  /** The providers whose download was stored in this run. */
+  private static Set<Provider> freshProviders(List<ProviderRun> runs) {
+    Set<Provider> fresh = EnumSet.noneOf(Provider.class);
+    runs.stream().filter(ProviderRun::fresh).map(ProviderRun::provider).forEach(fresh::add);
+    return fresh;
+  }
+
+  /** Reported once, by the run that downloaded it: a kept provider's conflicts are not re-sent. */
   private void discardConflicting(Leg conflicting) {
     discardedRecords.discarded(
         conflicting.provider(),
@@ -266,7 +277,8 @@ public final class IngestInventoryService implements IngestInventory {
 
     /**
      * Its report, built once its stored offers were deduplicated with the others': the conflicting
-     * offers take no part, and those the deduplication left out are lost to it.
+     * offers take no part, and those the deduplication left out are lost to it. Only a fresh
+     * download counts its conflicting offers as discarded.
      */
     ProviderReport report(List<Leg> stored, Deduplication deduplication) {
       int conflicting = ofThisProvider(deduplication.conflicting());
@@ -276,10 +288,14 @@ public final class IngestInventoryService implements IngestInventory {
           failure,
           cause,
           fetched,
-          withConflicting(discarded, conflicting),
+          fresh() ? withConflicting(discarded, conflicting) : discarded,
           stored.size() - conflicting,
           stored.size() - conflicting - chosen,
           newestQuote(stored));
+    }
+
+    boolean fresh() {
+      return failure.isEmpty();
     }
 
     private int ofThisProvider(List<Leg> legs) {
