@@ -2,8 +2,8 @@ package com.flightaggregator.mockgds.alpha;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.flightaggregator.mockgds.dataset.Dataset;
 import com.flightaggregator.mockgds.model.Provider;
-import com.flightaggregator.mockgds.serving.ProviderInventory;
 import com.flightaggregator.mockgds.support.MockGdsTest;
 import com.flightaggregator.mockgds.support.ProviderKeys;
 import org.junit.jupiter.api.Test;
@@ -19,7 +19,7 @@ import tools.jackson.databind.ObjectMapper;
 class AlphaControllerTest {
 
   @Autowired private TestRestTemplate http;
-  @Autowired private ProviderInventory inventory;
+  @Autowired private Dataset dataset;
 
   @Test
   void servesTheFirstPageWithoutACursor() throws Exception {
@@ -47,7 +47,7 @@ class AlphaControllerTest {
       path = "/alpha/legs?limit=700&cursor=" + cursor.asString();
     } while (!cursor.isNull() && pages++ < 50);
 
-    assertThat(served).isEqualTo(inventory.page(Provider.ALPHA, 0, Integer.MAX_VALUE).total());
+    assertThat(served).isEqualTo(dataset.recordsFor(Provider.ALPHA).size());
   }
 
   @Test

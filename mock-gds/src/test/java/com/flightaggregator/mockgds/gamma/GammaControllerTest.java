@@ -2,8 +2,8 @@ package com.flightaggregator.mockgds.gamma;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.flightaggregator.mockgds.dataset.Dataset;
 import com.flightaggregator.mockgds.model.Provider;
-import com.flightaggregator.mockgds.serving.ProviderInventory;
 import com.flightaggregator.mockgds.support.MockGdsTest;
 import com.flightaggregator.mockgds.support.ProviderKeys;
 import java.util.List;
@@ -23,7 +23,7 @@ class GammaControllerTest {
       "airline,flight_number,from,to,departs_at,arrives_at,price_eur";
 
   @Autowired private TestRestTemplate http;
-  @Autowired private ProviderInventory inventory;
+  @Autowired private Dataset dataset;
 
   @Test
   void servesFromOffsetZeroByDefault() {
@@ -42,7 +42,7 @@ class GammaControllerTest {
 
   @Test
   void endsWithAShortPage() {
-    var total = inventory.page(Provider.GAMMA, 0, Integer.MAX_VALUE).total();
+    var total = dataset.recordsFor(Provider.GAMMA).size();
 
     var lines = get("/gamma/legs.csv?limit=500&offset=" + (total - 3)).getBody().split("\r\n");
 

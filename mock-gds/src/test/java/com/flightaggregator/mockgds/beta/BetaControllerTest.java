@@ -2,8 +2,8 @@ package com.flightaggregator.mockgds.beta;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.flightaggregator.mockgds.dataset.Dataset;
 import com.flightaggregator.mockgds.model.Provider;
-import com.flightaggregator.mockgds.serving.ProviderInventory;
 import com.flightaggregator.mockgds.support.MockGdsTest;
 import com.flightaggregator.mockgds.support.ProviderKeys;
 import com.flightaggregator.mockgds.support.Xml;
@@ -18,7 +18,7 @@ import org.springframework.http.ResponseEntity;
 class BetaControllerTest {
 
   @Autowired private TestRestTemplate http;
-  @Autowired private ProviderInventory inventory;
+  @Autowired private Dataset dataset;
 
   @Test
   void servesPageOneByDefault() throws Exception {
@@ -39,7 +39,7 @@ class BetaControllerTest {
 
   @Test
   void pagesToTotalPages() throws Exception {
-    var total = inventory.page(Provider.BETA, 0, Integer.MAX_VALUE).total();
+    var total = dataset.recordsFor(Provider.BETA).size();
     var first = Xml.parse(get("/beta/segments?pageSize=300").getBody());
     var totalPages = Integer.parseInt(first.getAttribute("totalPages"));
 
