@@ -113,3 +113,26 @@ Review: functional CHANGES REQUESTED, code CHANGES REQUESTED (`task-11-review.md
 - F6 corrected in passing: the `26.8.2` age above.
 
 Gates: `./gradlew build` green. Thermo-nuclear checklist on the diff: net deletion (two classes, a bean, a namespace) in favour of the framework's own configuration; nothing fails silently; no state added. The plan's Task 11 text still names `KeycloakRoles` and `security.jwt.*`: left to the controller (the ruling supersedes it).
+
+## Task 2 — evidence
+
+Status: stopped at the check the brief asks for first, before any production change. Spring Framework 7.0.10 counts a method-level `@ConcurrencyLimit` per method, so the brief's seam (the annotation on the three operations, one limit shared by them) does not hold; per the brief, the task stops and asks before choosing another seam.
+
+What the source says (`ConcurrencyLimitBeanPostProcessor`, spring-context 7.0.10): the interceptor keeps one holder per proxy instance; inside it, a method with its own annotation gets its own throttle (`perMethod = true`, named after the method), and only the methods covered by a class-level annotation share the holder's `classInterceptor`. The class-level pointcut matches every method of the class (`MethodMatcher.TRUE`), `toString()` included.
+
+Learning test `bootstrap/.../config/ConcurrencyLimitScopeTest` (limit 1, `REJECT`, a call held on a latch, Boot's `AopAutoConfiguration` in the runner as in the application):
+
+- `countsAMethodLevelLimitPerMethod`: first run red, but not for the question: `BeanCreationException: Could not generate CGLIB subclass of class ...AnnotatedMethods ... Cannot subclass final class`. Under Boot's default `spring.aop.proxy-target-class=true`, `AopConfigUtils.forceAutoProxyCreatorToUseClassProxying` sets Spring 7's default proxy config, which `AbstractBeanFactoryAwareAdvisingPostProcessor` applies to the resilience post-processors too, so a `final` class such as `PagedProvider` cannot be proxied in the application (`ProvidersConfigTest`'s runner, without `AopAutoConfiguration`, would not show it). The test class was made non-final. Then green on first run: while `hold()` is held, a second `hold()` is rejected and `other()` runs. Red under the mutation "one class-level annotation instead of the two method-level ones": `InvocationRejectedException: Concurrency limit reached: 1 - not allowed to enter ...AnnotatedMethods` at `operations.other()`.
+- `sharesAClassLevelLimitAcrossTheMethodsOfOneInstance`: green on first run: with the annotation on the class, while `hold()` is held, `other()` and `toString()` are rejected, a method annotated `@ConcurrencyLimit(-1)` runs, and a second bean of the same class runs (one limit per proxied instance). Red under the mutation "drop the `-1` exemption": `InvocationRejectedException: Concurrency limit reached: 1 - not allowed to enter ...AnnotatedClass` at `first.exempt()`.
+
+Open decision (pending, for the user): how the three operations share one limit per provider.
+
+- A. Keep the seam, move the annotation: `@ConcurrencyLimit(limitString = "${providers.concurrency-limit}", policy = REJECT)` on the `PagedProvider` class, and `@ConcurrencyLimit(-1)` on `provider()` and on an overridden `toString()`, so neither is ever rejected (both pinned above). `PagedProvider` stops being `final`, or each `@Bean` carries `@Proxyable(INTERFACES)` (Spring 7.0), for the proxy to be built in the application. Cost: an opt-out to keep on every method added to the class later; anything new on it is limited by default.
+- B. Keep the brief's method-level annotations, accepting one limit per operation (up to three times `concurrency-limit` calls per provider). Departs from "one limit per provider" (Q9).
+- C. Another seam: a decorator in `bootstrap` (beside `CountedFlightProvider`) holding one `Semaphore` per provider, `tryAcquire` or a `RejectedExecutionException`, around `download`, `downloadFrom` and `quote` only. No proxy and no `final` question; the limit is ours to test instead of the framework's.
+
+Gates: `./gradlew build` green. Thermo-nuclear review of the diff (a test file and this report, no production change): the held-call `try`/`finally` was copied in both tests and is now one helper, `whileHeld`; `Gate.hold` bounds its wait to 5 s only so that a broken test cannot hang the build, and the release always runs in `finally`. The learning test is not in the brief's file list: it is kept so that the chosen option can be checked against the framework's behaviour, and may be dropped with its commit.
+
+### Extras for the user to decide
+
+None.
