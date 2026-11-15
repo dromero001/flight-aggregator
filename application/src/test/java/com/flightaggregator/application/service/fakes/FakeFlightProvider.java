@@ -7,17 +7,46 @@ import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.LegKey;
 import com.flightaggregator.domain.Provider;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
-/** A provider whose download is whatever the test gives it; any other call fails the test. */
+/**
+ * A provider whose download, or whose quotes, are whatever the test gives it; any other call fails
+ * the test.
+ */
 public final class FakeFlightProvider implements FlightProvider {
 
   private final Provider provider;
   private final Supplier<ProviderDownload> download;
+  private final Function<LegKey, Optional<Leg>> quote;
 
   public FakeFlightProvider(Provider provider, Supplier<ProviderDownload> download) {
+    this(
+        provider,
+        download,
+        flight -> {
+          throw new UnsupportedOperationException("This fake quotes nothing: " + flight);
+        });
+  }
+
+  private FakeFlightProvider(
+      Provider provider,
+      Supplier<ProviderDownload> download,
+      Function<LegKey, Optional<Leg>> quote) {
     this.provider = provider;
     this.download = download;
+    this.quote = quote;
+  }
+
+  /** A provider that only quotes, each flight as the function answers it. */
+  public static FakeFlightProvider quoting(
+      Provider provider, Function<LegKey, Optional<Leg>> quote) {
+    return new FakeFlightProvider(
+        provider,
+        () -> {
+          throw new UnsupportedOperationException("This fake only quotes");
+        },
+        quote);
   }
 
   @Override
@@ -37,6 +66,6 @@ public final class FakeFlightProvider implements FlightProvider {
 
   @Override
   public Optional<Leg> quote(LegKey flight) {
-    throw new UnsupportedOperationException("This fake quotes nothing: " + flight);
+    return quote.apply(flight);
   }
 }

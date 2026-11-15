@@ -1,7 +1,9 @@
 package com.flightaggregator.adapter.persistence;
 
 import static com.flightaggregator.adapter.persistence.support.ItinerarySlots.partitions;
+import static com.flightaggregator.application.port.in.SortOrder.DURATION;
 import static com.flightaggregator.domain.Provider.ALPHA;
+import static com.flightaggregator.domain.Provider.BETA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -9,6 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import com.flightaggregator.adapter.persistence.support.ItinerarySlots;
 import com.flightaggregator.adapter.persistence.support.PostgresTestDatabase;
+import com.flightaggregator.application.port.in.SearchCriteria;
+import com.flightaggregator.application.port.in.SeekPosition;
 import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Carrier;
@@ -17,12 +21,18 @@ import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.Money;
 import java.math.BigDecimal;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
@@ -46,6 +56,8 @@ class JdbcItineraryRepositoryTest {
   private final JdbcItineraryRepository repository =
       new JdbcItineraryRepository(
           new DataSourceTransactionManager(dataSource), new JsonFactory(), 37);
+  private final JdbcItineraryReader reader =
+      new JdbcItineraryReader(new DataSourceTransactionManager(dataSource), new JsonFactory());
 
   @BeforeEach
   void startFromAFreshDatabase() {
@@ -54,6 +66,10 @@ class JdbcItineraryRepositoryTest {
 
   /** {@code IB<number>} from Madrid to London, departing at {@code departure} for two hours. */
   private static Itinerary direct(int number, String departure) {
+    return direct(number, departure, Duration.ofHours(2));
+  }
+
+  private static Itinerary direct(int number, String departure, Duration flying) {
     OffsetDateTime departsAt = OffsetDateTime.parse(departure);
     return new Itinerary(
         List.of(
@@ -63,7 +79,7 @@ class JdbcItineraryRepositoryTest {
                 new Airport("MAD"),
                 new Airport("LHR"),
                 departsAt,
-                departsAt.plusHours(2),
+                departsAt.plus(flying),
                 Money.euros("100.00"),
                 ALPHA,
                 Instant.parse("2026-11-15T10:00:00Z"))));
@@ -374,5 +390,212 @@ class JdbcItineraryRepositoryTest {
 
     assertThat(published()).isEqualTo(new Published("a", 0, null));
     assertThat(partitions(jdbc, "itinerary_b")).contains(partition);
+  }
+
+  /** The itinerary's one flight as another provider sells it now, landing {@code arrival}. */
+  private static Itinerary requoted(
+      Itinerary itinerary, OffsetDateTime arrival, String euros, Instant quotedAt) {
+    Leg leg = itinerary.legs().getFirst();
+    return new Itinerary(
+        List.of(
+            new Leg(
+                leg.carrier(),
+                leg.flightNumber(),
+                leg.origin(),
+                leg.destination(),
+                leg.departure(),
+                arrival,
+                Money.euros(euros),
+                BETA,
+                quotedAt)));
+  }
+
+  private BigDecimal storedPrice(String slot, Itinerary itinerary) {
+    return jdbc.sql("SELECT price FROM " + slot + " WHERE id = ?")
+        .param(itinerary.id().value())
+        .query(BigDecimal.class)
+        .single();
+  }
+
+  /**
+   * Q5: the active generation's row takes the re-quote, and the generation, its publication time
+   * and the other rows stay. The previous generation's slot, still whole for a search reading it,
+   * keeps the row it had.
+   */
+  @Test
+  void updatesAnItineraryInPlaceWithoutChangingTheGeneration() {
+    Itinerary chosen = direct(1, "2026-11-25T07:15:00Z");
+    Itinerary other = direct(2, "2026-11-25T08:15:00Z");
+    publish(NOW, List.of(chosen, other));
+    Instant secondRun = NOW.plusSeconds(1_800);
+    publish(secondRun, List.of(chosen, other));
+    Instant quotedAt = Instant.parse("2026-11-20T10:40:00Z");
+    Itinerary repriced = requoted(chosen, chosen.arrival(), "120.00", quotedAt);
+
+    boolean updated = repository.updateInPlace(repriced);
+
+    assertThat(updated).isTrue();
+    assertThat(published()).isEqualTo(new Published("a", 2, secondRun));
+    assertThat(reader.byId(chosen.id())).contains(repriced);
+    assertThat(storedPrice("itinerary_a", chosen)).isEqualByComparingTo("126.00");
+    assertThat(
+            jdbc.sql("SELECT quoted_at FROM itinerary_a WHERE id = ?")
+                .param(chosen.id().value())
+                .query(OffsetDateTime.class)
+                .single()
+                .toInstant())
+        .isEqualTo(quotedAt);
+    assertThat(reader.byId(other.id())).contains(other);
+    assertThat(storedPrice("itinerary_b", chosen)).isEqualByComparingTo("105.00");
+  }
+
+  /**
+   * A run replaced the inventory after the choice was read, and the active generation no longer
+   * holds it: nothing is written, in either slot.
+   */
+  @Test
+  void answersFalseForAnItineraryTheActiveGenerationNoLongerHolds() {
+    Itinerary gone = direct(1, "2026-11-25T07:15:00Z");
+    publish(NOW, List.of(gone));
+    publish(NOW.plusSeconds(1_800), List.of(direct(2, "2026-11-25T08:15:00Z")));
+
+    boolean updated =
+        repository.updateInPlace(
+            requoted(gone, gone.arrival(), "120.00", Instant.parse("2026-11-20T10:40:00Z")));
+
+    assertThat(updated).isFalse();
+    assertThat(rows("itinerary_a")).isEqualTo(1);
+    assertThat(storedPrice("itinerary_b", gone)).isEqualByComparingTo("105.00");
+  }
+
+  /** The ids of every itinerary, by duration, read one keyset page of one at a time. */
+  private List<UUID> idsByDurationOnePerPage() {
+    SearchCriteria everything =
+        new SearchCriteria(
+            Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), DURATION);
+    List<UUID> ids = new ArrayList<>();
+    Optional<SeekPosition> after = Optional.empty();
+    for (int pages = 0; pages < 10; pages++) {
+      List<Itinerary> page = reader.page(everything, after, 1, NOW).itineraries();
+      if (page.isEmpty()) {
+        return ids;
+      }
+      ids.add(page.getFirst().id().value());
+      after = Optional.of(SeekPosition.of(page.getFirst()));
+    }
+    throw new AssertionError("still paging after 10 pages: " + ids);
+  }
+
+  /**
+   * N1: a re-quote that lands an hour later keeps the id, and every column derived from the legs
+   * follows it, so a page by duration still seeks from where the row now sorts. With the old
+   * duration left in its column, the row would sort first while its legs put the next page's seek
+   * after the 2.5 h trip, which would be skipped.
+   */
+  @Test
+  void keepsAPageByDurationWholeWhenARequoteMovesTheArrival() {
+    Itinerary twoHours = direct(1, "2026-11-25T07:15:00Z");
+    Itinerary twoAndAHalfHours = direct(2, "2026-11-25T08:15:00Z", Duration.ofMinutes(150));
+    Itinerary threeAndAHalfHours = direct(3, "2026-11-25T09:15:00Z", Duration.ofMinutes(210));
+    publish(NOW, List.of(twoHours, twoAndAHalfHours, threeAndAHalfHours));
+    Itinerary threeHours =
+        requoted(
+            twoHours,
+            twoHours.departure().plusHours(3),
+            "100.00",
+            Instant.parse("2026-11-20T10:40:00Z"));
+
+    repository.updateInPlace(threeHours);
+
+    assertThat(idsByDurationOnePerPage())
+        .containsExactly(
+            twoAndAHalfHours.id().value(),
+            threeHours.id().value(),
+            threeAndAHalfHours.id().value());
+  }
+
+  /**
+   * A run holds the publication row for its whole load. An update meanwhile waits for the row, not
+   * for ever: it gives up at the lock timeout and writes nothing.
+   */
+  @Test
+  void givesUpAnUpdateWhileARunHoldsThePublication() throws SQLException {
+    Itinerary chosen = direct(1, "2026-11-25T07:15:00Z");
+    publish(NOW, List.of(chosen));
+    Itinerary repriced =
+        requoted(chosen, chosen.arrival(), "120.00", Instant.parse("2026-11-20T10:40:00Z"));
+    try (Connection run = dataSource.getConnection()) {
+      run.setAutoCommit(false);
+      try (Statement statement = run.createStatement()) {
+        statement.execute("SELECT active_slot FROM inventory_publication FOR UPDATE");
+      }
+
+      Throwable failure =
+          assertTimeoutPreemptively(
+              Duration.ofSeconds(15),
+              () -> catchThrowable(() -> repository.updateInPlace(repriced)));
+
+      run.rollback();
+      // 55P03 is PostgreSQL's lock_not_available, which lock_timeout raises.
+      assertThat(failure)
+          .rootCause()
+          .isInstanceOfSatisfying(
+              SQLException.class, cause -> assertThat(cause.getSQLState()).isEqualTo("55P03"));
+    }
+    assertThat(storedPrice("itinerary_b", chosen)).isEqualByComparingTo("105.00");
+  }
+
+  /**
+   * Waits until a statement of another backend waits for a lock the backend {@code holder} holds.
+   */
+  private void awaitAStatementBlockedBy(int holder) throws InterruptedException {
+    Instant deadline = Instant.now().plusSeconds(10);
+    while (jdbc.sql("SELECT count(*) FROM pg_stat_activity WHERE ? = ANY(pg_blocking_pids(pid))")
+            .param(holder)
+            .query(Long.class)
+            .single()
+        == 0) {
+      if (Instant.now().isAfter(deadline)) {
+        throw new AssertionError("nothing waited for backend " + holder);
+      }
+      Thread.sleep(20);
+    }
+  }
+
+  /**
+   * An update that starts while a run holds the publication row waits for the run, and then writes
+   * into the slot the run switched to, never into the one it switched from: the active slot is read
+   * under the row's lock, after the run's switch commits.
+   */
+  @Test
+  void writesIntoTheSlotARunSwitchedToWhileItWaited() throws Exception {
+    Itinerary chosen = direct(1, "2026-11-25T07:15:00Z");
+    publish(NOW, List.of(chosen));
+    publish(NOW.plusSeconds(1_800), List.of(chosen));
+    Itinerary repriced =
+        requoted(chosen, chosen.arrival(), "120.00", Instant.parse("2026-11-20T10:40:00Z"));
+    try (Connection run = dataSource.getConnection()) {
+      run.setAutoCommit(false);
+      int runBackend;
+      try (Statement statement = run.createStatement()) {
+        statement.execute("SELECT active_slot FROM inventory_publication FOR UPDATE");
+        ResultSet backend = statement.executeQuery("SELECT pg_backend_pid()");
+        backend.next();
+        runBackend = backend.getInt(1);
+      }
+      CompletableFuture<Boolean> update =
+          CompletableFuture.supplyAsync(() -> repository.updateInPlace(repriced));
+      awaitAStatementBlockedBy(runBackend);
+
+      try (Statement statement = run.createStatement()) {
+        statement.execute(
+            "UPDATE inventory_publication SET active_slot = 'b', generation = generation + 1");
+      }
+      run.commit();
+
+      assertThat(update.get(15, TimeUnit.SECONDS)).isTrue();
+    }
+    assertThat(storedPrice("itinerary_b", chosen)).isEqualByComparingTo("126.00");
+    assertThat(storedPrice("itinerary_a", chosen)).isEqualByComparingTo("105.00");
   }
 }

@@ -6,6 +6,7 @@ import com.flightaggregator.application.port.out.OfferStore;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Carrier;
 import com.flightaggregator.domain.Leg;
+import com.flightaggregator.domain.LegKey;
 import com.flightaggregator.domain.Money;
 import com.flightaggregator.domain.Provider;
 import java.sql.ResultSet;
@@ -29,10 +30,20 @@ public final class JdbcOfferStore implements OfferStore {
           + " departure, departure_offset, arrival, arrival_offset, price, quoted_at)"
           + " FROM STDIN";
 
+  /** The columns of an offer that {@link #leg} reads, its provider apart. */
+  private static final String LEG_COLUMNS =
+      "carrier, flight_number, origin, destination, departure, departure_offset, arrival,"
+          + " arrival_offset, price, quoted_at";
+
   private static final String SELECT =
-      "SELECT carrier, flight_number, origin, destination, departure, departure_offset, arrival,"
-          + " arrival_offset, price, quoted_at FROM provider_offer WHERE provider = ?"
-          + " ORDER BY position";
+      "SELECT " + LEG_COLUMNS + " FROM provider_offer WHERE provider = ? ORDER BY position";
+
+  /** One flight's offers: its key, with the departure as an instant. V6 indexes it. */
+  private static final String SELECT_FLIGHT =
+      "SELECT provider, "
+          + LEG_COLUMNS
+          + " FROM provider_offer WHERE carrier = ? AND flight_number = ? AND origin = ?"
+          + " AND destination = ? AND departure = ? ORDER BY price";
 
   private final DataSource dataSource;
   private final TransactionTemplate transaction;
@@ -83,6 +94,18 @@ public final class JdbcOfferStore implements OfferStore {
   @Override
   public List<Leg> offers(Provider provider) {
     return jdbc.sql(SELECT).param(provider.name()).query((rs, rowNum) -> leg(provider, rs)).list();
+  }
+
+  @Override
+  public List<Leg> offersOf(LegKey flight) {
+    return jdbc.sql(SELECT_FLIGHT)
+        .param(flight.carrier().code())
+        .param(flight.flightNumber())
+        .param(flight.origin().code())
+        .param(flight.destination().code())
+        .param(ProviderTime.instantParameter(flight.departure()))
+        .query((rs, rowNum) -> leg(Provider.valueOf(rs.getString("provider")), rs))
+        .list();
   }
 
   private static Leg leg(Provider provider, ResultSet rs) throws SQLException {

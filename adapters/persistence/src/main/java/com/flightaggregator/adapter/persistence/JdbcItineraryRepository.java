@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.ItineraryWriter;
 import com.flightaggregator.application.port.out.Publication;
+import com.flightaggregator.domain.Itinerary;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -23,7 +24,8 @@ import tools.jackson.core.json.JsonFactory;
  * with {@code COPY}, analyzes the slot, and switches the active slot and the generation. A failure
  * anywhere rolls it all back, and the writer's exception propagates as it was thrown. The writer's
  * {@code writeTo} runs inside the load, on the load's connection, and must not use the storage
- * ports. All DDL touches only the inactive slot, and every table name comes from {@link Slot}.
+ * ports. All DDL touches only the inactive slot, and every table name comes from {@link Slot}. A
+ * re-price's {@link #updateInPlace} rewrites one row of the active slot, under the same lock.
  */
 public final class JdbcItineraryRepository implements ItineraryRepository {
 
@@ -59,6 +61,35 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
   @Override
   public Publication replaceInventory(Instant now, ItineraryWriter writer) {
     return transaction.execute(status -> load(now, writer));
+  }
+
+  @Override
+  public boolean updateInPlace(Itinerary repriced) {
+    return transaction.execute(status -> rewrite(repriced));
+  }
+
+  /**
+   * Rewrites the itinerary's row in the active slot through {@link ItineraryRow}, the mapping the
+   * load uses, so every column derived from the legs follows them: a later arrival also moves the
+   * duration a page by duration seeks on. The row is deleted by its key, {@code (id, departure)},
+   * and copied back in the same transaction; the id names the legs' flights, their departures
+   * included, so a re-quote has the stored row's key. The active slot is read under the publication
+   * row's lock, held until the commit, so a run cannot switch slots between the read and the write;
+   * the wait for it is bounded as the load's is.
+   */
+  private boolean rewrite(Itinerary repriced) {
+    jdbc.sql("SET LOCAL lock_timeout = '" + LOCK_TIMEOUT + "'").update();
+    Slot slot = activeSlotLocked();
+    int deleted =
+        jdbc.sql("DELETE FROM " + slot.table() + " WHERE id = ? AND departure = ?")
+            .param(repriced.id().value())
+            .param(ProviderTime.instantParameter(repriced.departure().toInstant()))
+            .update();
+    if (deleted == 0) {
+      return false;
+    }
+    copy(slot, sink -> sink.accept(repriced));
+    return true;
   }
 
   private Publication load(Instant now, ItineraryWriter writer) {
