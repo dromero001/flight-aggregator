@@ -4,7 +4,7 @@ The single place that says what is in flight, where it lives and what comes next
 
 **Rule:** the controller rewrites this file and pushes it at every checkpoint: a subagent dispatched or returned, a review verdict, a user decision, a task integrated (`CLAUDE.md`, "Continuity"). If something here contradicts `git log`, `git log` wins: say so and fix this file first.
 
-**Last updated:** 2026-11-15 17:21 CET, on the Mac, `main` at `d67b16b` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
+**Last updated:** 2026-11-15 17:24 CET, on the Mac, `main` at `f67dbab` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
 
 ## Resume in five minutes
 
@@ -38,7 +38,7 @@ The single place that says what is in flight, where it lives and what comes next
 
 | Task | State | Worktree (Mac) and branch | Pushed as |
 |---|---|---|---|
-| Plan 5 Task 5, Valkey | Fix round 1, re-dispatched 16:45 after the drop; then its re-review | `.claude/worktrees/agent-a8dc11a74aba5a730`, `worktree-agent-a8dc11a74aba5a730`, on `dd899d3` over `d307687` | `wip/plan5-task-5` |
+| Plan 5 Task 5, Valkey | Fix round 1 done (`4e4d91a`, full build green); its re-review dispatched 17:23 | `.claude/worktrees/agent-a8dc11a74aba5a730`, `worktree-agent-a8dc11a74aba5a730`, on `4e4d91a` over `d307687` | `wip/plan5-task-5` (at `4e4d91a`) |
 | Plan 5 Task 8, re-price | Fix round 1 done (`f3cb3cc`, 749 tests green); its re-review dispatched 17:20 | `.claude/worktrees/agent-aa031dfa12b4cd6b5`, `worktree-agent-aa031dfa12b4cd6b5`, on `f3cb3cc` over `d307687` | `wip/plan5-task-8` (at `f3cb3cc`) |
 | Plan 7 Task 1, telemetry backends in compose | Implementation, dispatched 17:05; then its double review | `.claude/worktrees/agent-a380b01c59520a201`, `worktree-agent-a380b01c59520a201`, from `04586b6` | `wip/plan7-task-1` after its first commit |
 
@@ -48,6 +48,7 @@ The single place that says what is in flight, where it lives and what comes next
 - F1 + C1, as the user decided: after a failed Valkey command, skip Valkey for 10 seconds, then let one call probe it, with Resilience4j's circuit breaker in `ValkeyFailures` (one breaker shared by the four operations; half-open with one permitted call; the single WARN and the recovery INFO tied to its transitions). The wait is a required setting in the `search:` block, above zero, `10s` in `application.yaml`. Tests: a paused Valkey costs one command timeout and then operations return at once; paused before the first command, concurrent callers return within about one timeout; after the wait, one probe resumes operations. Deterministic: drive the breaker's clock or wait, no flaky sleeps.
 - F2: an unreadable cached page or `fresh:` mark is a counted miss (`search.cache{result=error}`), never a hit, with a WARN naming the key's kind, never its content.
 - The first attempt left uncommitted work in the worktree; its evidence was lost, so its tests are re-shown red by mutation ("recorded after the fact by mutation").
+- **Done in `4e4d91a`.** For the re-review to judge: the breaker starts half-open, so before Valkey's first answer only one caller tries it; it is a bean of its own, outside the providers' registry; it uses `tryAcquirePermission` with manual success and error calls, because `executeSupplier` failed the burst test 5 runs in 6; the timing tests take about 0.3 s against a 500 ms limit. Four extras recorded, unbuilt. Re-review output: `.superpowers/sdd/2026-11-15-search-api/task-5-rereview-1.md` (Mac only).
 
 **Plan 5 Task 8, fix round 1** (review: functional CHANGES REQUESTED, code APPROVED):
 - F1, as the user decided: a live-confirmed price that cannot be stored because a run holds the publication row is still returned; the store is skipped, logged at WARN and counted. Controller's ruling: `updateInPlace` takes the publication row `FOR SHARE NOWAIT` and returns an outcome (stored, gone, busy) instead of a `boolean`; meter `reprice.store{outcome}`. Tests: busy answers at once and writes nothing; two concurrent re-prices both store; gone answers with the live result. Say whether "an update waiting for a switch writes the slot the run switched to" still holds.
@@ -55,7 +56,7 @@ The single place that says what is in flight, where it lives and what comes next
 - C1: the update gets its `StatementTimeout`.
 - Same note on the lost evidence as Task 5. Deferred to the end-of-plan review: F3, C2–C5.
 - **Done in `f3cb3cc`.** Departures from the brief, for the re-review to judge: the WARN and `reprice.store{outcome}` live in a bootstrap decorator, `CountedItineraryRepository`, not in the service (the application module has no logging or metrics library); the old lock guarantee is replaced by "a run starting during an update waits for it" (`keepsTheSlotAnUpdateReadActiveUntilItCommits`); busy is detected by SQLState `55P03`. Concerns carried: two re-prices of the same itinerary at once give the second `GONE` (documented, untested); Task 7 must forward `replaceThrough` through the decorator. Re-review output: `.superpowers/sdd/2026-11-15-search-api/task-8-rereview-1.md` (Mac only).
-- Lesson for every brief: a subagent overwrote another's mutation script in the shared session scratchpad; each subagent uses a private scratch folder of its own.
+- Lessons for every brief: a subagent overwrote another's mutation script in the shared session scratchpad, so each subagent uses a private scratch folder of its own; the git guard's force-push pattern spans the whole command line, so a later `date +%H:%M` in the same command blocks a plain push (run such commands separately).
 
 ## Next steps
 
