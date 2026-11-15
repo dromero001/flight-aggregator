@@ -14,6 +14,7 @@ FROM nginx:1.30.5-alpine3.24@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed
 # The image's entrypoint renders every file in /etc/nginx/templates/ into /etc/nginx/conf.d/ at start
 # (envsubst over the container's environment), so the same image serves every environment.
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY --chmod=755 nginx/10-validate-config.sh /docker-entrypoint.d/10-validate-config.sh
 COPY --from=build /workspace/dist /usr/share/nginx/html
 # Non-root: the unprivileged user needs the rendered configuration, the cache and the pid file in
 # places it can write, and a port above 1023 (the template listens on 8080).

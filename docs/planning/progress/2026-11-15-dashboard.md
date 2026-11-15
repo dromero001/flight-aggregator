@@ -170,7 +170,7 @@ Review: functional and code CHANGES REQUESTED (`task-3-review.md`). F-1 and C-1 
 | `nginx` (runtime) | `1.30.5-alpine3.24` | `sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94` | pushed 2026-09-26 (50 days); 1.30 is the stable line (`stable-alpine` is 1.30.6, pushed 2026-11-13, 2 days: too new) |
 | `@playwright/test` | 1.64.1 | npm | 2026-10-14 (32 days); 1.65.0 (2026-11-05) and 1.65.1 (2026-11-13) too new |
 
-How checked: Docker Hub tags API (`last_updated` and `digest` per tag) and `docker buildx imagetools inspect <tag>` (the digest is the image index's, so it holds for amd64 and arm64). The `node` tag is the open point: no `26.13.0` image is 14 days old, because Docker rebuilds the tags on a base-image refresh (the Node release itself is 18 days old, and the stage is only a build stage, not shipped). Alternatives are `26.12.1-alpine` (a non-LTS release, pushed 2026-10-22) or waiting until 2026-11-19. Decision for the user.
+How checked: Docker Hub tags API (`last_updated` and `digest` per tag) and `docker buildx imagetools inspect <tag>` (the digest is the image index's, so it holds for amd64 and arm64). Controller's ruling on the `node` tag (ledger): section 6.1's 14-day rule applies to the release behind the tag (Node 26.13.0, 18 days old, the active LTS), and the tag's current multi-arch digest (an Alpine rebuild 10 days old) is pinned; the same reading holds for nginx 1.30.5.
 
 ### Red to green: `smoke.spec.ts` `'serves the dashboard and proxies the API'`
 - Red, stack without `frontend` (`app`, `keycloak`, `postgres`, `mock-gds` up under `-p t9`; `globalSetup` skipped with a throwaway config): `page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/`.
@@ -190,3 +190,13 @@ How checked: Docker Hub tags API (`last_updated` and `digest` per tag) and `dock
 
 ### Extras for the user to decide
 - None built. Not done on purpose: nginx security and caching headers (E5, rejected).
+
+## Task 9 — fix round 1
+
+Review: functional APPROVED, code CHANGES REQUESTED (`task-9-review.md`). C-1 fixed; the minors (F-1, C-2 to C-5) are deferred to the end-of-plan review. The node tag question is closed by the controller's ruling above.
+
+- C-1, the environment values were pasted raw into `/config.json`'s JSON and into nginx's `set`. Controller's ruling: keep the template, validate in the image's entrypoint hook. Test: `frontend/nginx/test-config-validation.sh <image>` (`docker run` cases; the `images` job of CI builds the image as `frontend-image` and runs it).
+  - Red, before the script existed: `FAIL: expected a refusal naming OIDC_AUTHORITY (exit 0)` for `OIDC_AUTHORITY='http://x/"y'` and the same for `OIDC_CLIENT_ID='a$uri'` (the container kept running); the compose values case was already `ok`.
+  - Green with `frontend/nginx/10-validate-config.sh` in `/docker-entrypoint.d/` (POSIX `sh`, runs before `20-envsubst-on-templates.sh`): `API_UPSTREAM` and `OIDC_AUTHORITY` must be `http(s)://` plus `[A-Za-z0-9._~:/?#@!&=+,%-]`, `OIDC_CLIENT_ID` `[A-Za-z0-9._-]+`; a bad or missing value prints `10-validate-config.sh: OIDC_AUTHORITY is missing or not valid (expected ...)` and exits 1. All three cases `ok`.
+- Checks: `npm run verify`, `npm run build`, `docker build frontend` and `./gradlew build` green.
+- Self-review (thermo-nuclear): the entrypoint hook is the image's own extension point; the allowed-character set is one whitelist per kind, shared by the two URLs; a failure is loud and names the variable. The test script is the only addition beyond the ruling (it is what the ruling asked for).
