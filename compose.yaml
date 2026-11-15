@@ -4,9 +4,9 @@
 # ports are bound to the loopback interface. Override any of them from the shell or a .env file:
 # ALPHA_API_KEY, BETA_API_KEY, GAMMA_API_KEY, POSTGRES_PASSWORD, ADMIN_SERVICE_CLIENT_SECRET.
 # The same holds for the secret of the admin-service client in the imported Keycloak realm
-# (deploy/keycloak/flight-aggregator-realm.json) and for the demo passwords of Keycloak's own
-# administrator and of the realm's admin user: committed on purpose so that a reviewer can call the
-# admin endpoints without the author (README, "Admin access"). In production they would be secrets.
+# (deploy/keycloak/flight-aggregator-realm.json) and for the demo password of the realm's admin
+# user, set in that file: committed on purpose so that a reviewer can call the admin endpoints
+# without the author (README, "Admin access"). In production they would be secrets.
 services:
   postgres:
     # Every service comes back after a crash or a Docker restart, until it is stopped on purpose.

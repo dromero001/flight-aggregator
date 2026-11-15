@@ -48,6 +48,8 @@ class ComposeFileTest {
     Map<String, Object> environment =
         (Map<String, Object>) compose.get("services").get("keycloak").get("environment");
 
-    assertThat(environment.keySet()).noneMatch(name -> name.startsWith("KC_BOOTSTRAP_ADMIN"));
+    assertThat(environment.keySet())
+        .noneMatch(
+            name -> name.startsWith("KC_BOOTSTRAP_ADMIN") || name.startsWith("KEYCLOAK_ADMIN"));
   }
 }

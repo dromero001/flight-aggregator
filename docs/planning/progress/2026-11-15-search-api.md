@@ -268,3 +268,5 @@ The user's decision of 2026-11-15 (see "User decisions (2026-11-15, after Tasks 
 Test first: `ComposeFileTest.givesKeycloakNoAdministratorAccount` (no `KC_BOOTSTRAP_ADMIN*` key in the `keycloak` environment). Red against the old `compose.yaml`: the assertion failed because both keys were present. Green after removing them.
 
 Check: `docker compose -p kcadmin up -d keycloak`; the README's readiness poll returned; the README's token command, as written, gave a token of 947 characters (value not recorded); `docker compose -p kcadmin down`.
+
+Review follow-up: `compose.yaml`'s header comment no longer names Keycloak's own administrator (it now names the client secret and the realm's admin user). The test also rejects Keycloak's older `KEYCLOAK_ADMIN*` pair; red by mutation (a `KEYCLOAK_ADMIN: admin` key added to the `keycloak` environment: `givesKeycloakNoAdministratorAccount` failed), restored, green.
