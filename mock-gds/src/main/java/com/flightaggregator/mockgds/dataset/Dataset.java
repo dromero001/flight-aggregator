@@ -13,7 +13,7 @@ public final class Dataset {
 
   private final Map<Provider, List<ProviderRecord>> recordsByProvider;
 
-  Dataset(List<ProviderRecord> records) {
+  public Dataset(List<ProviderRecord> records) {
     var grouped = records.stream().collect(Collectors.groupingBy(ProviderRecord::provider));
     this.recordsByProvider =
         Arrays.stream(Provider.values())

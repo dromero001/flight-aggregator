@@ -19,3 +19,11 @@ jacoco-agent = { module = "org.jacoco:org.jacoco.agent", version.ref = "jacoco" 
 archunit = { module = "com.tngtech.archunit:archunit", version.ref = "archunit" }
 spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
 spring-context = { module = "org.springframework:spring-context" }
+spring-boot-starter-webmvc = { module = "org.springframework.boot:spring-boot-starter-webmvc" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }
+spring-boot-resttestclient = { module = "org.springframework.boot:spring-boot-resttestclient" }
+spring-boot-restclient = { module = "org.springframework.boot:spring-boot-restclient" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }

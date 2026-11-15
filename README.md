@@ -23,6 +23,7 @@ The documentation is split by what each part shows.
 - Progress reports:
   - [2026-11-13](docs/planning/progress/2026-11-13.md)
   - [2026-11-14](docs/planning/progress/2026-11-14.md)
+  - [2026-11-15](docs/planning/progress/2026-11-15.md)
 
 ### 3. AI usage — how the agent was steered
 - [How this project uses AI](docs/ai/README.md): the process, the skills, plugins and hooks, and why each one
