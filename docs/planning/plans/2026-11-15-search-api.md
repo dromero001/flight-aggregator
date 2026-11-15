@@ -286,6 +286,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 **Extra approved by the user on 2026-11-15, after fix round 1:** a test that pins two re-prices of the same itinerary at once (the second answers `GONE`, the store keeps the first's quote).
 
+**The git guard (an extra approved the same day, built with Tasks 4 and 8's extras):** each pattern spans one simple command. Decided by the user after its review: every newline ends a command except an explicit continuation (`\` in bash, a backtick in PowerShell); no line is joined to the one before only because it starts with an option.
+
 **Depends on:** 2 (`quote`), 3, 4 (`ItineraryReader`). **Parallel:** with 5 and 6 (it needs neither), and with 7 only by hand-merging the repository files (see Task 7). `V6` is reserved for it (3 takes V5, 12 takes V7), so the numbers never collide.
 
 **Files:**
