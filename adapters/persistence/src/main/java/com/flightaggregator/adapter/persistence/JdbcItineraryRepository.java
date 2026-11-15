@@ -41,6 +41,10 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
       TransactionTemplate transaction,
       JsonFactory json,
       int partitionDaysAhead) {
+    if (partitionDaysAhead < 0) {
+      throw new IllegalArgumentException(
+          "partitionDaysAhead must not be negative: " + partitionDaysAhead);
+    }
     this.dataSource = dataSource;
     this.transaction = transaction;
     this.json = json;

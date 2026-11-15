@@ -112,6 +112,18 @@ class JdbcItineraryRepositoryTest {
         .list();
   }
 
+  /** A negative horizon would create no day partition, and every itinerary would go to DEFAULT. */
+  @Test
+  void refusesANegativePartitionHorizon() {
+    TransactionTemplate transaction =
+        new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+
+    assertThatThrownBy(
+            () -> new JdbcItineraryRepository(dataSource, transaction, new JsonFactory(), -1))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("partitionDaysAhead must not be negative: -1");
+  }
+
   @Test
   void publishesIntoTheInactiveSlotAndSwitches() {
     Publication publication =
