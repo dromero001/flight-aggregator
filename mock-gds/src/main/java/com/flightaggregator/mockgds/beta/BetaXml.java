@@ -11,12 +11,18 @@ import javax.xml.stream.XMLStreamWriter;
 /** Writes a page of Beta's inventory as nested XML, with no declaration and no namespace. */
 final class BetaXml {
 
+  /**
+   * Looked up once, as in AlphaJson. Shared by concurrent requests: unless its reuse-instance
+   * property is set, the JDK's factory builds a new writer on every call.
+   */
+  private static final XMLOutputFactory FACTORY = XMLOutputFactory.newFactory();
+
   private BetaXml() {}
 
   static String write(InventoryPage page, int pageNumber, int totalPages) {
     var out = new StringWriter();
     try {
-      XMLStreamWriter xml = XMLOutputFactory.newFactory().createXMLStreamWriter(out);
+      XMLStreamWriter xml = FACTORY.createXMLStreamWriter(out);
       xml.writeStartElement("SegmentsResponse");
       xml.writeAttribute("page", Integer.toString(pageNumber));
       xml.writeAttribute("totalPages", Integer.toString(totalPages));
