@@ -1,5 +1,7 @@
 package com.flightaggregator.adapter.persistence.support;
 
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -23,6 +25,27 @@ public final class ItinerarySlots {
     jdbc.sql(
             "UPDATE inventory_publication SET active_slot = 'a', generation = 0, published_at = NULL")
         .update();
+  }
+
+  /** The publication row: the slot search reads, its generation, and when a run published it. */
+  public record Published(String activeSlot, long generation, Instant publishedAt) {}
+
+  public static Published published(JdbcClient jdbc) {
+    return jdbc.sql("SELECT active_slot, generation, published_at FROM inventory_publication")
+        .query(
+            (rs, rowNum) -> {
+              OffsetDateTime publishedAt = rs.getObject("published_at", OffsetDateTime.class);
+              return new Published(
+                  rs.getString("active_slot"),
+                  rs.getLong("generation"),
+                  publishedAt == null ? null : publishedAt.toInstant());
+            })
+        .single();
+  }
+
+  /** The rows of a table, a slot or one of its partitions. */
+  public static long rows(JdbcClient jdbc, String table) {
+    return jdbc.sql("SELECT count(*) FROM " + table).query(Long.class).single();
   }
 
   /** The partitions of a slot, by name, its DEFAULT partition included. */
