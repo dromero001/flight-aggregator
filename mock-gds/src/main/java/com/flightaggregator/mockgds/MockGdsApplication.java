@@ -1,5 +1,6 @@
 package com.flightaggregator.mockgds;
 
+import com.flightaggregator.mockgds.dataset.Dataset;
 import com.flightaggregator.mockgds.dataset.DatasetGenerator;
 import com.flightaggregator.mockgds.dataset.GeneratorConfig;
 import com.flightaggregator.mockgds.pricing.PriceModel;
@@ -28,11 +29,15 @@ public class MockGdsApplication {
    * reference data: regenerating it mid-run would move records under a client that is paging.
    */
   @Bean
-  ProviderInventory providerInventory(Clock clock) {
+  Dataset dataset(Clock clock) {
+    return new DatasetGenerator(GeneratorConfig.defaults(), ReferenceData.standard())
+        .generate(clock);
+  }
+
+  @Bean
+  ProviderInventory providerInventory(Dataset dataset, Clock clock) {
     var config = GeneratorConfig.defaults();
-    var reference = ReferenceData.standard();
-    var dataset = new DatasetGenerator(config, reference).generate(clock);
-    var prices = new PriceModel(config.seed(), config.priceBucket(), reference);
+    var prices = new PriceModel(config.seed(), config.priceBucket(), ReferenceData.standard());
     return new ProviderInventory(dataset, prices, clock);
   }
 }
