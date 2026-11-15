@@ -40,9 +40,40 @@ tests:
             exp_annotations:
               summary: Ingestion has failed 3 runs in a row
 
+  - name: IngestionFailing stays quiet with one instance at two failed runs in a row and another at one
+    interval: 1m
+    input_series:
+      - series: 'ingestion_consecutive_failures{job="app", instance="172.18.0.7:8079"}'
+        values: '2x5'
+      - series: 'ingestion_consecutive_failures{job="app", instance="172.18.0.8:8079"}'
+        values: '1x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: IngestionFailing
+        exp_alerts: []
+
   - name: IngestionFailing fires after 15 minutes with no instance reporting its failures
     interval: 1m
     input_series: []
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: IngestionFailing
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: IngestionFailing
+        exp_alerts:
+          - exp_labels:
+              gauge: unknown
+            exp_annotations:
+              summary: No instance has reported its failed ingestion runs for 15 minutes
+
+  - name: IngestionFailing fires after 15 minutes of NaN on every instance
+    interval: 1m
+    input_series:
+      - series: 'ingestion_consecutive_failures{job="app", instance="172.18.0.7:8079"}'
+        values: 'NaN+0x20'
+      - series: 'ingestion_consecutive_failures{job="app", instance="172.18.0.8:8079"}'
+        values: 'NaN+0x20'
     alert_rule_test:
       - eval_time: 14m
         alertname: IngestionFailing
@@ -68,6 +99,33 @@ tests:
         alertname: PartitionHorizonShort
         exp_alerts: []
       - eval_time: 10m
+        alertname: PartitionHorizonShort
+        exp_alerts:
+          - exp_labels: {}
+            exp_annotations:
+              summary: The partitions reach only 33 days ahead
+
+  - name: PartitionHorizonShort stays quiet with one instance at 37 and another at 33
+    interval: 1m
+    input_series:
+      - series: 'ingestion_partitions_days_ahead{job="app", instance="172.18.0.7:8079"}'
+        values: '37x5'
+      - series: 'ingestion_partitions_days_ahead{job="app", instance="172.18.0.8:8079"}'
+        values: '33x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PartitionHorizonShort
+        exp_alerts: []
+
+  - name: PartitionHorizonShort fires at 33 on one instance beside a restarted one at NaN
+    interval: 1m
+    input_series:
+      - series: 'ingestion_partitions_days_ahead{job="app", instance="172.18.0.7:8079"}'
+        values: '33x5'
+      - series: 'ingestion_partitions_days_ahead{job="app", instance="172.18.0.8:8079"}'
+        values: 'NaN+0x5'
+    alert_rule_test:
+      - eval_time: 5m
         alertname: PartitionHorizonShort
         exp_alerts:
           - exp_labels: {}
@@ -138,6 +196,21 @@ tests:
             exp_annotations:
               summary: 'Rows in the DEFAULT partition: 1; a departure day has no partition'
 
+  - name: RowsInDefaultPartition fires at one row on one instance beside a restarted one at NaN
+    interval: 1m
+    input_series:
+      - series: 'ingestion_partitions_default_rows{job="app", instance="172.18.0.7:8079"}'
+        values: '1x5'
+      - series: 'ingestion_partitions_default_rows{job="app", instance="172.18.0.8:8079"}'
+        values: 'NaN+0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: RowsInDefaultPartition
+        exp_alerts:
+          - exp_labels: {}
+            exp_annotations:
+              summary: 'Rows in the DEFAULT partition: 1; a departure day has no partition'
+
   - name: ProviderDataStale fires for BETA only when its data is older than 90 minutes
     interval: 1m
     input_series:
@@ -170,6 +243,22 @@ tests:
       - eval_time: 5m
         alertname: ProviderDataStale
         exp_alerts: []
+
+  - name: ProviderDataStale fires for BETA at 5,401 seconds on one instance beside a restarted one at NaN
+    interval: 1m
+    input_series:
+      - series: 'ingestion_provider_last_fresh_seconds{job="app", instance="172.18.0.7:8079", provider="BETA"}'
+        values: '5401x5'
+      - series: 'ingestion_provider_last_fresh_seconds{job="app", instance="172.18.0.8:8079", provider="BETA"}'
+        values: 'NaN+0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ProviderDataStale
+        exp_alerts:
+          - exp_labels:
+              provider: BETA
+            exp_annotations:
+              summary: Provider BETA's newest data is 1h 30m 1s old
 
   - name: ProviderDataStale fires for GAMMA after 15 minutes of NaN on every instance
     interval: 1m

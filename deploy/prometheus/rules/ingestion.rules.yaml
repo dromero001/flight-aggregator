@@ -24,9 +24,8 @@ groups:
         for: 0m
         annotations:
           summary: Ingestion has failed {{ $value }} runs in a row
-      # The count is never NaN (it reads 0 from the start), only missing.
       - alert: IngestionFailing
-        expr: absent(ingestion_consecutive_failures)
+        expr: absent(ingestion_consecutive_failures == ingestion_consecutive_failures)
         for: 15m
         labels:
           gauge: unknown
@@ -63,8 +62,9 @@ groups:
         annotations:
           summary: Provider {{ $labels.provider }}'s newest data is {{ $value | humanizeDuration }} old
       # The providers listed, unless an instance holds a number for them; or, with no series at
-      # all, the gauge itself, with no provider to name. A provider reads NaN while it has nothing
-      # stored, and on a restarted instance until its first run.
+      # all, the gauge itself, with no provider label. Every provider's gauge is registered with
+      # the others, so none goes missing alone. A provider reads NaN while it has nothing stored,
+      # and on a restarted instance until its first run.
       - alert: ProviderDataStale
         expr: >-
           (
