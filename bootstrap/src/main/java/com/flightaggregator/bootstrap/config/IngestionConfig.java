@@ -5,6 +5,7 @@ import com.flightaggregator.application.port.out.AirportCatalogue;
 import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.DiscardedRecords;
 import com.flightaggregator.application.port.out.FlightProvider;
+import com.flightaggregator.application.port.out.IngestionStatusStore;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.OfferStore;
 import com.flightaggregator.application.service.IngestInventoryService;
@@ -34,10 +35,11 @@ class IngestionConfig {
       AirportCatalogue airports,
       DiscardedRecords discarded,
       ItineraryRepository itineraries,
+      IngestionStatusStore statuses,
       Clock clock,
       @Value("${ingestion.max-itineraries}") long maxItineraries) {
     return new IngestInventoryService(
-        providers, offers, airports, discarded, itineraries, clock, maxItineraries);
+        providers, offers, airports, discarded, itineraries, statuses, clock, maxItineraries);
   }
 
   @Bean
