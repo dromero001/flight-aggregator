@@ -44,6 +44,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.PropertySource;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -95,6 +97,7 @@ class FlightAggregatorApplicationTest {
   @Autowired private IngestInventory ingestion;
   @Autowired private DiscardedRecords discarded;
   @Autowired private JsonMapper json;
+  @Autowired private ConfigurableEnvironment environment;
 
   @Autowired
   @Qualifier("applicationTaskExecutor")
@@ -188,6 +191,26 @@ class FlightAggregatorApplicationTest {
   @Test
   void runsBootsTasksOnVirtualThreads() throws Exception {
     assertThat(tasks.submit(() -> Thread.currentThread().isVirtual()).get()).isTrue();
+  }
+
+  /**
+   * The production values, as the application's own configuration gives them, before this test's
+   * settings override any of them (it turns the schedule off). Only {@code health} is exposed,
+   * Boot's default, stated so that a change of default cannot widen it.
+   */
+  @Test
+  void configuresTheProductionIngestionAndExposesOnlyHealth() {
+    PropertySource<?> application =
+        environment.getPropertySources().stream()
+            .filter(source -> source.getName().contains("application.yaml"))
+            .findFirst()
+            .orElseThrow();
+
+    assertThat(application.getProperty("ingestion.max-itineraries")).hasToString("2000000");
+    assertThat(application.getProperty("ingestion.interval")).hasToString("PT30M");
+    assertThat(application.getProperty("ingestion.schedule.enabled")).hasToString("true");
+    assertThat(application.getProperty("management.endpoints.web.exposure.include"))
+        .hasToString("health");
   }
 
   private long generation() {
