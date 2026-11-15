@@ -28,26 +28,31 @@ class ProviderSettingsTest {
     "mockgds.providers.gamma.api-key=g"
   };
 
-  /** An entry validates itself, so even one built in code cannot be invalid. */
-  @ParameterizedTest(name = "{0}: {1}")
-  @CsvSource({
-    // property, why, key, fast min, fast max, slow min, slow max (ms), slow share, error rate
-    "api-key, missing, , 100, 1000, 1000, 5000, 0.1, 0.05",
-    "api-key, blank, '  ', 100, 1000, 1000, 5000, 0.1, 0.05",
-    "fast-latency-min, negative, k, -1, 1000, 1000, 5000, 0.1, 0.05",
-    "fast-latency-min, above the maximum, k, 2000, 1000, 1000, 5000, 0.1, 0.05",
-    "slow-latency-min, negative, k, 100, 1000, -1, 5000, 0.1, 0.05",
-    "slow-latency-min, above the maximum, k, 100, 1000, 6000, 5000, 0.1, 0.05",
-    "slow-share, above one, k, 100, 1000, 1000, 5000, 1.5, 0.05",
-    "slow-share, negative, k, 100, 1000, 1000, 5000, -0.1, 0.05",
-    "slow-share, not a number, k, 100, 1000, 1000, 5000, NaN, 0.05",
-    "error-rate, above one, k, 100, 1000, 1000, 5000, 0.1, 1.5",
-    "error-rate, negative, k, 100, 1000, 1000, 5000, 0.1, -0.1",
-    "error-rate, not a number, k, 100, 1000, 1000, 5000, 0.1, NaN"
-  })
-  void rejectsAnInvalidEntryNamingTheProperty(
-      String property,
-      String why,
+  /**
+   * An entry validates itself, so even one built in code cannot be invalid. Each row's message
+   * names the rule that fired. Columns: message, key, fast min, fast max, slow min, slow max (ms),
+   * slow share, error rate.
+   */
+  @ParameterizedTest(name = "[{index}] {0}")
+  @CsvSource(
+      delimiter = '|',
+      textBlock =
+          """
+          api-key must be set                                |      | 100  | 1000 | 1000 | 5000 | 0.1  | 0.05
+          api-key must be set                                | '  ' | 100  | 1000 | 1000 | 5000 | 0.1  | 0.05
+          fast-latency-min must not be negative: PT-0.001S   | k    | -1   | 1000 | 1000 | 5000 | 0.1  | 0.05
+          fast-latency-min must not exceed fast-latency-max  | k    | 2000 | 1000 | 1000 | 5000 | 0.1  | 0.05
+          slow-latency-min must not be negative: PT-0.001S   | k    | 100  | 1000 | -1   | 5000 | 0.1  | 0.05
+          slow-latency-min must not exceed slow-latency-max  | k    | 100  | 1000 | 6000 | 5000 | 0.1  | 0.05
+          slow-share must be within [0, 1]: 1.5              | k    | 100  | 1000 | 1000 | 5000 | 1.5  | 0.05
+          slow-share must be within [0, 1]: -0.1             | k    | 100  | 1000 | 1000 | 5000 | -0.1 | 0.05
+          slow-share must be within [0, 1]: NaN              | k    | 100  | 1000 | 1000 | 5000 | NaN  | 0.05
+          error-rate must be within [0, 1]: 1.5              | k    | 100  | 1000 | 1000 | 5000 | 0.1  | 1.5
+          error-rate must be within [0, 1]: -0.1             | k    | 100  | 1000 | 1000 | 5000 | 0.1  | -0.1
+          error-rate must be within [0, 1]: NaN              | k    | 100  | 1000 | 1000 | 5000 | 0.1  | NaN
+          """)
+  void rejectsAnInvalidEntryNamingThePropertyAndTheRule(
+      String message,
       String apiKey,
       long fastMin,
       long fastMax,
@@ -66,7 +71,7 @@ class ProviderSettingsTest {
                     slowShare,
                     errorRate))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageStartingWith(property + " ");
+        .hasMessage(message);
   }
 
   @Test
