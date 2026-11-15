@@ -257,7 +257,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 
 **Interfaces:**
 - Consumes: `ProviderHttp`, `RecordFields`, `ParsedPage`, `PagedDownload` (Tasks 5–6).
-- Produces: `BetaPageParser.parse(String body, Instant quotedAt) → ParsedPage` for `mock-gds/.../beta/BetaXml.java`'s format; `next` is `page + 1` while `page < totalPages`. `BetaProvider`: `GET /beta/segments?page=<n>&pageSize=<pageSize>` from 1.
+- Produces: `BetaPageParser.parse(String body, Instant quotedAt, int requestedPage) → ParsedPage` for `mock-gds/.../beta/BetaXml.java`'s format; `next` is `requestedPage + 1` while it is below `totalPages`, and a body `page` that differs from the requested one is `MALFORMED_PAGE` (ruling of the Task 7 review). The page also announces `totalPages` through `ParsedPage.announcedPages`. `BetaProvider`: `GET /beta/segments?page=<n>&pageSize=<pageSize>` from 1.
 
 - [ ] **Step 1: `BetaPageParserTest`, one test at a time,** on golden bodies from the mock's `BetaXmlTest`: `parsesAValidSegment`; `discardsEachOfTheMocksDefects` (as Alpha, prices in cents); `refusesADoctypeAndExternalEntities` (a body with `<!DOCTYPE … SYSTEM "file:///etc/passwd">` → `MALFORMED_PAGE`, nothing read: StAX with `SUPPORT_DTD` false and `IS_SUPPORTING_EXTERNAL_ENTITIES` false); `failsAPageThatIsNotWellFormed`; `readsThePageCount`.
 - [ ] **Step 2: `BetaProviderTest.downloadsEveryPageInOrder`** and `failsWhenTotalPagesExceedsTheMaximum` (`PAGINATION_LIMIT` before page 2).
