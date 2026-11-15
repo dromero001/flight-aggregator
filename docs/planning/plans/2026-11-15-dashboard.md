@@ -229,6 +229,8 @@ Booking (§6.8: "Select" goes no further); `SOLUTION.md`, Grafana and the final 
 
 ### Task 5: Results, "Load more" and the search states
 
+**Amended after Task 2's review (2026-11-15, the controller under the night rules; for the user to see):** modify `src/api/client.ts`: `api` is created with `baseUrl: window.location.origin` (same origin in the browser; parseable under jsdom, where Node's `Request` rejects a relative URL), replacing Task 2's `baseUrl: ''`; an `onResponse` middleware `apiErrors` throws `await toApiError(response)` for every non-2xx answer, so every query and mutation rejects with `ApiError` and the hooks read only `data`. `toApiError` must run inside the middleware, before `openapi-fetch` reads the body. The middleware is proven by `'shows the API's detail for a rejected filter'` (400) and `'shows a failure without a problem body'` (502 HTML).
+
 **Files:**
 - Create: `frontend/src/search/useItinerarySearch.ts`, `mergePages.ts`, `ResultsList.tsx`, `ResultsList.module.css`; `src/itinerary/useNow.ts`
 - Modify: `src/search/SearchPage.tsx`, `src/queryClient.ts`
@@ -247,6 +249,8 @@ Booking (§6.8: "Select" goes no further); `SOLUTION.md`, Grafana and the final 
 
 ### Task 6: Re-price on selection
 
+**Amended after Task 2's review (2026-11-15):** `useReprice()` gets its `ApiError` from `api`'s `apiErrors` middleware (Task 5). Plan 5 Task 10's re-price body writes `previousPrice` and `notice` only when they apply, so the generated type has them optional.
+
 **Files:**
 - Create: `frontend/src/itinerary/useReprice.ts`, `RepricePanel.tsx`, `RepricePanel.module.css`
 - Modify: `src/itinerary/ItineraryCard.tsx`
@@ -262,6 +266,8 @@ Booking (§6.8: "Select" goes no further); `SOLUTION.md`, Grafana and the final 
 - [ ] **Step 3: gates green, review, commit:** `git commit -m "Re-price a card when it is opened and show each outcome"`.
 
 ### Task 7: Admin sign-in, the realm's dashboard client and the settings (as Q2-A, Q3-A)
+
+**Amended after Task 2's review (2026-11-15):** `adminClient(auth)` uses the same `baseUrl` and the same `apiErrors` middleware. Its 401 renewal must see the 401 before `apiErrors` throws: `openapi-fetch` runs `onResponse` in reverse order of registration, so `apiErrors` is registered first and the auth middleware after it.
 
 **Files:**
 - Create: `frontend/src/config.ts`, `frontend/public/config.json` (the compose values, for `npm run dev`), `src/admin/authClient.ts`, `src/admin/AdminSession.tsx`, `src/admin/AdminPage.tsx`
