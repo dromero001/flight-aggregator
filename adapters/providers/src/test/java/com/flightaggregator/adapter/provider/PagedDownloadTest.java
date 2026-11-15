@@ -20,21 +20,26 @@ class PagedDownloadTest {
   @Test
   void failsADownloadThatRepeatsAPosition() {
     PagedDownload download = downloadOf(10, Duration.ofSeconds(5));
+    List<String> cursors = List.of("a", "b", "a");
+    AtomicInteger requested = new AtomicInteger();
 
     assertThatThrownBy(
             () ->
                 download.download(
-                    position ->
-                        new ParsedPage(
-                            List.of(),
-                            List.of(),
-                            Optional.of(position.map(p -> p.equals("a") ? "b" : "a").orElse("a")))))
+                    position -> {
+                      int number = requested.incrementAndGet();
+                      String next =
+                          number <= cursors.size() ? cursors.get(number - 1) : "new" + number;
+                      return new ParsedPage(List.of(), List.of(), Optional.of(next));
+                    }))
         .isInstanceOfSatisfying(
             ProviderUnavailableException.class,
             e -> {
               assertThat(e.provider()).isEqualTo(Provider.ALPHA);
               assertThat(e.reason()).isEqualTo(FailureReason.PAGINATION_LIMIT);
+              assertThat(e.getCause()).hasMessage("The position \"a\" came back after 3 pages");
             });
+    assertThat(requested).hasValue(3);
   }
 
   @Test
@@ -51,7 +56,10 @@ class PagedDownloadTest {
                     }))
         .isInstanceOfSatisfying(
             ProviderUnavailableException.class,
-            e -> assertThat(e.reason()).isEqualTo(FailureReason.PAGINATION_LIMIT));
+            e -> {
+              assertThat(e.reason()).isEqualTo(FailureReason.PAGINATION_LIMIT);
+              assertThat(e.getCause()).hasMessage("Page 3 points to a page past the maximum of 3");
+            });
     assertThat(requested).hasValue(3);
   }
 
@@ -106,19 +114,42 @@ class PagedDownloadTest {
   }
 
   @Test
-  void keepsTheInterruptOfTheCallingThreadAndFailsTheDownload() {
+  void keepsTheInterruptOfTheCallingThreadAndStopsPaging() throws InterruptedException {
     PagedDownload download = downloadOf(10, Duration.ofSeconds(5));
     SlowPages pages = new SlowPages(Duration.ofMillis(100), 10);
 
     Thread.currentThread().interrupt();
     Throwable failure = catchThrowable(() -> download.download(pages));
     boolean stillInterrupted = Thread.interrupted();
+    int atTheInterrupt = pages.requested();
+    Thread.sleep(300);
 
     assertThat(failure)
         .isInstanceOfSatisfying(
             ProviderUnavailableException.class,
             e -> assertThat(e.reason()).isEqualTo(FailureReason.UNEXPECTED));
     assertThat(stillInterrupted).isTrue();
+    assertThat(pages.requested()).isEqualTo(atTheInterrupt);
+  }
+
+  @Test
+  void buildsItsTimeLimiterFromTheDownloadBudget() {
+    TimeLimiterConfig config =
+        PagedDownload.timeLimiterFor(settings(Duration.ofSeconds(60))).getTimeLimiterConfig();
+
+    assertThat(config.getTimeoutDuration()).isEqualTo(Duration.ofSeconds(60));
+    assertThat(config.shouldCancelRunningFuture()).isTrue();
+  }
+
+  @Test
+  void rejectsATimeLimiterWhoseBudgetIsNotTheDownloadTimeout() {
+    ResilienceSettings settings = settings(Duration.ofSeconds(60));
+    TimeLimiter other = PagedDownload.timeLimiterFor(settings(Duration.ofSeconds(30)));
+
+    assertThatThrownBy(() -> new PagedDownload(Provider.ALPHA, settings, other))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("PT30S")
+        .hasMessageContaining("PT1M");
   }
 
   /** A page source that takes a fixed time per page and has a fixed number of pages. */
@@ -152,12 +183,16 @@ class PagedDownloadTest {
   }
 
   private static PagedDownload downloadOf(int maxPages, Duration budget) {
-    ResilienceSettings settings =
-        new ResilienceSettings(
-            Duration.ofSeconds(1), budget, 1, Duration.ofMillis(10), 100, maxPages, 1024);
-    TimeLimiter timeLimiter =
-        TimeLimiter.of(
-            TimeLimiterConfig.custom().timeoutDuration(budget).cancelRunningFuture(true).build());
-    return new PagedDownload(Provider.ALPHA, settings, timeLimiter);
+    ResilienceSettings settings = settings(budget, maxPages);
+    return new PagedDownload(Provider.ALPHA, settings, PagedDownload.timeLimiterFor(settings));
+  }
+
+  private static ResilienceSettings settings(Duration budget) {
+    return settings(budget, 10);
+  }
+
+  private static ResilienceSettings settings(Duration budget, int maxPages) {
+    return new ResilienceSettings(
+        Duration.ofSeconds(1), budget, 1, Duration.ofMillis(10), 100, maxPages, 1024);
   }
 }

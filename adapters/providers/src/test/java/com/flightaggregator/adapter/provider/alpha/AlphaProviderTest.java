@@ -22,8 +22,6 @@ import com.flightaggregator.domain.Provider;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.timelimiter.TimeLimiter;
-import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
@@ -132,14 +130,10 @@ class AlphaProviderTest {
             settings,
             CircuitBreaker.ofDefaults("alpha"),
             clock);
-    TimeLimiter timeLimiter =
-        TimeLimiter.of(
-            TimeLimiterConfig.custom()
-                .timeoutDuration(settings.downloadTimeout())
-                .cancelRunningFuture(true)
-                .build());
     return new AlphaProvider(
-        http, new PagedDownload(Provider.ALPHA, settings, timeLimiter), settings);
+        http,
+        new PagedDownload(Provider.ALPHA, settings, PagedDownload.timeLimiterFor(settings)),
+        settings);
   }
 
   private static String page(int flightNumber, String nextCursor) {

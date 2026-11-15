@@ -1,5 +1,7 @@
 package com.flightaggregator.adapter.provider;
 
+import static java.util.Objects.requireNonNull;
+
 import com.flightaggregator.application.port.out.DiscardedRecord;
 import com.flightaggregator.domain.Leg;
 import java.util.List;
@@ -14,5 +16,6 @@ public record ParsedPage(List<Leg> legs, List<DiscardedRecord> discarded, Option
   public ParsedPage {
     legs = List.copyOf(legs);
     discarded = List.copyOf(discarded);
+    requireNonNull(next, "next");
   }
 }

@@ -21,8 +21,6 @@ import tools.jackson.databind.ObjectMapper;
 /** Parses one page of Alpha's flat JSON list; a record that is not valid is discarded alone. */
 final class AlphaPageParser {
 
-  private static final int EXCERPT_LIMIT = 200;
-
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private AlphaPageParser() {}
@@ -31,7 +29,7 @@ final class AlphaPageParser {
     JsonNode page = readPage(body);
     JsonNode records = page.path("legs");
     if (!records.isArray()) {
-      throw malformed(null);
+      throw malformed(new IllegalStateException("The page has no \"legs\" array"));
     }
     List<Leg> legs = new ArrayList<>();
     List<DiscardedRecord> discarded = new ArrayList<>();
@@ -39,15 +37,10 @@ final class AlphaPageParser {
       try {
         legs.add(leg(record, quotedAt));
       } catch (RecordRejected rejected) {
-        discarded.add(new DiscardedRecord(rejected.reason(), excerpt(record)));
+        discarded.add(new DiscardedRecord(rejected.reason(), record.toString()));
       }
     }
     return new ParsedPage(legs, discarded, nextCursor(page.path("nextCursor")));
-  }
-
-  private static String excerpt(JsonNode record) {
-    String text = record.toString();
-    return text.length() <= EXCERPT_LIMIT ? text : text.substring(0, EXCERPT_LIMIT);
   }
 
   private static JsonNode readPage(String body) {
@@ -64,7 +57,9 @@ final class AlphaPageParser {
       return Optional.empty();
     }
     if (!cursor.isString()) {
-      throw malformed(null);
+      throw malformed(
+          new IllegalStateException(
+              "The page's nextCursor is neither a string nor null: " + cursor));
     }
     return Optional.of(cursor.asString());
   }
@@ -78,38 +73,31 @@ final class AlphaPageParser {
       throw new RecordRejected(DiscardReason.SHAPE);
     }
     return RecordFields.leg(
-        RecordFields.carrier(text(record, "carrier", DiscardReason.CARRIER)),
-        RecordFields.flightNumber(integer(record, "flightNumber", DiscardReason.FLIGHT_NUMBER)),
-        RecordFields.airport(text(record, "origin", DiscardReason.AIRPORT)),
-        RecordFields.airport(text(record, "destination", DiscardReason.AIRPORT)),
-        RecordFields.time(text(record, "departureTime", DiscardReason.TIME)),
-        RecordFields.time(text(record, "arrivalTime", DiscardReason.TIME)),
-        RecordFields.decimalPrice(text(record, "price", DiscardReason.PRICE)),
+        RecordFields.carrier(text(record, "carrier")),
+        RecordFields.flightNumber(integer(record, "flightNumber")),
+        RecordFields.airport(text(record, "origin")),
+        RecordFields.airport(text(record, "destination")),
+        RecordFields.time(text(record, "departureTime")),
+        RecordFields.time(text(record, "arrivalTime")),
+        RecordFields.decimalPrice(text(record, "price")),
         Provider.ALPHA,
         quotedAt);
   }
 
   /**
-   * The field's text, or {@code null} when it is missing, which {@link RecordFields} rejects with
-   * the field's own reason; a value of another JSON type is rejected here with the same reason.
+   * The field's text; {@code null} when it is missing or not a string, which {@link RecordFields}
+   * rejects with the field's own reason.
    */
-  private static String field(
-      JsonNode record, String name, Predicate<JsonNode> hasRightType, DiscardReason reason) {
-    JsonNode value = record.get(name);
-    if (value == null) {
-      return null;
-    }
-    if (!hasRightType.test(value)) {
-      throw new RecordRejected(reason);
-    }
-    return value.asString();
+  private static String text(JsonNode record, String name) {
+    return textOf(record.get(name), JsonNode::isString);
   }
 
-  private static String text(JsonNode record, String name, DiscardReason reason) {
-    return field(record, name, JsonNode::isString, reason);
+  /** As {@link #text}, for a field that must be a JSON integer. */
+  private static String integer(JsonNode record, String name) {
+    return textOf(record.get(name), JsonNode::isIntegralNumber);
   }
 
-  private static String integer(JsonNode record, String name, DiscardReason reason) {
-    return field(record, name, JsonNode::isIntegralNumber, reason);
+  private static String textOf(JsonNode value, Predicate<JsonNode> hasRightType) {
+    return value != null && hasRightType.test(value) ? value.asString() : null;
   }
 }

@@ -135,6 +135,7 @@ class AlphaPageParserTest {
             e -> {
               assertThat(e.provider()).isEqualTo(Provider.ALPHA);
               assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
+              assertThat(e.getCause()).isNotNull();
             });
   }
 
@@ -154,17 +155,10 @@ class AlphaPageParserTest {
     assertThatThrownBy(() -> AlphaPageParser.parse(body, QUOTED_AT))
         .isInstanceOfSatisfying(
             ProviderUnavailableException.class,
-            e -> assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE));
-  }
-
-  @Test
-  void cutsTheExcerptOfALongRecordAtTwoHundredCharacters() {
-    String longRecord = VALID_LEG.replace("\"MAD\"", "\"" + "M".repeat(300) + "\"");
-
-    ParsedPage page = AlphaPageParser.parse(pageOf(longRecord), QUOTED_AT);
-
-    assertThat(page.discarded())
-        .containsExactly(new DiscardedRecord(DiscardReason.AIRPORT, longRecord.substring(0, 200)));
+            e -> {
+              assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
+              assertThat(e.getCause()).hasMessageContaining("nextCursor");
+            });
   }
 
   private static String pageOf(String... records) {

@@ -9,13 +9,14 @@ import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.Provider;
 import io.github.resilience4j.timelimiter.TimeLimiter;
+import io.github.resilience4j.timelimiter.TimeLimiterConfig;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeoutException;
 
 /**
@@ -38,10 +39,27 @@ public final class PagedDownload {
   private final ResilienceSettings settings;
   private final TimeLimiter timeLimiter;
 
+  /** The limiter for a provider's download: its budget is {@code downloadTimeout} (§6.1). */
+  public static TimeLimiter timeLimiterFor(ResilienceSettings settings) {
+    return TimeLimiter.of(
+        TimeLimiterConfig.custom()
+            .timeoutDuration(settings.downloadTimeout())
+            .cancelRunningFuture(true)
+            .build());
+  }
+
   public PagedDownload(Provider provider, ResilienceSettings settings, TimeLimiter timeLimiter) {
     this.provider = requireNonNull(provider, "provider");
     this.settings = requireNonNull(settings, "settings");
     this.timeLimiter = requireNonNull(timeLimiter, "timeLimiter");
+    Duration budget = timeLimiter.getTimeLimiterConfig().getTimeoutDuration();
+    if (!budget.equals(settings.downloadTimeout())) {
+      throw new IllegalArgumentException(
+          "The time limiter's budget "
+              + budget
+              + " is not the download timeout "
+              + settings.downloadTimeout());
+    }
   }
 
   /**
@@ -50,9 +68,10 @@ public final class PagedDownload {
    * @throws ProviderUnavailableException when a page fails, or the pagination does not end
    */
   public ProviderDownload download(PageSource source) {
-    ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+    FutureTask<ProviderDownload> task = new FutureTask<>(() -> pages(source));
+    Thread.ofVirtual().start(task);
     try {
-      return timeLimiter.executeFutureSupplier(() -> executor.submit(() -> pages(source)));
+      return timeLimiter.executeFutureSupplier(() -> task);
     } catch (TimeoutException e) {
       throw new ProviderUnavailableException(provider, FailureReason.TIMEOUT, e);
     } catch (InterruptedException e) {
@@ -63,8 +82,14 @@ public final class PagedDownload {
     } catch (Exception e) {
       throw new IllegalStateException(e);
     } finally {
-      executor.shutdown();
+      // Every exit stops the loop: the limiter cancels only on a timeout, not on an interrupt.
+      task.cancel(true);
     }
+  }
+
+  private ProviderUnavailableException paginationLimit(String detail) {
+    return new ProviderUnavailableException(
+        provider, FailureReason.PAGINATION_LIMIT, new IllegalStateException(detail));
   }
 
   /** The page loop. A cancelled download is interrupted, and requests no further page. */
@@ -84,8 +109,13 @@ public final class PagedDownload {
       if (position.isEmpty()) {
         break;
       }
-      if (pages + 1 == settings.maxPages() || !seen.add(position.get())) {
-        throw new ProviderUnavailableException(provider, FailureReason.PAGINATION_LIMIT, null);
+      if (!seen.add(position.get())) {
+        throw paginationLimit(
+            "The position \"" + position.get() + "\" came back after " + (pages + 1) + " pages");
+      }
+      if (pages + 1 == settings.maxPages()) {
+        throw paginationLimit(
+            "Page " + (pages + 1) + " points to a page past the maximum of " + settings.maxPages());
       }
     }
     return new ProviderDownload(legs, discarded);
