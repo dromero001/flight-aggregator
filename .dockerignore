@@ -5,5 +5,7 @@
 .idea
 .superpowers
 .claude
+.env
+.envrc
 docs
 **/node_modules
