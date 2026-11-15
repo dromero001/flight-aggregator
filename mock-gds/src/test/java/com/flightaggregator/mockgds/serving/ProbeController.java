@@ -11,4 +11,10 @@ class ProbeController {
   String probe() {
     return "reached";
   }
+
+  /** Outside the provider prefixes: it must stay reachable without a key. */
+  @GetMapping("/probe")
+  String ungatedProbe() {
+    return "open";
+  }
 }

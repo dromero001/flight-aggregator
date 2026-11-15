@@ -1,5 +1,8 @@
 package com.flightaggregator.mockgds.serving;
 
+import com.flightaggregator.mockgds.model.Provider;
+import java.util.Locale;
+import java.util.Random;
 import java.util.random.RandomGenerator;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -7,20 +10,25 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-/** Puts the {@link ProviderGate} in front of the three provider paths, and nothing else. */
+/** Puts one {@link ProviderGate} in front of each provider's paths, and nothing else. */
 @Configuration
 @EnableConfigurationProperties(ProviderSettings.class)
 class WebConfig implements WebMvcConfigurer {
 
-  private final ProviderGate gate;
+  private final ProviderSettings settings;
+  private final RandomGenerator random;
+  private final Sleeper sleeper;
 
-  WebConfig(ProviderGate gate) {
-    this.gate = gate;
+  WebConfig(ProviderSettings settings, RandomGenerator random, Sleeper sleeper) {
+    this.settings = settings;
+    this.random = random;
+    this.sleeper = sleeper;
   }
 
+  /** Thread-safe, unlike the default L32X64MixRandom: requests run concurrently. */
   @Bean
   static RandomGenerator randomGenerator() {
-    return RandomGenerator.getDefault();
+    return new Random();
   }
 
   @Bean
@@ -30,6 +38,11 @@ class WebConfig implements WebMvcConfigurer {
 
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
-    registry.addInterceptor(gate).addPathPatterns("/alpha/**", "/beta/**", "/gamma/**");
+    for (var provider : Provider.values()) {
+      var gate = new ProviderGate(settings.forProvider(provider), random, sleeper);
+      registry
+          .addInterceptor(gate)
+          .addPathPatterns("/" + provider.name().toLowerCase(Locale.ROOT) + "/**");
+    }
   }
 }

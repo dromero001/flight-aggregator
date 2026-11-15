@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Random;
+import java.util.random.RandomGenerator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.TestRestTemplate;
@@ -24,6 +25,12 @@ import org.springframework.mock.web.MockHttpServletResponse;
       "mockgds.providers.alpha.api-key=test-alpha-key",
       "mockgds.providers.beta.api-key=test-beta-key",
       "mockgds.providers.gamma.api-key=test-gamma-key",
+      "mockgds.providers.alpha.latency-min=0",
+      "mockgds.providers.alpha.latency-max=0",
+      "mockgds.providers.beta.latency-min=0",
+      "mockgds.providers.beta.latency-max=0",
+      "mockgds.providers.gamma.latency-min=0",
+      "mockgds.providers.gamma.latency-max=0",
       "mockgds.providers.alpha.error-rate=0",
       "mockgds.providers.beta.error-rate=0",
       "mockgds.providers.gamma.error-rate=0"
@@ -32,6 +39,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 class ProviderGateTest {
 
   @Autowired private TestRestTemplate http;
+  @Autowired private RandomGenerator random;
 
   @Test
   void rejectsAMissingKey() {
@@ -52,7 +60,9 @@ class ProviderGateTest {
     var sleeper = new RecordingSleeper();
     var gate =
         new ProviderGate(
-            settings(Duration.ofSeconds(5), Duration.ofSeconds(5), 1.0), new Random(1), sleeper);
+            settings(Duration.ofSeconds(5), Duration.ofSeconds(5), 1.0).gamma(),
+            new Random(1),
+            sleeper);
     var request = new MockHttpServletRequest("GET", "/gamma/probe");
     request.addHeader("X-Api-Key", "wrong-key");
     var response = new MockHttpServletResponse();
@@ -75,10 +85,40 @@ class ProviderGateTest {
   }
 
   @Test
-  void leavesActuatorUngated() {
-    var response = http.getForEntity("/actuator/health", String.class);
+  void leavesPathsOutsideTheProviderPrefixesUngated() {
+    assertThat(http.getForEntity("/probe", String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(http.getForEntity("/actuator/health", String.class).getStatusCode())
+        .isEqualTo(HttpStatus.OK);
+  }
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+  @Test
+  void rejectsAWrongKeyOnAPathWithMatrixParameters() {
+    var response = get("/alpha;x=1/probe", "test-beta-key");
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+  }
+
+  @Test
+  void drawsFromAThreadSafeGenerator() {
+    // java.util.Random is thread-safe; the default L32X64MixRandom is not, and requests are
+    // concurrent on virtual threads.
+    assertThat(random).isInstanceOf(Random.class);
+  }
+
+  @Test
+  void waitsBeforeFailingARequest() throws Exception {
+    var sleeper = new RecordingSleeper();
+    var gate =
+        new ProviderGate(
+            settings(Duration.ofSeconds(2), Duration.ofSeconds(2), 1.0).alpha(),
+            new Random(3),
+            sleeper);
+    var response = new MockHttpServletResponse();
+
+    gate.preHandle(request("/alpha/probe", "test-alpha-key"), response, new Object());
+
+    assertThat(response.getStatus()).isEqualTo(500);
+    assertThat(sleeper.sleeps()).containsExactly(Duration.ofSeconds(2));
   }
 
   @Test
@@ -86,7 +126,7 @@ class ProviderGateTest {
     var min = Duration.ofMillis(100);
     var max = Duration.ofMillis(5000);
     var sleeper = new RecordingSleeper();
-    var gate = new ProviderGate(settings(min, max, 0.0), new Random(7), sleeper);
+    var gate = new ProviderGate(settings(min, max, 0.0).beta(), new Random(7), sleeper);
 
     for (var i = 0; i < 1_000; i++) {
       assertThat(
@@ -114,7 +154,7 @@ class ProviderGateTest {
   private static int failuresOutOf(double errorRate, int requests) throws Exception {
     var gate =
         new ProviderGate(
-            settings(Duration.ZERO, Duration.ZERO, errorRate),
+            settings(Duration.ZERO, Duration.ZERO, errorRate).alpha(),
             new Random(11),
             new RecordingSleeper());
     var failures = 0;

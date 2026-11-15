@@ -36,7 +36,7 @@ public record ProviderSettings(Entry alpha, Entry beta, Entry gamma) {
       throw new IllegalArgumentException(
           "mockgds.providers." + provider + ".latency-min must not exceed latency-max");
     }
-    if (entry.errorRate() < 0 || entry.errorRate() > 1) {
+    if (!(entry.errorRate() >= 0 && entry.errorRate() <= 1)) {
       throw new IllegalArgumentException(
           "mockgds.providers." + provider + ".error-rate must be within [0, 1]");
     }

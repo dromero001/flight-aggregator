@@ -2,6 +2,8 @@ package com.flightaggregator.mockgds.serving;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.flightaggregator.mockgds.model.Provider;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -76,6 +78,31 @@ class ProviderSettingsTest {
               var settings = context.getBean(ProviderSettings.class);
               assertThat(settings.toString()).doesNotContain("secret-");
               assertThat(settings.alpha().toString()).doesNotContain("secret-alpha");
+            });
+  }
+
+  @Test
+  void rejectsAnErrorRateThatIsNotANumber() {
+    runner
+        .withPropertyValues(KEYS)
+        .withPropertyValues("mockgds.providers.beta.error-rate=NaN")
+        .run(
+            context -> assertThat(context).getFailure().hasStackTraceContaining("beta.error-rate"));
+  }
+
+  @Test
+  void defaultsTheLatencyRangeAndTheErrorRate() {
+    runner
+        .withPropertyValues(KEYS)
+        .run(
+            context -> {
+              var settings = context.getBean(ProviderSettings.class);
+              for (var provider : Provider.values()) {
+                var entry = settings.forProvider(provider);
+                assertThat(entry.latencyMin()).isEqualTo(Duration.ofMillis(100));
+                assertThat(entry.latencyMax()).isEqualTo(Duration.ofMillis(5000));
+                assertThat(entry.errorRate()).isEqualTo(0.05);
+              }
             });
   }
 }
