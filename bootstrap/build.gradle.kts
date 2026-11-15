@@ -36,3 +36,9 @@ dependencies {
 tasks.bootJar {
     archiveFileName = "bootstrap.jar"
 }
+
+// ComposeFileTest reads compose.yaml: a change to that file alone must run the tests again.
+tasks.test {
+    inputs.file(rootProject.layout.projectDirectory.file("compose.yaml"))
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}

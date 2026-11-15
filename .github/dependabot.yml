@@ -67,6 +67,11 @@ updates:
     open-pull-requests-limit: 0
     cooldown:
       default-days: 14
+    # PostgreSQL 18 is the spec's choice (6.1): a major bump is a decision, not a routine update.
+    # The tests' image (PostgresImage.NAME) must follow any update; ComposeFileTest fails until it does.
+    ignore:
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
     groups:
       docker-compose:
         patterns:
