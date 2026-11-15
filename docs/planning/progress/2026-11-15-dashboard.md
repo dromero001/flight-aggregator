@@ -375,3 +375,17 @@ Red → green, one assertion per component test file:
 - `ItineraryCard.test.tsx` `'has no accessibility violations'` (Task 4's component, the connecting itinerary): passed on its first run, so red by mutation (the route line's `aria-hidden="true"` made `"yes"`): `ARIA attributes must conform to valid values (aria-valid-attr-value)`; restored.
 
 Checks: `npm run verify` exit 0 (47 tests in 11 files, no stray output). Self-review (thermo-nuclear): one helper holds the configuration, the matcher and its type, so a test imports only `axe`; no existing accessibility helper to reuse (Task 1 had only the lint plugin).
+
+### E9: "Try again" on the search failure (approved extra, assigned to Task 5)
+
+Red → green in `SearchPage.test.tsx`, one test at a time:
+- `'tries a failed search again'` (502 until the app is "up", then one flight): red `Unable to find an accessible element with the role "button" and name "Try again"`. Green with the button beside the failure sentence (outside the `role="alert"` paragraph, so the alert reads only the sentence), calling `refetch()`.
+- No "Try again" where it cannot help, asserted in the existing 400 and 429 tests: red `expect(element).not.toBeInTheDocument()` in both (the button was on every failure). Green: `failureMessage` became `describeFailure(error): { message, canTryAgain }`; a rejected filter would be rejected again (its detail says what to change) and a rate limit says when to search, so only the generic failure ("Flights could not be loaded. Search again in a moment.", which a 429 without `Retry-After` also shows) offers it.
+- `'tries a failed next page again'` (the first page shown, "Load more" answered 502): red `Unable to find an element with the text: Showing 2 flights` (`refetch()` read the first page again and never the one that failed). Green: "Try again" repeats the request that failed, `fetchNextPage()` when `isFetchNextPageError`, else `refetch()`; the requests after the click are exactly `['page-2']`.
+
+Look: the failure box lays the sentence and "Try again" on one line, wrapping on a phone (checked by eye with a screenshot at 960 px against a mocked 502, not committed).
+
+Checks: `npm run verify` exit 0 (49 tests in 11 files). Self-review (thermo-nuclear): the decision "may trying again help" sits with the message in one function, so the component has one flag to read; "Try again" uses TanStack's own `refetch` and `fetchNextPage`, no request code of its own.
+
+### Extras for the user to decide
+- None built. Considered and left out: moving the keyboard focus to the first new card after "Load more" (value: a keyboard user continues where the new results start; cost: a ref per card and one test).

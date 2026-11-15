@@ -204,6 +204,8 @@ test("shows the API's detail for a rejected filter", async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'The cursor does not belong to this search; start again from the first page.',
   );
+  // The same search would be rejected again; the detail says what to change.
+  expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
 });
 
 test('shows a failure without a problem body', async () => {
@@ -227,6 +229,55 @@ test('shows a failure without a problem body', async () => {
   expect(requests).toBe(4);
 });
 
+test('tries a failed search again', async () => {
+  const user = userEvent.setup();
+  let appUp = false;
+  server.use(
+    http.get(SEARCH, () =>
+      appUp
+        ? HttpResponse.json(page({ itineraries: flights(1) }))
+        : new HttpResponse(null, { status: 502 }),
+    ),
+  );
+  renderAt('/?origin=MAD');
+  await screen.findByRole('alert');
+
+  appUp = true;
+  await user.click(screen.getByRole('button', { name: 'Try again' }));
+
+  expect(await screen.findByText('Showing 1 flight')).toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+test('tries a failed next page again', async () => {
+  const user = userEvent.setup();
+  let appUp = true;
+  const cursors: (string | null)[] = [];
+  server.use(
+    http.get(SEARCH, ({ request }) => {
+      const cursor = new URL(request.url).searchParams.get('cursor');
+      cursors.push(cursor);
+      if (!appUp) return new HttpResponse(null, { status: 502 });
+      return cursor === 'page-2'
+        ? HttpResponse.json(page({ itineraries: flights(1, 1) }))
+        : HttpResponse.json(page({ itineraries: flights(1), nextCursor: 'page-2' }));
+    }),
+  );
+  renderAt('/?origin=MAD');
+  await screen.findByText('Showing 1 flight');
+  appUp = false;
+  await user.click(screen.getByRole('button', { name: 'Load more' }));
+  await screen.findByRole('alert');
+
+  appUp = true;
+  cursors.length = 0;
+  await user.click(screen.getByRole('button', { name: 'Try again' }));
+
+  // The page that failed is read again, not the one already shown.
+  expect(await screen.findByText('Showing 2 flights')).toBeInTheDocument();
+  expect(cursors).toEqual(['page-2']);
+});
+
 test('does not retry a rate-limited search', async () => {
   let requests = 0;
   server.use(
@@ -241,6 +292,8 @@ test('does not retry a rate-limited search', async () => {
     'Too many searches from your connection. Try again in 30 seconds.',
   );
   expect(requests).toBe(1);
+  // A click now would spend the limit again; the message says when to search.
+  expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
 });
 
 test('shows the failure for a rate limit without a wait', async () => {
