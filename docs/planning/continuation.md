@@ -4,7 +4,7 @@ The single place that says what is in flight, where it lives and what comes next
 
 **Rule:** the controller rewrites this file and pushes it at every checkpoint: a subagent dispatched or returned, a review verdict, a user decision, a task integrated (`CLAUDE.md`, "Continuity"). If something here contradicts `git log`, `git log` wins: say so and fix this file first.
 
-**Last updated:** 2026-11-15 17:55 CET, on the Mac, `main` at `6db5049` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
+**Last updated:** 2026-11-15 18:05 CET, on the Mac, `main` at `72bce35` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
 
 ## Resume in five minutes
 
@@ -44,6 +44,7 @@ Every implementer below writes its report in its own worktree, at `.superpowers/
 | Plan 5 Task 5, round 2 | Dispatched 17:53 (the brief is below); then its double review | `.claude/worktrees/agent-a3652a06ed07d9591`, `worktree-agent-a3652a06ed07d9591`, from `6db5049` | `wip/plan5-task-5-r2` after its first commit |
 | Approved extras (plan 5 Tasks 4 and 8, git guard) | Dispatched 17:53 (the brief is below); then its double review | `.claude/worktrees/agent-a47126e03777a95e1`, `worktree-agent-a47126e03777a95e1`, from `6db5049` | `wip/plan5-extras` after its first commit |
 | Plan 7 Task 1, telemetry backends in compose | Built (`f5e6520`, 724 tests green); the same implementer resumed ~17:40 for round 2 before any review (the brief is below) | `.claude/worktrees/agent-a380b01c59520a201`, `worktree-agent-a380b01c59520a201`, from `04586b6` | `wip/plan7-task-1` (at `f5e6520`) |
+| Plan 7 Task 9, draft of `SOLUTION.md` | Steps 1–2 (draft and check), dispatched 18:10; figures that later tasks produce are left as visible `TODO(plan N Task M)` placeholders. Step 3 is the user's review | `.claude/worktrees/agent-ad45d58ed7874f3b3`, `worktree-agent-ad45d58ed7874f3b3` from `72bce35` | `wip/plan7-task-9` after its first commit |
 
 **Plan 5 Task 6:** the plan's Task 6 text, its Global Constraints, Q1–Q9 as decided, and the tests in the order its Step 1 lists. The refresh request must never delay or fail a search.
 
@@ -62,9 +63,12 @@ Lessons for every brief: each subagent uses a private scratch folder of its own 
 1. As each of the four returns: push its branch as `wip/...`, update this file, dispatch its double review (one subagent acting as `functional-reviewer` then `code-reviewer`).
 2. As each is approved twice: rebase on `main`, `./gradlew build` with its exit status checked, fast-forward `main`, push, watch CI, update this file and the handoff page. Progress-report conflicts between parallel tasks are append-only: keep both sections, `main`'s first.
 3. With Task 6 on `main`: plan 5 Tasks 7 and 9 in parallel (Task 9 generates the OpenAPI contract that plan 6 Tasks 2 and 4–8 wait for).
-4. Plan 7 Task 9 (draft of `SOLUTION.md`) may start as soon as there is room.
+4. Plan 7 Task 9: when the draft returns, the user reviews it (its Step 3). Plan 7 Task 3 (alert rules) starts once Task 1 is on `main`.
 
 ## Waiting on the user
+
+- **Delivery before 23:59 on Monday 2026-11-16** (the user's commitment); the running application is tried by hand at the close of each plan (roadmap).
+- **About 22:00 on Sunday:** the controller proposes the rules for the unattended night work and the user decides them (a session-only reminder is set; if this session is gone, the next one does it).
 
 - Delete each `wip/plan*-task-*` branch once its task is on `main` (the git guard stops the agent from deleting remote branches): `git push origin --delete <branch>`. (`wip/grill-me-observability` is already gone.)
 - E9 of plan 7: the clean-clone check on the Windows PC, on Monday.
