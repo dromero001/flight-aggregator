@@ -8,12 +8,17 @@ import com.flightaggregator.application.port.out.ItineraryReader;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.OfferStore;
 import com.flightaggregator.application.service.RepriceItineraryService;
+import com.flightaggregator.bootstrap.observability.CountedItineraryRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** The re-price use case (§6.3, §6.5), over the three providers and the stores. */
+/**
+ * The re-price use case (§6.3, §6.5), over the three providers and the stores; what becomes of each
+ * of its updates in place is counted (§6.10).
+ */
 @Configuration(proxyBeanMethods = false)
 class RepriceConfig {
 
@@ -29,7 +34,14 @@ class RepriceConfig {
       OfferStore offers,
       List<FlightProvider> providers,
       ItineraryRepository itineraries,
-      Clock clock) {
-    return new RepriceItineraryService(reader, offers, providers, itineraries, clock, SETTINGS);
+      Clock clock,
+      MeterRegistry meters) {
+    return new RepriceItineraryService(
+        reader,
+        offers,
+        providers,
+        new CountedItineraryRepository(itineraries, meters),
+        clock,
+        SETTINGS);
   }
 }

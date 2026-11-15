@@ -14,6 +14,7 @@ import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.FlightProvider;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
+import com.flightaggregator.application.port.out.StoreOutcome;
 import com.flightaggregator.application.service.fakes.FakeFlightProvider;
 import com.flightaggregator.application.service.fakes.FakeItineraryRepository;
 import com.flightaggregator.application.service.fakes.InMemoryItineraryReader;
@@ -181,6 +182,27 @@ class RepriceItineraryServiceTest {
     assertThat(result).isEqualTo(new RepriceResult.PriceChanged(requoted, Money.euros("210.00")));
     assertThat(requoted.price()).isEqualTo(Money.euros("231.00"));
     assertThat(repository.updated()).containsExactly(requoted);
+  }
+
+  /**
+   * The price was confirmed live, so the answer stands whatever became of its store: written, gone
+   * since a run replaced the inventory, or skipped while a run holds it.
+   */
+  @ParameterizedTest
+  @EnumSource(StoreOutcome.class)
+  void answersTheConfirmedPriceWhateverBecameOfItsStore(StoreOutcome stored) {
+    Itinerary choice = trip(MAD_LHR, LHR_BCN);
+    reader.with(choice);
+    Leg madLhr = offer(MAD_LHR, ALPHA, "100.00");
+    Leg lhrBcn = offer(LHR_BCN, BETA, "100.00");
+    sells(madLhr);
+    sells(lhrBcn);
+    repository.answers(stored);
+
+    RepriceResult result = service().reprice(choice.id());
+
+    assertThat(result).isEqualTo(new RepriceResult.Confirmed(trip(madLhr, lhrBcn)));
+    assertThat(repository.updated()).containsExactly(trip(madLhr, lhrBcn));
   }
 
   /** Why Beta, the provider of the second leg, does not confirm it. */

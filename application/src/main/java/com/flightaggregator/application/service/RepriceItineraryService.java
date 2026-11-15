@@ -11,6 +11,7 @@ import com.flightaggregator.application.port.out.ItineraryReader;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.OfferStore;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
+import com.flightaggregator.application.port.out.StoreOutcome;
 import com.flightaggregator.domain.Itinerary;
 import com.flightaggregator.domain.ItineraryId;
 import com.flightaggregator.domain.Leg;
@@ -37,13 +38,12 @@ import java.util.stream.Collectors;
  * legs no longer connect. When the choice is not confirmed, up to {@code maxAlternatives} trips of
  * its origin and destination are tried by price, and the first confirmed is the alternative.
  *
- * <p>What is confirmed is updated in place (Q5). If a run has replaced the inventory since the
- * choice was read and the new one no longer holds it, nothing is written and the answer stands: its
- * price was confirmed live. No quote starts once the budget has run out; one already started is
- * bounded by its provider's own timeouts. Any other failure propagates as it was thrown: of the
- * update, for example a lock timeout while a run holds the publication row, of a store, or a
- * provider's failure of another kind than {@link ProviderUnavailableException} or {@link
- * RejectedExecutionException}.
+ * <p>What is confirmed is updated in place (Q5), and the answer stands whatever {@link
+ * StoreOutcome} the update answers, since its price was confirmed live: when a run has replaced the
+ * inventory since the choice was read, or holds it to replace it, nothing is written. No quote
+ * starts once the budget has run out; one already started is bounded by its provider's own
+ * timeouts. Any other failure propagates as it was thrown: of a store, or a provider's failure of
+ * another kind than {@link ProviderUnavailableException} or {@link RejectedExecutionException}.
  */
 public final class RepriceItineraryService implements RepriceItinerary {
 

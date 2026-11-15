@@ -23,6 +23,7 @@ import com.flightaggregator.application.port.out.ItineraryWriter;
 import com.flightaggregator.application.port.out.ProviderDownload;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.application.port.out.Publication;
+import com.flightaggregator.application.port.out.StoreOutcome;
 import com.flightaggregator.application.service.fakes.FakeFlightProvider;
 import com.flightaggregator.application.service.fakes.FakeItineraryRepository;
 import com.flightaggregator.application.service.fakes.InMemoryOfferStore;
@@ -490,7 +491,7 @@ class IngestInventoryServiceTest {
           }
 
           @Override
-          public boolean updateInPlace(Itinerary repriced) {
+          public StoreOutcome updateInPlace(Itinerary repriced) {
             throw new UnsupportedOperationException("Ingestion updates nothing in place");
           }
         };

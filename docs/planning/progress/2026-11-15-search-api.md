@@ -335,6 +335,100 @@ Thermo-nuclear checklist on the diff:
 
 - **Validate `RepriceSettings`.** Refuse a negative `maxAlternatives` or a non-positive budget at construction, as `JdbcItineraryRepository` refuses a negative horizon. Value: a misconfiguration fails at startup instead of with a PostgreSQL error on the first re-price. Cost: a compact constructor and a test. Left out unless you approve.
 - **Stop trying alternatives once the budget has run out.** Today the remaining alternatives start no quote, but each leg still reads its stored offers: at most 3 trips of up to 3 legs, each read an index lookup. Value: no pointless reads. Cost: a `takeWhile` and a test. Left out unless you approve.
-- **Bound the update's statements with `StatementTimeout`,** as the load and the offer replacement bound theirs. Value: a hung statement fails the update instead of holding the publication row. Cost: one line and a test. Left out unless you approve.
+- **Bound the update's statements with `StatementTimeout`,** as the load and the offer replacement bound theirs. Value: a hung statement fails the update instead of holding the publication row. Cost: one line and a test. Left out unless you approve. **Built in fix round 1, as the review's C1, by the controller's ruling.**
 - **Make Q9's re-price values properties** (`reprice.max-alternatives`, `reprice.budget`) instead of constants. Value: they can be tuned without a build. Cost: a properties record, a change to `application.yaml` (shared with Task 5), and a test. Left out unless you approve.
 - **A fixed order for equally cheap offers in `offersOf`** (`ORDER BY price, provider`). Value: providers at the same stored price are asked in the same order every time. Cost: one clause, which no test can pin reliably. Left out unless you approve.
+
+## Task 8 — fix round 1
+
+Review (`task-8-review.md`): functional CHANGES REQUESTED (F1, F2), code APPROVED with five minors. This round fixes F1, F2 and C1; F3 and C2–C5 are deferred to the end-of-plan review, and F4 is covered by F1's tests.
+
+- **User decision (2026-11-15), F1:** when the store cannot happen because an ingestion run holds the publication row, re-price still answers with the live result; the store is skipped, logged at `WARN` and counted.
+- **Controller's ruling on how:** `updateInPlace` takes the publication row `FOR SHARE NOWAIT` instead of waiting for `FOR UPDATE`, so re-prices share it and a run's lock refuses it at once. The port answers a `StoreOutcome` (`STORED`, `GONE`, `BUSY`) instead of a boolean, and the service answers the live result in each case.
+- **F2:** Q9's values (3 alternatives, 10 s) are pinned as the 37-day horizon is, from what the production wiring does.
+- **C1:** the update's statements are bounded by `StatementTimeout`, so `application.yaml`'s note on store transactions is true again.
+
+The round was resumed from an implementer cut off mid-round. Its uncommitted work was kept: the `StoreOutcome` type, the outcome assertions, and the tests `answersBusyAtOnceWhileARunHoldsThePublication`, `keepsTheSlotAnUpdateReadActiveUntilItCommits` and `storesTwoRepricesAtOnce`. Its red → green evidence was lost, so the reds of those tests below are **recorded after the fact by mutation**. As found, its update read the publication row with no lock at all.
+
+Design notes:
+
+- `JdbcItineraryRepository.rewrite` runs in this order:
+  1. the load's two bounds: `lock_timeout` 5 s and, new, `StatementTimeout` (5 min);
+  2. `SELECT active_slot FROM inventory_publication FOR SHARE NOWAIT`;
+  3. the delete and the copy, as before: no row deleted answers `GONE`, else `STORED`.
+- **A refused lock** (SQLState `55P03`, `lock_not_available`) answers `BUSY`. Nothing has been written; the refused statement aborted the transaction, so its commit is a rollback.
+- **Any other failure to read the row propagates.** Spring leaves `55P03` uncategorized here (`UncategorizedSQLException`, as `IngestionJobTest` already records for the lock timeout), not the `CannotAcquireLockException` the review assumed. So the state is read from `getMostSpecificCause()`.
+- **The guarantee "an update that waits for a switch writes the slot the run switched to" is replaced.** An update never waits for a run any more, so `writesIntoTheSlotARunSwitchedToWhileItWaited` no longer applies. The new lock implies this instead, pinned by `keepsTheSlotAnUpdateReadActiveUntilItCommits`: a run that starts during an update waits for the update's share before it touches either slot. The update's write therefore lands in the slot that stays active until the update commits.
+- **The `WARN` and the counter** live in `bootstrap/observability/CountedItineraryRepository`, a decorator of the port. `RepriceConfig` wraps it around the repository it gives the service.
+  - Why there: the application module depends only on the domain, with no logger and no meter registry, and the codebase already counts an outbound port's outcomes in a bootstrap decorator (`CountedFlightProvider`).
+  - The meter is `reprice.store{outcome=STORED|GONE|BUSY}`, tagged with the enum's names as `provider.calls` and `ingestion.runs` are.
+  - The `WARN` line names the itinerary id and no price.
+  - The service's code is unchanged: it already answered whatever the update returned. Only its Javadoc changed, and a test now pins that behaviour (F4).
+- **F2:** `RepriceConfigTest` drops the never-connected `PersistenceConfig`. It now drives the wired use case over a route, Alpha and a clock that the test holds, and reads Q9's values from what the use case does.
+- `docs/architecture/ingestion.md`, step 2, now says how re-price updates share the publication row (the review asked for this whatever F1's fix).
+
+Cycles. Each ran `./gradlew :adapters:persistence:test --tests '*JdbcItineraryRepositoryTest'`, or the service's or bootstrap's test class; the module's suite ran after each green. Every mutation was restored.
+
+- **As found** (recorded after the fact by mutation: no lock on the publication row):
+  - `answersBusyAtOnceWhileARunHoldsThePublication`: red = `expected: BUSY but was: STORED`;
+  - `keepsTheSlotAnUpdateReadActiveUntilItCommits`: red = `AssertionError: nothing waited for backend 477` (the run did not wait for the update);
+  - `storesTwoRepricesAtOnce`: green.
+- **Green, first attempt:** `FOR SHARE NOWAIT`, catching `CannotAcquireLockException`. The busy test failed: `UncategorizedSQLException: ... SQL state [55P03] ... ERROR: could not obtain lock on row in relation "inventory_publication"`.
+- **Green:** the catch reads SQLState `55P03` from the most specific cause, and rethrows anything else. All 22 tests passed; the busy update answered in 0.21 s.
+- **Mutations on the tests found in the worktree** (recorded after the fact by mutation):
+  - M1, "the update waits for `FOR UPDATE`, as before the round" (`activeSlotLocked()`): `answersBusyAtOnce…` and `storesTwoRepricesAtOnce` each fail with `execution timed out after 2000 ms`. This is the brief's "today it waits 5 s and throws": the update no longer answers at once.
+  - M2, "an exclusive lock that never waits" (`FOR UPDATE NOWAIT`, the analogue of the `FOR UPDATE SKIP LOCKED` the previous implementer was about to try): `storesTwoRepricesAtOnce` fails with `expected: STORED but was: BUSY`.
+  - M3, "no row deleted answers stored": `answersGoneForAnItineraryTheActiveGenerationNoLongerHolds` fails with `expected: GONE but was: STORED`.
+  - M4, "a rewritten row answers gone": `updatesAnItineraryInPlaceWithoutChangingTheGeneration`, `keepsTheSlot…` and `storesTwoReprices…` each fail with `expected: STORED but was: GONE`.
+  - M5, "no `status.setRollbackOnly()` after the refused lock": every test stayed green. PostgreSQL rolls the aborted transaction back at commit, and pgjdbc 42.7.14 does not throw. So the line, which no test required, was removed, and a comment says what happens.
+- **C1, `boundsEachStatementOfAnUpdate`:** red = `expected: "5min" but was: "0"`. The setting is read inside a transaction the update joins, as `boundsEachStatementOfTheLoad` reads the load's. Green = `StatementTimeout.boundTheTransaction(jdbc)` in `rewrite`.
+- **`boundsEachLockWaitOfAnUpdate`:** the `lock_timeout` line lost its test when `givesUpAnUpdateWhileARunHoldsThePublication` was replaced, and this test pins it again. Past the publication row it still bounds a wait, for a row another re-price of the same itinerary is rewriting, for example. It passed on first run. M6, "no `lock_timeout`": `expected: "5s" but was: "0"`.
+- **`failsAnUpdateThatCannotReadThePublication`:** the publication row is deleted inside a transaction the update joins, and the update must fail with `IncorrectResultSizeDataAccessException`, not answer busy. It passed on first run. M7, "any failure to read the row answers busy": `Expecting code to raise a throwable.`
+  - The first M7 run also exposed a flaw in the test: when the update answered, the test's transaction committed its delete. That removed the publication row for every later test in that JVM (24 failures, all `EmptyResultDataAccessException`); the container lives for one JVM, so nothing persisted.
+  - The test now marks its transaction rollback-only first. Re-run, M7 fails this test alone.
+- **Service, `RepriceItineraryServiceTest.answersTheConfirmedPriceWhateverBecameOfItsStore(STORED, GONE, BUSY)`** (F1, F4; `FakeItineraryRepository.answers(outcome)` added): passed on first run, since the service already ignored the answer. M8, "a re-quote not stored answers unconfirmable": `[2] GONE` and `[3] BUSY` fail with `expected: Confirmed[...] but was: Unconfirmable[]`.
+- **`CountedItineraryRepositoryTest.countsEachUpdateUnderItsOutcome`:** red, with a stub that only passed the outcome through = `MeterNotFoundException: ... No meter with name 'reprice.store' was found`. Green = the counter. The counting body had been typed before the test ran, so it was swapped for that stub to see the red, then put back.
+- **`logsAnUpdateSkippedWhileARunHoldsTheInventory`:** red = `Expecting actual: [] to contain exactly (and in same order): [(WARN, "Skipped storing a re-price: an ingestion run holds the inventory", "itinerary=6581ded3-...")]`. Green = one `LOG.atWarn()` with the `itinerary` key, for `BUSY` only.
+- **`passesALoadThroughUncounted`:** red, with a `not yet` stub = `UnsupportedOperationException: not yet`. Green = forward the call.
+- **F2, `RepriceConfigTest.triesTheChoiceAndThreeAlternatives`** (six trips of one route; Alpha down; no other provider's offers): passed on first run. Red under two mutations of `RepriceConfig`:
+  - M9, `RepriceSettings(4, …)`: `... but some elements were not expected: [IB5 MAD-BCN ...]`;
+  - M10, `RepriceSettings(2, …)`: `... but could not find the following elements: [IB4 MAD-BCN ...]`.
+- **F2, `startsNoQuoteTenSecondsAfterTheStart(PT9.999S, 2 trips; PT10S, 1 trip)`:** the choice's quote moves the clock there and fails, and the route's one other trip is quoted after it, or not. It passed on first run. Red under two mutations:
+  - M11, `Duration.ofSeconds(11)`: case `[2] PT10S` fails with `... some elements were not expected: [IB2 MAD-BCN ...]`;
+  - M12, `Duration.ofSeconds(9)`: case `[1] PT9.999S` fails with `... could not find the following elements: [IB2 MAD-BCN ...]`.
+- **`countsWhatBecameOfEachStore`** (Alpha sells, the repository answers `BUSY`, and the answer is `Confirmed`): red = `MeterNotFoundException: ... No meter with name 'reprice.store' was found`. Green = `RepriceConfig` wraps the repository in `CountedItineraryRepository`, with the `MeterRegistry`.
+- **Refactor under green**, from the thermo-nuclear self-review, in `JdbcItineraryRepositoryTest`:
+  - five tests built their own manager and repository; they now share the test's `transactions`, `repository` and an `enclosing` `TransactionTemplate` (an update inside it joins it);
+  - the two copies of "hold an update open after its write" became one `HeldUpdate`;
+  - the two bound tests became `boundsTheTransactionOfAnUpdate(statement_timeout 5min; lock_timeout 5s)`;
+  - `requoted(itinerary, euros)` replaces the repeated four-argument call in this round's tests.
+
+  Still 25 tests, all green. The as-found "no lock" mutation, M1, M2, M6, M7 and C1's removal were run again on the refactored tests; each still fails the same test with the same message.
+
+Gates:
+
+- `./gradlew build --rerun-tasks`: green (exit status 0, every task executed).
+- Every module's tests ran and passed, 749 in all, 0 failed: domain 91, application 61, persistence 67, providers 197, bootstrap 93, architecture 39, mock-gds 201.
+- Coverage gate: lines 98.6 %, branches 95.7 %.
+- The Testcontainers tests connected on every run, so none needed a re-run (another agent's Valkey containers ran meanwhile).
+
+Thermo-nuclear checklist on the diff:
+
+- **No file near 1,000 lines.** `JdbcItineraryRepositoryTest` has 730, `RepriceItineraryServiceTest` 419, `RepriceConfigTest` 265, `JdbcItineraryRepository` 225.
+- **Existing mechanisms reused:** `StatementTimeout` for the bound; a `Counted…` decorator in `bootstrap/observability`, as for providers; Logback capture, as in `LoggedDiscardedRecordsTest`; the test-runner style of `SchedulingConfigTest` and `ProvidersConfigTest`.
+- **No new branch in an existing flow.** The busy branch is the update's own. The `WARN` branch lives in the decorator, and the service's code is unchanged.
+- **Nothing fails silently:**
+  - `BUSY` is counted and logged, and `GONE` is counted;
+  - only `55P03` counts as busy, and any other failure to read the row propagates (pinned by M7);
+  - the busy transaction rolls back and writes nothing (pinned by the busy test's stored price).
+- **Atomicity is unchanged:** the delete and the copy remain one transaction.
+
+Concerns, for the reviewer:
+
+- **Two re-prices of the same itinerary at the same moment.** Under the shared lock, the second's `DELETE` waits for the first's row lock (milliseconds), then finds no row. It answers `GONE` and is counted so, while the store holds the first's re-quote. `StoreOutcome.GONE` documents this; no test pins it. Before the round, the two serialised on the publication row.
+- **A run's `FOR UPDATE` waits behind every share in progress, and PostgreSQL does not queue new `FOR SHARE` lockers behind a waiting `FOR UPDATE`.** So an unbroken stream of overlapping re-prices could hold a run past its 5 s `lock_timeout`. Each share lasts one indexed delete and a one-row `COPY` (milliseconds), and re-price is limited to 10 per minute per IP (Q9), so this needs hundreds of re-prices per second. Not tested.
+- **Task 7 must forward `replaceThrough` in `CountedItineraryRepository`** once it adds that method to the port; the compiler will force it. Task 7's refresh takes the publication row `FOR UPDATE`, so a re-price during a refresh also answers `BUSY` at once. Its `WARN` line then says "an ingestion run", which a refresh is.
+
+### Extras for the user to decide
+
+- **Pin the same-itinerary race** described in the first concern above with a test. Value: the `GONE` answer of the second re-price is then pinned, not only documented. Cost: one persistence test that holds the first update open with `HeldUpdate`. Left out unless you approve.

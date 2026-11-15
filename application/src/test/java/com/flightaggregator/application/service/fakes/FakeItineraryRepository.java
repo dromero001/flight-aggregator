@@ -3,6 +3,7 @@ package com.flightaggregator.application.service.fakes;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.ItineraryWriter;
 import com.flightaggregator.application.port.out.Publication;
+import com.flightaggregator.application.port.out.StoreOutcome;
 import com.flightaggregator.domain.Itinerary;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ public final class FakeItineraryRepository implements ItineraryRepository {
   private int calls;
   private List<Itinerary> published = List.of();
   private final List<Itinerary> updated = new ArrayList<>();
+  private StoreOutcome outcome = StoreOutcome.STORED;
 
   @Override
   public Publication replaceInventory(Instant now, ItineraryWriter writer) {
@@ -32,14 +34,19 @@ public final class FakeItineraryRepository implements ItineraryRepository {
         GENERATION, published.size(), ROWS_IN_DEFAULT_PARTITION, PARTITIONED_UNTIL);
   }
 
-  /** Remembers the re-quote; the active generation always holds its id. */
+  /** Remembers the re-quote, and answers what {@link #answers} set: stored, by default. */
   @Override
-  public synchronized boolean updateInPlace(Itinerary repriced) {
+  public synchronized StoreOutcome updateInPlace(Itinerary repriced) {
     updated.add(repriced);
-    return true;
+    return outcome;
   }
 
-  /** Every re-quote updated in place, in order. */
+  /** What every later update in place answers. */
+  public synchronized void answers(StoreOutcome outcome) {
+    this.outcome = outcome;
+  }
+
+  /** Every re-quote asked to be updated in place, in order, whatever it answered. */
   public synchronized List<Itinerary> updated() {
     return List.copyOf(updated);
   }
