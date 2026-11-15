@@ -113,6 +113,9 @@ check 2 $'git push origin `\n  :main'
 check 2 $'git reset `\n  HEAD~3 --hard'
 check 2 $'git push origin main `\n--force'
 check 2 $'git reset \\\n\t--hard'
+check 2 $'git push origin `\r\n  +main'
+# A Windows path: the raw JSON's escaped backslash before `t` is not a tab.
+check 2 "git -C C:\\tools\\repo reset --hard"
 
 # Blocked: a destructive command alone, or after another one.
 check 2 "git push -f"
