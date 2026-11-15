@@ -1,0 +1,163 @@
+package com.flightaggregator.bootstrap.config;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.flightaggregator.application.port.in.SearchCriteria;
+import com.flightaggregator.application.port.in.SearchItineraries;
+import com.flightaggregator.application.port.in.SearchPage;
+import com.flightaggregator.application.port.in.SearchQuery;
+import com.flightaggregator.application.port.in.SeekPosition;
+import com.flightaggregator.application.port.in.SortOrder;
+import com.flightaggregator.application.port.out.Clock;
+import com.flightaggregator.application.port.out.InventoryState;
+import com.flightaggregator.application.port.out.ItineraryReader;
+import com.flightaggregator.application.port.out.RefreshCoordination;
+import com.flightaggregator.application.port.out.RefreshScheduler;
+import com.flightaggregator.application.port.out.SearchCache;
+import com.flightaggregator.application.port.out.SearchKey;
+import com.flightaggregator.application.port.out.StoredPage;
+import com.flightaggregator.application.service.SearchItinerariesService;
+import com.flightaggregator.domain.Airport;
+import com.flightaggregator.domain.Itinerary;
+import com.flightaggregator.domain.ItineraryId;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+
+/**
+ * The search use case SearchConfig declares, with the application's own settings, over a reader, a
+ * cache, a coordination and a scheduler the test holds.
+ */
+class SearchConfigTest {
+
+  private static final Instant NOW = Instant.parse("2026-11-20T08:00:00Z");
+  private static final Airport MADRID = new Airport("MAD");
+
+  /** When the inventory the reader serves was published. */
+  private Instant publishedAt = NOW;
+
+  /** Every origin whose refresh was requested, in order. */
+  private final List<Airport> requested = new ArrayList<>();
+
+  private final ApplicationContextRunner runner =
+      new ApplicationContextRunner()
+          .withInitializer(new ConfigDataApplicationContextInitializer())
+          .withUserConfiguration(SearchConfig.class)
+          .withBean(ItineraryReader.class, () -> new Published())
+          .withBean(SearchCache.class, NothingCached::new)
+          .withBean(RefreshCoordination.class, EveryClaimGranted::new)
+          .withBean("backgroundRefresh", RefreshScheduler.class, () -> requested::add)
+          .withBean(Clock.class, () -> () -> NOW);
+
+  @Test
+  void declaresTheSearchUseCase() {
+    runner.run(
+        context ->
+            assertThat(context)
+                .getBean(SearchItineraries.class)
+                .isInstanceOf(SearchItinerariesService.class));
+  }
+
+  /**
+   * §6.4: with the application's settings, a search from an origin published 10 min ago asks for no
+   * refresh, and one published a second longer ago asks for one.
+   */
+  @ParameterizedTest
+  @CsvSource({"PT10M, 0", "PT10M1S, 1"})
+  void asksToRefreshAnOriginOnlyOnceItIsMoreThanTenMinutesOld(Duration age, int refreshes) {
+    publishedAt = NOW.minus(age);
+    SearchCriteria fromMadrid =
+        new SearchCriteria(
+            Optional.of(MADRID),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            SortOrder.PRICE);
+
+    runner.run(
+        context -> {
+          context
+              .getBean(SearchItineraries.class)
+              .search(new SearchQuery(fromMadrid, 20, Optional.empty()));
+
+          assertThat(requested).hasSize(refreshes);
+        });
+  }
+
+  /**
+   * The user's decision of 2026-11-15: RefreshConfig's provisional scheduler cannot stay beside the
+   * one Task 7 builds, here the test's own. With both, the search use case has two to choose from,
+   * and startup stops instead of picking one silently.
+   */
+  @Test
+  void refusesToStartWithTheProvisionalSchedulerBesideAnother() {
+    runner
+        .withUserConfiguration(RefreshConfig.class)
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .hasRootCauseInstanceOf(NoUniqueBeanDefinitionException.class)
+                  .hasStackTraceContaining(RefreshScheduler.class.getName());
+            });
+  }
+
+  /** An inventory of no rows, published at {@code publishedAt}. */
+  private final class Published implements ItineraryReader {
+
+    @Override
+    public InventoryState state() {
+      return new InventoryState(1, Optional.of(publishedAt));
+    }
+
+    @Override
+    public StoredPage page(
+        SearchCriteria criteria, Optional<SeekPosition> after, int limit, Instant now) {
+      return new StoredPage(1, List.of());
+    }
+
+    @Override
+    public Optional<Itinerary> byId(ItineraryId id) {
+      throw new UnsupportedOperationException();
+    }
+  }
+
+  /** A cache that keeps nothing. */
+  private static final class NothingCached implements SearchCache {
+
+    @Override
+    public Optional<SearchPage> get(SearchKey key) {
+      return Optional.empty();
+    }
+
+    @Override
+    public void put(SearchKey key, SearchPage page) {}
+  }
+
+  /** No origin was refreshed, and every claim is granted. */
+  private static final class EveryClaimGranted implements RefreshCoordination {
+
+    @Override
+    public Optional<Instant> refreshedAt(Airport origin) {
+      return Optional.empty();
+    }
+
+    @Override
+    public boolean claim(Airport origin) {
+      return true;
+    }
+
+    @Override
+    public void refreshed(Airport origin, Instant at) {
+      throw new UnsupportedOperationException();
+    }
+  }
+}
