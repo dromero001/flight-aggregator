@@ -111,15 +111,16 @@ public final class PagedDownload {
     List<DiscardedRecord> discarded = new ArrayList<>();
     Set<String> seen = new HashSet<>();
     Optional<String> position = Optional.empty();
-    for (int pages = 0; ; pages++) {
+    for (int number = 1; ; number++) {
       if (Thread.currentThread().isInterrupted()) {
         throw new InterruptedException("The download was cancelled");
       }
       ParsedPage page = source.page(position);
       legs.addAll(page.legs());
       discarded.addAll(page.discarded());
-      int number = pages + 1;
-      page.announcedPages().ifPresent(announced -> checkAnnounced(announced, number));
+      if (page.announcedPages().isPresent()) {
+        checkAnnounced(page.announcedPages().get(), number);
+      }
       position = page.next();
       if (position.isEmpty()) {
         break;
@@ -129,12 +130,12 @@ public final class PagedDownload {
             "The position "
                 + LoggedText.quoted(position.get())
                 + " came back after "
-                + (pages + 1)
+                + number
                 + " pages");
       }
-      if (pages + 1 == settings.maxPages()) {
+      if (number == settings.maxPages()) {
         throw paginationLimit(
-            "Page " + (pages + 1) + " points to a page past the maximum of " + settings.maxPages());
+            "Page " + number + " points to a page past the maximum of " + settings.maxPages());
       }
     }
     return new ProviderDownload(legs, discarded);

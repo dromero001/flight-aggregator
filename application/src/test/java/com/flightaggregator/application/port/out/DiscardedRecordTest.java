@@ -32,4 +32,10 @@ class DiscardedRecordTest {
     assertThat(new DiscardedRecord(DiscardReason.SHAPE, text).excerpt())
         .isEqualTo("a".repeat(198) + "😀");
   }
+
+  @Test
+  void escapesLineBreaksAndOtherControlCharacters() {
+    assertThat(new DiscardedRecord(DiscardReason.SHAPE, "a\nERROR forged\r\tb\u0001").excerpt())
+        .isEqualTo("a\\nERROR forged\\r\\tb\\u0001");
+  }
 }

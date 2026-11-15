@@ -12,8 +12,13 @@ public final class LoggedText {
 
   private LoggedText() {}
 
+  /** The cut never splits a surrogate pair. */
+  private static int cutAt(String text) {
+    return Character.isHighSurrogate(text.charAt(LIMIT - 1)) ? LIMIT - 1 : LIMIT;
+  }
+
   public static String quoted(String text) {
-    String cut = text.length() <= LIMIT ? text : text.substring(0, LIMIT);
+    String cut = text.length() <= LIMIT ? text : text.substring(0, cutAt(text));
     return "\"" + new String(JsonStringEncoder.getInstance().quoteAsCharArray(cut)) + "\"";
   }
 }

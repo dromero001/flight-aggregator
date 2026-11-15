@@ -16,4 +16,10 @@ class LoggedTextTest {
   void cutsTheTextAtTwoHundredCharacters() {
     assertThat(LoggedText.quoted("a".repeat(500))).isEqualTo("\"" + "a".repeat(200) + "\"");
   }
+
+  @Test
+  void neverSplitsASurrogatePairWhenCutting() {
+    assertThat(LoggedText.quoted("a".repeat(199) + "😀" + "tail"))
+        .isEqualTo("\"" + "a".repeat(199) + "\"");
+  }
 }
