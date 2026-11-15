@@ -2,26 +2,27 @@ package com.flightaggregator.adapter.web;
 
 import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.REQUIRED;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.flightaggregator.adapter.web.ItineraryResponse.Price;
 import com.flightaggregator.domain.Itinerary;
 import com.flightaggregator.domain.Money;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
- * What a re-price answers with a 200 (Q4-A): its outcome, the itinerary as a search writes it,
- * re-quoted live, and, by outcome, the price it was shown at or §6.5's notice. One body whose
- * {@code outcome} tells the dashboard which state to render (§6.8). Every field is always written,
- * the two that only one outcome has as null otherwise.
+ * What a re-price answers with a 200 (Q4-A): its outcome and the itinerary as a search writes it,
+ * re-quoted live, always; the price it was shown at only with {@code PRICE_CHANGED}, and §6.5's
+ * notice only with {@code ALTERNATIVE}. One body whose {@code outcome} tells the dashboard which
+ * state to render (§6.8). The two fields of one outcome each are left out, not written as null:
+ * springdoc cannot write a nullable reference to {@code Price} that OpenAPI 3.1 reads as one.
  */
 record RepriceResponse(
     @Schema(requiredMode = REQUIRED) Outcome outcome,
     @Schema(requiredMode = REQUIRED) ItineraryResponse itinerary,
-    @Schema(requiredMode = REQUIRED, description = "The price shown before; only PRICE_CHANGED")
+    @Schema(description = "The price shown before; only with PRICE_CHANGED")
+        @JsonInclude(JsonInclude.Include.NON_NULL)
         Price previousPrice,
-    @Schema(
-            requiredMode = REQUIRED,
-            types = {"string", "null"},
-            description = "Why another itinerary is offered; only ALTERNATIVE")
+    @Schema(description = "Why another itinerary is offered; only with ALTERNATIVE")
+        @JsonInclude(JsonInclude.Include.NON_NULL)
         String notice) {
 
   /** §6.5's text, word for word. */

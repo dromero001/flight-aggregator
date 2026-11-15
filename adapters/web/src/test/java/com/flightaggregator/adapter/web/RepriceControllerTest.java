@@ -14,8 +14,10 @@ import com.flightaggregator.domain.Itinerary;
 import com.flightaggregator.domain.Money;
 import com.flightaggregator.domain.Provider;
 import com.jayway.jsonpath.JsonPath;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -75,7 +77,7 @@ class RepriceControllerTest {
             "confirmed",
             new RepriceResult.Confirmed(MADRID_BARCELONA),
             """
-            {"outcome": "CONFIRMED", "previousPrice": null, "notice": null}
+            {"outcome": "CONFIRMED"}
             """),
         argumentSet(
             "price changed",
@@ -83,8 +85,7 @@ class RepriceControllerTest {
             """
             {
               "outcome": "PRICE_CHANGED",
-              "previousPrice": {"amount": "99.90", "currency": "EUR"},
-              "notice": null
+              "previousPrice": {"amount": "99.90", "currency": "EUR"}
             }
             """),
         argumentSet(
@@ -93,7 +94,6 @@ class RepriceControllerTest {
             """
             {
               "outcome": "ALTERNATIVE",
-              "previousPrice": null,
               "notice": "We couldn't confirm this flight. This is the best alternative we found."
             }
             """));
@@ -101,7 +101,8 @@ class RepriceControllerTest {
 
   /**
    * Q4-A: each outcome the dashboard renders is a 200 with its outcome and the itinerary, as a
-   * search writes it; a changed price says what it was, and an alternative carries §6.5's notice.
+   * search writes it; a changed price comes with what it was, and an alternative with §6.5's
+   * notice. A field that only another outcome has is not written.
    */
   @ParameterizedTest
   @MethodSource("outcomes")
@@ -119,8 +120,10 @@ class RepriceControllerTest {
             .getResponse()
             .getContentAsString();
 
+    Set<String> fields = new HashSet<>(JsonPath.<Map<String, Object>>read(expected, "$").keySet());
+    fields.add("itinerary");
     assertThat(JsonPath.<Map<String, Object>>read(body, "$").keySet())
-        .containsExactlyInAnyOrder("outcome", "itinerary", "previousPrice", "notice");
+        .containsExactlyInAnyOrderElementsOf(fields);
     assertThat(reprice.ids()).containsExactly(MADRID_BARCELONA.id());
   }
 

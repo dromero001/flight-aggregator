@@ -114,10 +114,126 @@
               }
             },
             "description" : "A parameter or the cursor is not valid; the detail names it"
+          },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Too many searches from this address; try again after Retry-After",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "How many seconds to wait before asking again",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "minimum" : 0
+                },
+                "style" : "simple"
+              }
+            }
           }
         },
         "tags" : [
           "search-controller"
+        ]
+      }
+    },
+    "/api/itineraries/{id}/reprice" : {
+      "post" : {
+        "operationId" : "reprice",
+        "parameters" : [
+          {
+            "description" : "The id of the chosen itinerary, as the search gave it",
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "type" : "string",
+              "format" : "uuid",
+              "pattern" : "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RepriceResponse"
+                }
+              }
+            },
+            "description" : "The choice confirmed, at its price or a new one, or the best alternative"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "The id is not an itinerary id"
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "No itinerary with this id is on sale; search again"
+          },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Too many re-prices from this address; try again after Retry-After",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "How many seconds to wait before asking again",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "minimum" : 0
+                },
+                "style" : "simple"
+              }
+            }
+          },
+          "503" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Nothing could be confirmed; try again after Retry-After",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "How many seconds to wait before asking again",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "minimum" : 0
+                },
+                "style" : "simple"
+              }
+            }
+          }
+        },
+        "tags" : [
+          "reprice-controller"
         ]
       }
     }
@@ -255,6 +371,34 @@
             "format" : "uri"
           }
         }
+      },
+      "RepriceResponse" : {
+        "type" : "object",
+        "properties" : {
+          "itinerary" : {
+            "$ref" : "#/components/schemas/ItineraryResponse"
+          },
+          "notice" : {
+            "type" : "string",
+            "description" : "Why another itinerary is offered; only with ALTERNATIVE"
+          },
+          "outcome" : {
+            "type" : "string",
+            "enum" : [
+              "CONFIRMED",
+              "PRICE_CHANGED",
+              "ALTERNATIVE"
+            ]
+          },
+          "previousPrice" : {
+            "$ref" : "#/components/schemas/Price",
+            "description" : "The price shown before; only with PRICE_CHANGED"
+          }
+        },
+        "required" : [
+          "itinerary",
+          "outcome"
+        ]
       },
       "SearchResponse" : {
         "type" : "object",

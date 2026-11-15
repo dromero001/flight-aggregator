@@ -9,6 +9,8 @@ dependencies {
     implementation(libs.spring.web)
     // The rate limit is a Spring MVC interceptor (§6.6).
     implementation(libs.spring.webmvc)
+    // A re-price leaves out the fields its outcome does not have.
+    implementation(libs.jackson.annotations)
     // The servlet container provides the servlet API at run time, Tomcat's own copy of it.
     compileOnly(libs.jakarta.servlet.api)
     // The OpenAPI contract, generated from the controllers (§6.8, §6.11). Outside Boot's BOM, so

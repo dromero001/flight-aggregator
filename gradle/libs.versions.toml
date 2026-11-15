@@ -39,6 +39,8 @@ jakarta-servlet-api = { module = "jakarta.servlet:jakarta.servlet-api" }
 spring-jdbc = { module = "org.springframework:spring-jdbc" }
 postgresql = { module = "org.postgresql:postgresql" }
 jackson-databind = { module = "tools.jackson.core:jackson-databind" }
+# Jackson 3 keeps its annotations in Jackson 2's package and artifact.
+jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations" }
 resilience4j-circuitbreaker = { module = "io.github.resilience4j:resilience4j-circuitbreaker", version.ref = "resilience4j" }
 resilience4j-timelimiter = { module = "io.github.resilience4j:resilience4j-timelimiter", version.ref = "resilience4j" }
 resilience4j-micrometer = { module = "io.github.resilience4j:resilience4j-micrometer", version.ref = "resilience4j" }
