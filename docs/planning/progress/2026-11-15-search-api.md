@@ -630,3 +630,17 @@ Evidence, one test at a time. The reds of the first three tests were seen in thi
   - M-g, "the pages' episode lasts twice the TTL": `Expecting actual: [(WARN, [unloggedRepeats="0"])] to contain exactly (and in same order): [(WARN, [unloggedRepeats="0"]), (WARN, [unloggedRepeats="3"])]`.
 
 What it does not do: the count of an episode's unlogged values is told only by the next episode's first WARN, which may come much later or never; `search.cache{result=error}` has the exact count for pages at any time, and marks have none.
+
+### Self-review (thermo-nuclear) and gates
+
+- Existing mechanisms first: Resilience4j's `releasePermission()` for C-R1 (direct, rather than its "ignored exception releases the permission" rule, which a reader would have to know); Resilience4j's own Micrometer binding and `CircuitBreakerMetricNames` for the meter; the application's `Clock` port for the episodes; Logback's `DuplicateMessageFilter` looked at and rejected, for the reason above.
+- No branch added to a flow outside the Valkey adapter and its wiring. `SearchProperties` gained one check for the one setting whose floor is not zero, beside the shared `require`.
+- No file near 1,000 lines: `ValkeyFailuresTest` 338, `ValkeySearchCacheTest` 294, `ValkeyFailures` 118, `EpisodeWarning` 63.
+- Nothing left half-applied: the breaker's state is Resilience4j's; an episode is one atomic reference.
+- What can still go unnoticed: an episode's last count is told only by a later WARN (see above). `recordExceptions(DataAccessException.class)` in `ValkeyFailures.circuitBreakerConfig` no longer decides anything, since only a `DataAccessException` now reaches `onError`; it was left as it is, outside this round's items.
+- Gates: `./gradlew build --continue` green (exit 0) before each of this round's commits, coverage gate included, after `./gradlew spotlessApply` where Spotless asked. Totals at the end: persistence 103, bootstrap 111, application 64, domain 91, providers 197, mock-gds 201, architecture 39, none failed. No container connection failure was seen in this round.
+
+### Extras for the user to decide
+
+- **A floor of 1 ms for the three times to live too.** `cache-ttl`, `freshness-threshold` and `refresh-claim-ttl` under a millisecond pass `require` and reach Spring Data Redis as zero milliseconds (`Expiration.from`); whether Valkey then refuses each write (which the stores would take for an outage) or keeps the key without expiry was not checked. Value: the same clear refusal at startup as `valkey-skip`. Cost: `require`'s rule changed to "at least 1 ms" and three test cases. Left out unless you approve.
+- **The hang guard for the two other concurrent Valkey tests.** `letsOneCallAtATimeProbeValkey` and `warnsOnceHoweverManyProbesFail` already assert counts, but still sit under `whileDown`'s 500 ms bound, the flake risk C-R2 removed from the burst and first-connection tests. Value: no wall-clock failure on a loaded CI runner. Cost: two lines in tests. Left out unless you approve.
