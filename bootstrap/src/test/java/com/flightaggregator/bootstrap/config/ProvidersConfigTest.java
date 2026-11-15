@@ -1,19 +1,28 @@
 package com.flightaggregator.bootstrap.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.flightaggregator.adapter.provider.ProviderEndpoint;
 import com.flightaggregator.adapter.provider.ProviderHttp;
 import com.flightaggregator.adapter.provider.ResilienceSettings;
 import com.flightaggregator.application.port.out.FlightProvider;
+import com.flightaggregator.bootstrap.observability.LoggedBreakerTransitions;
 import com.flightaggregator.domain.Provider;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.ApplicationContext;
 
@@ -22,6 +31,7 @@ class ProvidersConfigTest {
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
           .withUserConfiguration(ProvidersConfig.class, SystemClock.class)
+          .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
           .withPropertyValues(
               "providers.alpha.base-url=http://alpha.test/",
               "providers.alpha.api-key=alpha-key",
@@ -109,6 +119,58 @@ class ProvidersConfigTest {
               .extracting(CircuitBreaker::getCircuitBreakerConfig)
               .containsOnly(ProviderHttp.circuitBreakerConfig());
         });
+  }
+
+  /** Each provider's breaker is seen in the metrics (§6.10), under the provider's name. */
+  @Test
+  void measuresEachBreakersState() {
+    runner.run(
+        context -> {
+          MeterRegistry meters = context.getBean(MeterRegistry.class);
+          for (Provider provider : Provider.values()) {
+            assertThat(
+                    meters
+                        .get("resilience4j.circuitbreaker.state")
+                        .tag("name", provider.name())
+                        .tag("state", "closed")
+                        .gauge()
+                        .value())
+                .as(provider.name())
+                .isEqualTo(1);
+          }
+        });
+  }
+
+  /** A breaker that opens, or probes again, is one warning naming the provider and both states. */
+  @Test
+  void warnsOnEachStateTransitionOfABreaker() {
+    Logger logger = (Logger) LoggerFactory.getLogger(LoggedBreakerTransitions.class);
+    ListAppender<ILoggingEvent> log = new ListAppender<>();
+    log.start();
+    logger.addAppender(log);
+    try {
+      runner.run(
+          context -> {
+            CircuitBreaker beta =
+                context.getBean(CircuitBreakerRegistry.class).circuitBreaker("BETA");
+
+            beta.transitionToOpenState();
+            beta.transitionToHalfOpenState();
+          });
+    } finally {
+      logger.detachAppender(log);
+    }
+
+    assertThat(log.list)
+        .extracting(ILoggingEvent::getLevel, ProvidersConfigTest::fields)
+        .containsExactly(
+            tuple(Level.WARN, "provider=BETA from=CLOSED to=OPEN"),
+            tuple(Level.WARN, "provider=BETA from=OPEN to=HALF_OPEN"));
+  }
+
+  private static String fields(ILoggingEvent event) {
+    return String.join(
+        " ", event.getKeyValuePairs().stream().map(pair -> pair.key + "=" + pair.value).toList());
   }
 
   /** The wired providers, in {@code Provider} order. */

@@ -4,8 +4,11 @@ import com.flightaggregator.adapter.provider.PagedProvider;
 import com.flightaggregator.adapter.provider.ProviderHttp;
 import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.FlightProvider;
+import com.flightaggregator.bootstrap.observability.LoggedBreakerTransitions;
 import com.flightaggregator.domain.Provider;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.github.resilience4j.micrometer.tagged.TaggedCircuitBreakerMetrics;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,9 +21,18 @@ import org.springframework.context.annotation.Configuration;
 @EnableConfigurationProperties(ProvidersProperties.class)
 class ProvidersConfig {
 
+  /**
+   * Each breaker's state and calls are meters, tagged with its name, the provider's, and each of
+   * its state transitions is a warning (§6.10). Both watch the registry before any breaker is
+   * created.
+   */
   @Bean
-  CircuitBreakerRegistry circuitBreakers() {
-    return CircuitBreakerRegistry.of(ProviderHttp.circuitBreakerConfig());
+  CircuitBreakerRegistry circuitBreakers(MeterRegistry meters) {
+    CircuitBreakerRegistry circuitBreakers =
+        CircuitBreakerRegistry.of(ProviderHttp.circuitBreakerConfig());
+    TaggedCircuitBreakerMetrics.ofCircuitBreakerRegistry(circuitBreakers).bindTo(meters);
+    LoggedBreakerTransitions.of(circuitBreakers);
+    return circuitBreakers;
   }
 
   @Bean

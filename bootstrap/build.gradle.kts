@@ -17,6 +17,8 @@ dependencies {
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.jackson)
     implementation(libs.resilience4j.circuitbreaker)
+    // Binds the breakers' state and calls to Micrometer (§6.1, §6.10).
+    implementation(libs.resilience4j.micrometer)
     implementation(libs.shedlock.core)
     implementation(libs.shedlock.provider.jdbc.template)
     // Flyway 10+ reads PostgreSQL through this module; no code uses it.
