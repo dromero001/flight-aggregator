@@ -257,3 +257,12 @@ Worktree branch `worktree-agent-a8e417b828cfc77d3`, from `main` at `9e6674e` (pl
 
 ### Extras for the user to decide
 - None built. A possible simplification, not taken because the plan names the test: `openapi-typescript --check` compares the generated types with the file itself, so if `schema.d.ts` were left unformatted (in `.prettierignore`), `api:check` could be that one CLI call and `schema.test.ts` would go. Value: one file and the Node-test `tsconfig` exception less. Cost: the generated file stops following Prettier. Left out unless you approve.
+
+## Task 2 — review
+
+The double review (`.superpowers/sdd/2026-11-15-dashboard/task-2-review.md`) answered functional APPROVED and code APPROVED, with no Critical or Important finding. The reviewer ran `npm run verify`, `npm run api:check` and `./gradlew build` in a scratch clone (green), showed the drift test red on a changed `schema.d.ts`, a changed contract and a deleted file with Vitest's cache warm, and confirmed both pins with `npm view`. Both of the implementer's concerns are real and belong to Task 5 (the plan is amended under Tasks 5, 6 and 7): `baseUrl: ''` cannot be parsed under jsdom, and `toApiError` must run in an `onResponse` middleware, before `openapi-fetch` reads the body. Six Minors wait for the end-of-plan review (a Minor opens no round of its own):
+- F-1: `npm run verify` already runs the drift test, so on drift the "Contract drift" step never runs; move it before `npm run verify` (`ci.yml:64-69`).
+- F-2, F-3: the base URL and where `toApiError` is called; covered by the plan amendments.
+- C-1: a `Retry-After` that is not whole seconds (an HTTP date) becomes `NaN` (`apiError.ts:37`).
+- C-2: an invalid `problem+json` body makes `toApiError` reject with a `SyntaxError`; the media-type test is case-sensitive (`apiError.ts:31-32`).
+- C-3: the drift test resolves Prettier without `.editorconfig`, unlike the CLI that writes the file; the path is built with `.pathname` instead of `fileURLToPath` (`schema.test.ts:15-16`).
