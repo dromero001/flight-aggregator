@@ -40,7 +40,7 @@ Roadmap: [plan 3](../roadmap.md).
   - `BAD_DATE`: the departure is written as `Defect.INVALID_DATE_TEXT`.
   - `NEGATIVE_PRICE`: the price is negated.
   - `UNKNOWN_AIRPORT`: the destination is `Defect.UNKNOWN_AIRPORT_CODE`.
-- **API keys (§6.6):** each provider requires its own key. A missing or wrong key gets `401`. Keys come from configuration (environment variables), and none is ever logged.
+- **API keys (§6.6):** each provider requires its own key. A missing or wrong key gets `401`. Keys come from configuration (environment variables), and none is ever logged. **Qualified in fix round 2 (N1):** the mock never logs one, but Spring Boot's startup report of an unknown setting prints its value, so a key under a misspelt name is printed.
 - **Latency and errors (user's decision):** by default, uniform latency of 100–5000 ms per request and a 5% rate of HTTP 500s. Both are configurable per provider through environment variables. Tests set them to 0. **Replaced by the user's decision D1** (below): a long tail, with 90% of the requests at 100–1000 ms and a configurable slow share of 10% at 1000–5000 ms; the 5% of 500s stays.
 - **Gates:** `./gradlew build` is green before every commit, with Spotless, ArchUnit and JaCoCo (90% lines, 80% branches). TDD, one test at a time. The red → green evidence goes to `docs/planning/progress/2026-11-15.md`, section "Mock GDS run (plan 3)".
 - **Scope (`brief-scope`):** only what this plan lists. An extra found mid-task goes to the progress report under "Extras for the user to decide".
