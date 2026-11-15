@@ -232,7 +232,8 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 ### Task 6: Alpha: JSON with a cursor
 
 **Files:**
-- Create: `adapter/provider/alpha/AlphaProvider.java` (implements `FlightProvider`), `alpha/AlphaPageParser.java`; `adapter/provider/PagedDownload.java` (shared bounds)
+- Modify: `gradle/libs.versions.toml`, `adapters/providers/build.gradle.kts` (`resilience4j-timelimiter` 2.4.0, the same version as the circuit breaker)
+- Create: `adapter/provider/alpha/AlphaProvider.java` (implements `FlightProvider`), `alpha/AlphaPageParser.java`; `adapter/provider/PagedDownload.java` (shared bounds and the download's time budget)
 - Test: `alpha/AlphaPageParserTest.java`, `alpha/AlphaProviderTest.java` (WireMock), `PagedDownloadTest.java`
 
 **Interfaces:**
@@ -241,7 +242,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
   - `record ParsedPage(List<Leg> legs, List<DiscardedRecord> discarded, Optional<String> next)`: shared by the three parsers (create it in this task, in `adapter.provider`).
   - `AlphaPageParser.parse(String body, Instant quotedAt) → ParsedPage`: the format `{"legs":[{"carrier","flightNumber","origin","destination","departureTime","arrivalTime","price"}],"nextCursor":…}` as `mock-gds/.../alpha/AlphaJson.java` writes it; `price` must be a JSON string, `flightNumber` a JSON integer.
   - `final class PagedDownload`, built from `(Provider, ResilienceSettings, TimeLimiter)`: drives `next` positions and throws `ProviderUnavailableException(PAGINATION_LIMIT)` when a position repeats or `maxPages` is passed. It runs the whole page loop inside the provider's Resilience4j `TimeLimiter` (`timeoutDuration` = `downloadTimeout`, `cancelRunningFuture` true), on a virtual thread; past the budget it throws `ProviderUnavailableException(TIMEOUT)`, and the loop checks the thread's interrupt flag before each page, so a cancelled download requests no further page. The page in flight is bounded by its own request timeout.
-  - `AlphaProvider(ProviderHttp, ResilienceSettings)`: `GET /alpha/legs?limit=<pageSize>[&cursor=…]` until `nextCursor` is `null`.
+  - `AlphaProvider(ProviderHttp, PagedDownload, ResilienceSettings)`: `GET /alpha/legs?limit=<pageSize>[&cursor=…]` until `nextCursor` is `null`, the page loop run through `PagedDownload`. Beta and Gamma take the same three arguments.
 
 - [ ] **Step 1: `AlphaPageParserTest`, one test at a time,** on golden bodies copied from the mock's `AlphaJsonTest`: `parsesAValidLeg`; `discardsEachOfTheMocksDefects` (`MISSING_FIELD` → `FLIGHT_NUMBER`, `BAD_DATE` → `TIME`, `NEGATIVE_PRICE` → `PRICE`; `UNKNOWN_AIRPORT` parses, since only the catalogue catches it) with the valid neighbours kept; `discardsANumericPrice` (`"price":129.9` → `PRICE`); `discardsANonObjectRecord` (`SHAPE`); `failsAPageThatIsNotJson` (`MALFORMED_PAGE`); `readsTheNextCursorAndTheEnd`.
 - [ ] **Step 2: `PagedDownloadTest`, one test at a time:** `failsADownloadThatRepeatsAPosition`, `failsADownloadPastTheMaximumPages` (Review Focus 3); `failsADownloadPastItsTimeBudget` (a fake page source that takes 100 ms per page, a 250 ms budget and 10 pages → `TIMEOUT`, raised within 400 ms); `requestsNoPageAfterTheBudget` (same setup: the fake records at most 3 page requests, and none after the exception, checked 300 ms later).
@@ -270,7 +271,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 
 **Interfaces:**
 - Consumes: as Task 7.
-- Produces: `GammaPageParser.parse(String body, Instant quotedAt, int limit) → ParsedPage` for `mock-gds/.../gamma/GammaCsv.java`'s format; columns are found by header name; `next` is `offset + limit` when the page has `limit` rows. `GammaProvider`: `GET /gamma/legs.csv?offset=<n>&limit=<pageSize>`.
+- Produces: `GammaPageParser.parse(String body, Instant quotedAt, int offset, int limit) → ParsedPage` for `mock-gds/.../gamma/GammaCsv.java`'s format; columns are found by header name; `next` is `offset + limit` when the page has `limit` rows. `GammaProvider`: `GET /gamma/legs.csv?offset=<n>&limit=<pageSize>`.
 
 - [ ] **Step 1: `GammaPageParserTest`, one test at a time,** on golden bodies from the mock's `GammaCsvTest`: `parsesAValidRow`; `readsColumnsByHeaderName` (reordered columns parse the same); `discardsEachOfTheMocksDefects`; `discardsARowWithTheWrongCellCount` (`SHAPE`); `failsAPageWithoutARequiredColumn` (`MALFORMED_PAGE`); `endsOnAShortPageAndOnAHeaderOnlyPage`.
 - [ ] **Step 2: `GammaProviderTest.downloadsEveryPageInOrder`.**
@@ -280,7 +281,7 @@ Extras: none. The one proposed, an 8 MB limit on each provider response body, wa
 
 **Files:**
 - Modify: `bootstrap/build.gradle.kts` (Boot plugin, starters: JDBC, Flyway with `flyway-database-postgresql`, Actuator, Jackson; `spring-boot-testcontainers`), `coverage/build.gradle.kts` (exclude `**/bootstrap/FlightAggregatorApplication.class` by name)
-- Create in `bootstrap/src/main/java/com/flightaggregator/bootstrap/`: `FlightAggregatorApplication.java`; `config/ProvidersConfig.java` (the three adapters, one breaker each), `config/ProvidersProperties.java`, `config/PersistenceConfig.java`, `config/IngestionConfig.java` (the service), `config/SystemClock.java`; `observability/LoggedDiscardedRecords.java`; `src/main/resources/application.yaml`
+- Create in `bootstrap/src/main/java/com/flightaggregator/bootstrap/`: `FlightAggregatorApplication.java`; `config/ProvidersConfig.java` (the three adapters, one circuit breaker and one time limiter each), `config/ProvidersProperties.java`, `config/PersistenceConfig.java`, `config/IngestionConfig.java` (the service), `config/SystemClock.java`; `observability/LoggedDiscardedRecords.java`; `src/main/resources/application.yaml`
 - Test: `FlightAggregatorApplicationTest.java`, `observability/LoggedDiscardedRecordsTest.java`
 
 **Interfaces:**
