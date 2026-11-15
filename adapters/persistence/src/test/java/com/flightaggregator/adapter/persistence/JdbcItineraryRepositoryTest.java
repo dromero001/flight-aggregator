@@ -21,12 +21,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.stream.IntStream;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -266,18 +267,24 @@ class JdbcItineraryRepositoryTest {
     assertThat(published()).isEqualTo(new Published("a", 0, null));
   }
 
-  @Test
-  void failsOnAPartitionOfTheSlotItDidNotName() {
+  /**
+   * A name with another word, one shorter than the slot's prefix, and eight digits that are no day.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"itinerary_b_archive", "itin", "itinerary_b_20261399"})
+  void failsOnAPartitionOfTheSlotItDidNotName(String partition) {
     jdbc.sql(
-            "CREATE TABLE itinerary_b_archive PARTITION OF itinerary_b"
+            "CREATE TABLE "
+                + partition
+                + " PARTITION OF itinerary_b"
                 + " FOR VALUES FROM ('2026-01-01T00:00:00Z') TO ('2026-02-01T00:00:00Z')")
         .update();
 
     assertThatThrownBy(() -> publish(NOW, List.of(direct(1, "2026-11-25T07:15:00Z"))))
-        .isInstanceOf(DateTimeParseException.class)
-        .hasMessageContaining("archive");
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("itinerary_b has a partition the repository did not create: " + partition);
 
     assertThat(published()).isEqualTo(new Published("a", 0, null));
-    assertThat(partitions("itinerary_b")).contains("itinerary_b_archive");
+    assertThat(partitions("itinerary_b")).contains(partition);
   }
 }
