@@ -6,6 +6,7 @@ import com.flightaggregator.application.port.in.ProviderReport;
 import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.FailureReason;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
 import net.javacrumbs.shedlock.core.LockConfiguration;
@@ -69,11 +70,12 @@ public final class IngestionJob {
   public void run() {
     // Removed in the finally, after the catch, so that a failed run's ERROR line carries it too.
     MDC.put(RUN_ID, UUID.randomUUID().toString());
+    Instant startedAt = clock.now();
     try {
       TaskResult<IngestionReport> run =
           locks.executeWithLock(
               this::ingestOnce,
-              new LockConfiguration(clock.now(), LOCK, LOCK_AT_MOST_FOR, LOCK_AT_LEAST_FOR));
+              new LockConfiguration(startedAt, LOCK, LOCK_AT_MOST_FOR, LOCK_AT_LEAST_FOR));
       if (!run.wasExecuted()) {
         LOG.info("Skipped an ingestion run: another instance holds its lock");
       }
@@ -81,7 +83,7 @@ public final class IngestionJob {
       // A runtime exception or an error: the run throws no checked exception, though ShedLock's
       // signature declares one.
       LOG.atError().setCause(e).log("An ingestion run failed");
-      metrics.recordFailedRun();
+      metrics.recordFailedRun(Duration.between(startedAt, clock.now()));
       if (e instanceof Error error) {
         // The JVM may be in trouble: counted and logged, then left to the scheduler, never kept.
         throw error;

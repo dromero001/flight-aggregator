@@ -22,6 +22,7 @@ import com.flightaggregator.application.port.in.IngestInventory;
 import com.flightaggregator.application.port.in.IngestionReport;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.Publication;
+import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.sql.SQLException;
@@ -31,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import net.javacrumbs.shedlock.core.DefaultLockingTaskExecutor;
@@ -128,6 +130,26 @@ class IngestionJobTest {
                     .isSameAs(outOfMemory));
     assertThat(runs("FAILED")).isEqualTo(1);
     assertThat(meters.get("ingestion.consecutive.failures").gauge().value()).isEqualTo(1);
+  }
+
+  /** A failed run is timed like any other, under its outcome, from the run's start to its end. */
+  @Test
+  void timesARunThatFails() {
+    Iterator<Instant> instants = List.of(STARTED_AT, STARTED_AT.plusSeconds(5)).iterator();
+    IngestionJob job =
+        new IngestionJob(
+            () -> {
+              throw new IllegalStateException("database down");
+            },
+            metrics,
+            new DefaultLockingTaskExecutor(configuration -> Optional.of(() -> {})),
+            instants::next);
+
+    job.run();
+
+    Timer failed = meters.get("ingestion.duration").tag("outcome", "FAILED").timer();
+    assertThat(failed.count()).isEqualTo(1);
+    assertThat(failed.totalTime(TimeUnit.SECONDS)).isEqualTo(5);
   }
 
   /**

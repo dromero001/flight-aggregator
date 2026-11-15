@@ -78,7 +78,7 @@ class IngestionMetricsTest {
   void countsConsecutiveFailuresUntilAPublishedRun() {
     metrics.record(unpublished(IngestionReport.Outcome.CEILING_EXCEEDED, fresh(ALPHA)));
     metrics.record(unpublished(IngestionReport.Outcome.CEILING_EXCEEDED, fresh(ALPHA)));
-    metrics.recordFailedRun();
+    metrics.recordFailedRun(Duration.ofSeconds(3));
 
     assertThat(gauge("ingestion.consecutive.failures")).isEqualTo(3);
     assertThat(meters.get("ingestion.runs").tag("outcome", "FAILED").counter().count())

@@ -69,7 +69,7 @@ Metrics use low-cardinality tags only (`provider`, `reason`, `outcome`, `status`
 
 | Meter | Meaning |
 |---|---|
-| `ingestion.duration{outcome}` | Timer of the runs that ended with a report |
+| `ingestion.duration{outcome}` | Timer of every run that was not skipped, `FAILED` for one that ended with an exception |
 | `ingestion.runs{outcome}` | Runs by outcome, `FAILED` for an exception |
 | `ingestion.consecutive.failures` | Runs in a row that failed: published nothing, ended with an exception, or published with no provider `FRESH`. It goes back to 0 only on a run that publishes with at least one fresh provider |
 | `ingestion.provider.downloads{provider,status,reason}` | Downloads, `FRESH` or `KEPT`, with the `FailureReason` (`none` when fresh) |

@@ -79,8 +79,9 @@ public final class IngestionMetrics {
     }
   }
 
-  /** A run that ended with an exception instead of a report. */
-  public void recordFailedRun() {
+  /** A run that ended with an exception instead of a report, timed under {@code FAILED}. */
+  public void recordFailedRun(Duration duration) {
+    meters.timer("ingestion.duration", "outcome", FAILED).record(duration);
     ended(FAILED, false);
   }
 
