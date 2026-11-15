@@ -21,11 +21,12 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Drives a provider's pages one after another, in order, and bounds the download: a position that
- * repeats or going past the maximum of pages fails it with {@code PAGINATION_LIMIT}, and so does
- * the time budget of the {@link TimeLimiter} with {@code TIMEOUT} (§6.1). The page loop runs on a
- * virtual thread under the limiter, which interrupts it past the budget; the page in flight is
- * bounded by its own request timeout, and no further page is requested. The limiter's {@code
- * timeoutDuration} is the provider's {@code downloadTimeout}, set where the limiter is built.
+ * repeats, a page count announced past the maximum, or going past the maximum of pages fails it
+ * with {@code PAGINATION_LIMIT}, and the time budget fails it with {@code TIMEOUT} (§6.1). The
+ * budget is the {@link TimeLimiter}'s, built by {@link #timeLimiterFor} from the provider's {@code
+ * downloadTimeout}; the constructor refuses a limiter with any other budget. The page loop runs on
+ * a virtual thread under the limiter, which interrupts it past the budget; the page in flight is
+ * bounded by its own request timeout, and no further page is requested.
  */
 public final class PagedDownload {
 
@@ -92,6 +93,18 @@ public final class PagedDownload {
         provider, FailureReason.PAGINATION_LIMIT, new IllegalStateException(detail));
   }
 
+  private void checkAnnounced(int announced, int pageNumber) {
+    if (announced > settings.maxPages()) {
+      throw paginationLimit(
+          "Page "
+              + pageNumber
+              + " announces "
+              + announced
+              + " pages, past the maximum of "
+              + settings.maxPages());
+    }
+  }
+
   /** The page loop. A cancelled download is interrupted, and requests no further page. */
   private ProviderDownload pages(PageSource source) throws InterruptedException {
     List<Leg> legs = new ArrayList<>();
@@ -105,13 +118,19 @@ public final class PagedDownload {
       ParsedPage page = source.page(position);
       legs.addAll(page.legs());
       discarded.addAll(page.discarded());
+      int number = pages + 1;
+      page.announcedPages().ifPresent(announced -> checkAnnounced(announced, number));
       position = page.next();
       if (position.isEmpty()) {
         break;
       }
       if (!seen.add(position.get())) {
         throw paginationLimit(
-            "The position \"" + position.get() + "\" came back after " + (pages + 1) + " pages");
+            "The position "
+                + LoggedText.quoted(position.get())
+                + " came back after "
+                + (pages + 1)
+                + " pages");
       }
       if (pages + 1 == settings.maxPages()) {
         throw paginationLimit(

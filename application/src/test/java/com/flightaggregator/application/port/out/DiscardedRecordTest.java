@@ -24,4 +24,12 @@ class DiscardedRecordTest {
 
     assertThat(new DiscardedRecord(DiscardReason.SHAPE, text).excerpt()).isEqualTo("a".repeat(199));
   }
+
+  @Test
+  void keepsASurrogatePairThatEndsExactlyAtTheLimit() {
+    String text = "a".repeat(198) + "😀" + "tail";
+
+    assertThat(new DiscardedRecord(DiscardReason.SHAPE, text).excerpt())
+        .isEqualTo("a".repeat(198) + "😀");
+  }
 }

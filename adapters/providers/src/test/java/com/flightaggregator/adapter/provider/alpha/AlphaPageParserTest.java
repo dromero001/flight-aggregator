@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
+import com.flightaggregator.adapter.provider.LoggedText;
 import com.flightaggregator.adapter.provider.ParsedPage;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
@@ -159,6 +160,20 @@ class AlphaPageParserTest {
               assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
               assertThat(e.getCause()).hasMessageContaining("nextCursor");
             });
+  }
+
+  @Test
+  void cutsAHugeCursorInTheFailureMessage() {
+    String body = "{\"legs\":[],\"nextCursor\":[\"" + "a".repeat(500) + "\"]}";
+
+    assertThatThrownBy(() -> AlphaPageParser.parse(body, QUOTED_AT))
+        .isInstanceOfSatisfying(
+            ProviderUnavailableException.class,
+            e ->
+                assertThat(e.getCause().getMessage())
+                    .isEqualTo(
+                        "The page's nextCursor is neither a string nor null: "
+                            + LoggedText.quoted("[\"" + "a".repeat(500) + "\"]")));
   }
 
   private static String pageOf(String... records) {

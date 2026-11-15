@@ -43,6 +43,25 @@ class PagedDownloadTest {
   }
 
   @Test
+  void quotesAndCutsARepeatedPositionInTheFailureMessage() {
+    PagedDownload download = downloadOf(10, Duration.ofSeconds(5));
+    String hostile = "x\r\nERROR forged " + "y".repeat(500);
+
+    assertThatThrownBy(
+            () ->
+                download.download(
+                    position -> new ParsedPage(List.of(), List.of(), Optional.of(hostile))))
+        .isInstanceOfSatisfying(
+            ProviderUnavailableException.class,
+            e ->
+                assertThat(e.getCause().getMessage())
+                    .isEqualTo(
+                        "The position " + LoggedText.quoted(hostile) + " came back after 2 pages")
+                    .doesNotContain("\r", "\n")
+                    .hasSizeLessThan(260));
+  }
+
+  @Test
   void failsADownloadPastTheMaximumPages() {
     PagedDownload download = downloadOf(3, Duration.ofSeconds(5));
     AtomicInteger requested = new AtomicInteger();
@@ -60,6 +79,46 @@ class PagedDownloadTest {
               assertThat(e.reason()).isEqualTo(FailureReason.PAGINATION_LIMIT);
               assertThat(e.getCause()).hasMessage("Page 3 points to a page past the maximum of 3");
             });
+    assertThat(requested).hasValue(3);
+  }
+
+  @Test
+  void failsAsSoonAsAPageAnnouncesMoreThanTheMaximumPages() {
+    PagedDownload download = downloadOf(3, Duration.ofSeconds(5));
+    AtomicInteger requested = new AtomicInteger();
+
+    assertThatThrownBy(
+            () ->
+                download.download(
+                    position -> {
+                      requested.incrementAndGet();
+                      return new ParsedPage(List.of(), List.of(), Optional.of("2"), Optional.of(4));
+                    }))
+        .isInstanceOfSatisfying(
+            ProviderUnavailableException.class,
+            e -> {
+              assertThat(e.reason()).isEqualTo(FailureReason.PAGINATION_LIMIT);
+              assertThat(e.getCause())
+                  .hasMessage("Page 1 announces 4 pages, past the maximum of 3");
+            });
+    assertThat(requested).hasValue(1);
+  }
+
+  @Test
+  void acceptsAnAnnouncementOfExactlyTheMaximumPages() {
+    PagedDownload download = downloadOf(3, Duration.ofSeconds(5));
+    AtomicInteger requested = new AtomicInteger();
+
+    download.download(
+        position -> {
+          int number = requested.incrementAndGet();
+          return new ParsedPage(
+              List.of(),
+              List.of(),
+              number < 3 ? Optional.of("page" + number) : Optional.empty(),
+              Optional.of(3));
+        });
+
     assertThat(requested).hasValue(3);
   }
 
