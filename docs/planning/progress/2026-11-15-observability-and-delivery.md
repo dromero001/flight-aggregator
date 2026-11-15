@@ -359,3 +359,40 @@ Prometheus alone, `docker compose -p plan7-task3 up -d --wait --no-deps promethe
   - One rule per condition, not one expression per alert. The value and stale conditions have different waits, and a range in place of `for` would fire at every start (see "Deviations").
   - Silent passes: a quiet expectation (`exp_alerts: []`) under a misspelled alert name would pass. Every quiet expectation is either in a case that also expects the alert to fire under the same name, or was shown red by a mutation (cases 6, 10 and 12). A test file that matches no rule file fails promtool, and no rule file fails `AlertRulesTest` (Step 1).
   - Sizes: the rule file has 77 lines, its tests 218 and `AlertRulesTest` 47.
+
+### The lint decision: B (the user's decision, after the first commit)
+
+The user chose B for the pending decision above. The stale-gauge rules carry the label `gauge: unknown`, so promtool's duplicate-rules lint passes. The rule checks run with `--lint-fatal`, so a later lint error fails the build. The extra (`PrometheusConfigTest` showing promtool's output) stays out.
+
+**Red, against the rules of `2260bd7`:**
+- `AlertRulesTest` with `promtool check rules --lint-fatal`: `lint error 3 duplicate rule(s) found. Metric: IngestionFailing ... PartitionHorizonShort ... ProviderDataStale ... expected: 0 but was: 3`.
+- `PrometheusConfigTest`'s builder with `promtool check config --lint-fatal`: `checksThePrometheusConfiguration` and `loadsTheRuleFilesButNotTheirPromtoolTests` red. The container exits with 3, and its log shows `lint error 3 duplicate rule(s) found`.
+- The five expectations of a stale alert (cases 3, 5, 7, 11 and 13) now expect `gauge: unknown` beside the alert's name. Run directly with the image's `promtool test rules`, before the label existed, each one failed: for example `exp: Labels:{alertname="IngestionFailing", gauge="unknown"}`, `got: Labels:{alertname="IngestionFailing"}`.
+  - The cases still select by alert name.
+  - The quiet cases (`exp_alerts: []`) do not change.
+
+**Green, in two steps:**
+1. The label on the four stale rules: `IngestionFailing`'s, `PartitionHorizonShort`'s and `ProviderDataStale`'s two. The lint then still failed: `lint error 1 duplicate rule(s) found. Metric: ProviderDataStale Label(s): gauge: unknown`. The lint compares a rule's own labels, and `ProviderDataStale`'s two stale rules (NaN per provider, and no series at all) had the same ones. My report's option B had counted four rules and missed this.
+2. Those two rules became one, with the same wait and label: `(group by (provider) (x) unless on (provider) (x == x)) or absent(x)`, `for: 15m`.
+   - Its summary keeps both texts: `{{ with $labels.provider }}Provider {{ . }}'s data age has been unknown on every instance for 15 minutes{{ else }}No instance has reported any provider's data age for 15 minutes{{ end }}`.
+   - Every alert now has one value rule and at most one stale rule: seven rules in all.
+   - No alert changes its labels (beyond `gauge`), its summary or its timing: cases 11, 12 and 13 pass unchanged except for the label.
+   - `AlertRulesTest` and the three `PrometheusConfigTest` tests are green.
+
+**Labelled mutations, each restored:**
+- The label removed from `PartitionHorizonShort`'s stale rule. `AlertRulesTest` failed with `lint error 1 duplicate rule(s) found. Metric: PartitionHorizonShort ... expected: 0 but was: 3`, and both `check config` tests failed on the same lint error.
+- `or absent(...)` removed from the merged rule: case 13 failed, `time: 15m, exp: Labels:{alertname="ProviderDataStale", gauge="unknown"} ... "No instance has reported any provider's data age for 15 minutes"`.
+- The per-provider half removed (only `absent(...)` left): case 11 failed, `time: 15m, exp: Labels:{alertname="ProviderDataStale", gauge="unknown", provider="GAMMA"}, got:[]`.
+- NaN on any instance (`group by (provider) (x != x)`) in place of the per-provider half: case 12 failed, `time: 20m, exp:[], got: Labels:{alertname="ProviderDataStale", gauge="unknown", provider="GAMMA"}`.
+
+**The run.** Prometheus alone, `docker compose -p plan7-task3 up -d --wait --no-deps prometheus`:
+- It loaded the group `ingestion` with seven rules, all `health: ok`, the three stale ones with the label `gauge: unknown`.
+- With no scrape job yet, the stale alerts were `pending`, as `{alertname: IngestionFailing, gauge: unknown}`, `{alertname: PartitionHorizonShort, gauge: unknown}` and `{alertname: ProviderDataStale, gauge: unknown}`.
+- Stopped with `down -v`; nothing of the project is left.
+
+**Self-review (thermo-nuclear).**
+- Merging `ProviderDataStale`'s two stale rules deletes a rule and leaves every alert with the same shape. The cost is one `with`/`else` in its summary, the template language's own way to handle a label that may be absent.
+- `--lint-fatal` is promtool's own switch. It is set once in each place that runs a check: `AlertRulesTest`'s `check rules`, and `PrometheusConfigTest`'s one builder for `check config`.
+- Nothing passes silently that failed before: a lint error now fails the build (shown above).
+
+**Gates.** `./gradlew build`: `BUILD SUCCESSFUL` (exit 0). `bootstrap:test` and the coverage verification ran again: 826 tests, none failed or skipped. The test count is unchanged, since the label and the merge are checked inside `AlertRulesTest`'s promtool run.

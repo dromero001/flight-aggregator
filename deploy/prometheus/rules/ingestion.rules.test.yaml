@@ -50,7 +50,8 @@ tests:
       - eval_time: 15m
         alertname: IngestionFailing
         exp_alerts:
-          - exp_labels: {}
+          - exp_labels:
+              gauge: unknown
             exp_annotations:
               summary: No instance has reported its failed ingestion runs for 15 minutes
 
@@ -87,7 +88,8 @@ tests:
       - eval_time: 15m
         alertname: PartitionHorizonShort
         exp_alerts:
-          - exp_labels: {}
+          - exp_labels:
+              gauge: unknown
             exp_annotations:
               summary: The partition horizon has been unknown on every instance for 15 minutes
 
@@ -113,7 +115,8 @@ tests:
       - eval_time: 15m
         alertname: PartitionHorizonShort
         exp_alerts:
-          - exp_labels: {}
+          - exp_labels:
+              gauge: unknown
             exp_annotations:
               summary: The partition horizon has been unknown on every instance for 15 minutes
 
@@ -187,6 +190,7 @@ tests:
         alertname: ProviderDataStale
         exp_alerts:
           - exp_labels:
+              gauge: unknown
               provider: GAMMA
             exp_annotations:
               summary: Provider GAMMA's data age has been unknown on every instance for 15 minutes
@@ -213,6 +217,7 @@ tests:
       - eval_time: 15m
         alertname: ProviderDataStale
         exp_alerts:
-          - exp_labels: {}
+          - exp_labels:
+              gauge: unknown
             exp_annotations:
               summary: No instance has reported any provider's data age for 15 minutes
