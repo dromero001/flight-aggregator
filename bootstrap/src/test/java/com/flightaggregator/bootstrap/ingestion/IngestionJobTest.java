@@ -42,6 +42,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.jdbc.UncategorizedSQLException;
 
@@ -256,6 +257,41 @@ class IngestionJobTest {
         .isSameAs(serverError);
   }
 
+  /**
+   * Every line of one run carries the same run id, in the logging context (§6.10), a new one each
+   * run, and the context is left as it was found.
+   */
+  @Test
+  void tagsEveryLineOfARunWithItsOwnRunId() {
+    IngestionJob job =
+        job(
+            () ->
+                published(
+                    new Publication(7, 1234, 2, Instant.parse("2026-12-28T00:00:00Z")),
+                    fresh(ALPHA),
+                    kept(BETA, FailureReason.HTTP_ERROR, new IOException("Server error 500"))));
+
+    job.run();
+    job.run();
+
+    List<String> runIds = log.list.stream().map(IngestionJobTest::runId).toList();
+    assertThat(runIds).hasSize(4).doesNotContainNull();
+    assertThat(runIds.get(0)).isEqualTo(runIds.get(1));
+    assertThat(runIds.get(2)).isEqualTo(runIds.get(3)).isNotEqualTo(runIds.get(0));
+    assertThat(MDC.get("correlation.id")).isNull();
+  }
+
+  /** A failed run's line is one of the run's lines too. */
+  @Test
+  void tagsTheLineOfAFailedRunWithItsRunId() {
+    job(() -> {
+          throw new IllegalStateException("database down");
+        })
+        .run();
+
+    assertThat(log.list).singleElement().extracting(IngestionJobTest::runId).isNotNull();
+  }
+
   /** A run that publishes nothing is a warning, so it is not lost among the runs that did. */
   @ParameterizedTest
   @EnumSource(
@@ -280,6 +316,10 @@ class IngestionJobTest {
         metrics,
         new DefaultLockingTaskExecutor(configuration -> Optional.of(() -> {})),
         () -> STARTED_AT);
+  }
+
+  private static String runId(ILoggingEvent event) {
+    return event.getMDCPropertyMap().get("correlation.id");
   }
 
   private static String fields(ILoggingEvent event) {

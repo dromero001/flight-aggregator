@@ -7,11 +7,13 @@ import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.FailureReason;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.UUID;
 import net.javacrumbs.shedlock.core.LockConfiguration;
 import net.javacrumbs.shedlock.core.LockingTaskExecutor;
 import net.javacrumbs.shedlock.core.LockingTaskExecutor.TaskResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.slf4j.spi.LoggingEventBuilder;
 import org.springframework.scheduling.annotation.Scheduled;
 
@@ -27,6 +29,12 @@ import org.springframework.scheduling.annotation.Scheduled;
 public final class IngestionJob {
 
   private static final Logger LOG = LoggerFactory.getLogger(IngestionJob.class);
+
+  /**
+   * The logging context's key of the run id, a new random UUID per run: every line of a run carries
+   * it (§6.10). It rides the MDC, which the log framework reads, not a Scoped Value (spec §6.1).
+   */
+  private static final String RUN_ID = "correlation.id";
 
   /** The ShedLock row that one instance at a time holds while it runs (§6.2). */
   private static final String LOCK = "ingestion";
@@ -59,6 +67,8 @@ public final class IngestionJob {
    */
   @Scheduled(initialDelay = 0, fixedDelayString = "${ingestion.interval}")
   public void run() {
+    // Removed in the finally, after the catch, so that a failed run's ERROR line carries it too.
+    MDC.put(RUN_ID, UUID.randomUUID().toString());
     try {
       TaskResult<IngestionReport> run =
           locks.executeWithLock(
@@ -76,6 +86,8 @@ public final class IngestionJob {
         // The JVM may be in trouble: counted and logged, then left to the scheduler, never kept.
         throw error;
       }
+    } finally {
+      MDC.remove(RUN_ID);
     }
   }
 

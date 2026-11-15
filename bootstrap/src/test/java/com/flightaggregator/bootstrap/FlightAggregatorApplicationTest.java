@@ -14,6 +14,7 @@ import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.OfferStore;
 import com.flightaggregator.application.port.out.Publication;
+import com.flightaggregator.bootstrap.ingestion.IngestionJob;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Carrier;
 import com.flightaggregator.domain.Leg;
@@ -26,6 +27,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
@@ -81,6 +83,7 @@ class FlightAggregatorApplicationTest {
   @Autowired private TransactionTemplate transaction;
   @Autowired private JdbcClient jdbc;
   @Autowired private IngestInventory ingestion;
+  @Autowired private IngestionJob job;
   @Autowired private DiscardedRecords discarded;
   @Autowired private JsonMapper json;
   @Autowired private ConfigurableEnvironment environment;
@@ -178,6 +181,32 @@ class FlightAggregatorApplicationTest {
     assertThat(line.path("provider").asString()).isEqualTo("BETA");
     assertThat(line.path("reason").asString()).isEqualTo("SHAPE");
     assertThat(line.path("excerpt").asString()).isEqualTo("<Segment>\"IB\"</Segment>");
+  }
+
+  /**
+   * The run id reaches the console's JSON as {@code correlation.id}, nested as ECS nests dotted
+   * names, on each line of the run: here the three kept providers' and the run's own.
+   */
+  @Test
+  void writesTheRunIdIntoEachJsonLineOfARun(CapturedOutput output) {
+    // Another test class's run may still hold the lock for its minute (lockAtLeastFor).
+    jdbc.sql("UPDATE shedlock SET lock_until = locked_at").update();
+
+    job.run();
+
+    List<String> runIds =
+        output
+            .getOut()
+            .lines()
+            .filter(
+                text ->
+                    text.contains("Ingestion run ended")
+                        || text.contains("Kept the last good offers of a provider that failed"))
+            .map(json::readTree)
+            .map(line -> line.path("correlation").path("id").asString())
+            .toList();
+    assertThat(runIds).hasSize(4).doesNotContain("");
+    assertThat(Set.copyOf(runIds)).hasSize(1);
   }
 
   /** Boot's own tasks, and the schedule of Task 10 with them, run on virtual threads (§6.1). */

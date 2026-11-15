@@ -12,8 +12,12 @@ import static com.github.tomakehurst.wiremock.client.WireMock.serverError;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.bootstrap.PostgresContainers;
+import com.flightaggregator.bootstrap.observability.LoggedDiscardedRecords;
 import com.flightaggregator.domain.Provider;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
@@ -36,6 +40,7 @@ import net.javacrumbs.shedlock.core.SimpleLock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
@@ -125,6 +130,38 @@ class IngestionEndToEndTest {
     assertThat(discarded(BETA, DiscardReason.PRICE)).isEqualTo(1);
     assertThat(discarded(GAMMA, DiscardReason.SHAPE)).isEqualTo(1);
     assertThat(discarded(GAMMA, DiscardReason.CONFLICTING)).isEqualTo(2);
+  }
+
+  /**
+   * The discarded records are logged on the job's own thread, after the downloads, so their lines
+   * carry the run's id like the run's own line (§6.10).
+   */
+  @Test
+  void tagsEachDiscardedRecordWithTheRunsId() {
+    ListAppender<ILoggingEvent> log = new ListAppender<>();
+    log.start();
+    Logger jobLog = (Logger) LoggerFactory.getLogger(IngestionJob.class);
+    Logger discardLog = (Logger) LoggerFactory.getLogger(LoggedDiscardedRecords.class);
+    jobLog.addAppender(log);
+    discardLog.addAppender(log);
+    try {
+      job.run();
+    } finally {
+      jobLog.detachAppender(log);
+      discardLog.detachAppender(log);
+    }
+
+    String runId =
+        log.list.stream()
+            .filter(event -> event.getFormattedMessage().equals("Ingestion run ended"))
+            .map(event -> event.getMDCPropertyMap().get("correlation.id"))
+            .findFirst()
+            .orElseThrow();
+    assertThat(log.list)
+        .filteredOn(event -> event.getLoggerName().equals(LoggedDiscardedRecords.class.getName()))
+        .hasSize(5)
+        .extracting(event -> event.getMDCPropertyMap().get("correlation.id"))
+        .containsOnly(runId);
   }
 
   @Test
