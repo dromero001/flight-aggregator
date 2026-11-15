@@ -26,8 +26,10 @@ reporting {
     }
 }
 
-// Only the Spring Boot entry point, configuration classes and generated code are excluded.
-val coverageExclusions = listOf("**/*Application.class", "**/config/**", "**/generated/**")
+// Only the Spring Boot entry point, configuration classes and generated code are excluded. The entry
+// point is named, so that no other class whose name ends in Application leaves the gate.
+val coverageExclusions =
+    listOf("**/mockgds/MockGdsApplication.class", "**/config/**", "**/generated/**")
 
 val minimumLines = providers.gradleProperty("coverage.minimum.lines").orElse("0.90").map(::BigDecimal)
 val minimumBranches = providers.gradleProperty("coverage.minimum.branches").orElse("0.80").map(::BigDecimal)
