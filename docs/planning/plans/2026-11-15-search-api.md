@@ -357,7 +357,7 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 **Files:**
 - Create: `port/in/InventoryStatus.java`, `StatusReport.java`, `ProviderStatus.java`, `TriggerIngestion.java`; `port/out/IngestionStatusStore.java`, `ProviderRun.java`, `ProviderBreakers.java`, `IngestionLauncher.java`; `service/InventoryStatusService.java`, `TriggerIngestionService.java`; `adapters/persistence/.../JdbcIngestionStatusStore.java`, `db/migration/V7__ingestion_status.sql`; `adapters/web/.../AdminController.java`; `bootstrap/.../observability/InventoryHealthIndicator.java`, `RegistryProviderBreakers.java`, `config/AdminConfig.java`
-- Modify: `IngestInventoryService.java`, `bootstrap/.../ingestion/IngestionJob.java` (implements `IngestionLauncher`), `bootstrap/.../config/PersistenceConfig.java` (declares the status store), `application.yaml`, `compose.yaml` (the `app` health check accepts `UP` or `DEGRADED`)
+- Modify: `IngestInventoryService.java`, `bootstrap/.../ingestion/IngestionJob.java` (implements `IngestionLauncher`), `bootstrap/.../config/PersistenceConfig.java` (declares the status store), `application.yaml`, `compose.yaml` (the `app` health check accepts `UP` or `DEGRADED`), `README.md` ("Admin access": replace the temporary `/actuator/metrics` example with `/api/admin/*`, which Task 11 left for this task)
 - Test: `IngestInventoryServiceTest.java`, `JdbcIngestionStatusStoreTest.java`, `InventoryStatusServiceTest.java`, `IngestionJobTest.java`, `AdminControllerTest.java`, `SecurityTest.java`, `InventoryHealthIndicatorTest.java`, `bootstrap/src/test/.../SearchWithoutValkeyTest.java`
 
 **Interfaces:**
