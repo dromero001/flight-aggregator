@@ -22,7 +22,7 @@ Rule applied: the newest stable GA whose registry publication date is on or befo
 | @testing-library/jest-dom | 7.0.1 | 2026-08-09 | |
 | @testing-library/user-event | 14.6.8 | 2026-10-13 | |
 | msw | 3.0.3 | 2026-10-10 | v3 renames `onUnhandledRequest` to `onUnhandledFrame` (below) |
-| typescript | **6.0.3** | 2026-04-16 | The newest, 7.0.2 (2026-07-08), breaks `typescript-eslint`'s peer range (`typescript >=4.8.4 <6.1.0`), so the newest that fits is 6.0.3 |
+| typescript | **5.9.3** | 2025-09-30 | Corrected in fix round 1 (was 6.0.3). 7.0.2 and 6.x break `openapi-typescript` 7.13.0's peer (`typescript ^5.x`), and 7.0.2 also `typescript-eslint`'s (`<6.1.0`); the newest 5.x is 5.9.3. `msw` 3.0.3 needs `>=5.9.x`: fits |
 | eslint, @eslint/js | **9.39.5** | 2026-07-10 | The newest, 10.14.0 (2026-10-30), breaks `eslint-plugin-jsx-a11y`'s peer range (`eslint ^3 ... ^9`), and that plugin is the approved E7; 9.39.5 is the newest 9.x |
 | typescript-eslint | 8.72.1 | 2026-10-26 | |
 | eslint-plugin-react-hooks | 7.1.1 | 2026-04-17 | |
@@ -38,7 +38,7 @@ Later tasks install from this table (newest stable GA at least 14 days old, chec
 | Package | Version | Published | Note |
 |---|---|---|---|
 | react-router | 8.5.1 | 2026-10-27 | needs react >=19.2.7 (fits) |
-| openapi-typescript | 7.13.0 | 2026-02-11 | peer `typescript ^5.x`; the repository pins TypeScript 6.0.3, so Task 2 must check it (an npm `overrides` or a peer warning) |
+| openapi-typescript | 7.13.0 | 2026-02-11 | peer `typescript ^5.x`: fits the pinned 5.9.3 (shown installing without `ERESOLVE`, fix round 1) |
 | openapi-fetch | 0.17.0 | 2026-02-11 | |
 | oidc-client-ts | 3.5.0 | 2026-03-13 | |
 | @playwright/test | 1.64.1 | 2026-10-14 | |
@@ -48,12 +48,11 @@ Later tasks install from this table (newest stable GA at least 14 days old, chec
 | create-vite | 9.3.3 | 2026-10-27 | used once for the template (see below) |
 | @fontsource packages | not chosen | | depend on Q6's font, decided in Task 3 |
 
-Not chosen: `create-vite` 9.3.3's `react-ts` template ships `oxlint` and `typescript ~7.0.2`; the brief and spec ask for ESLint with `typescript-eslint`, and TypeScript 7 conflicts with it, so only the template's layout (`tsconfig` split, `vite.config.ts`, `index.html`, `main.tsx`) was followed and the files were written by hand.
+Not chosen: `create-vite` 9.3.3's `react-ts` template ships `oxlint` and `typescript ~7.0.2`; the brief and spec ask for ESLint with `typescript-eslint`, and TypeScript 7 conflicts with it, and 6.x with `openapi-typescript`, so only the template's layout (`tsconfig` split, `vite.config.ts`, `index.html`, `main.tsx`) was followed and the files were written by hand.
 
 Deviations from the brief's text:
 
 - `src/test/setup.ts` passes `onUnhandledFrame: 'error'`, MSW 3's name for what the brief calls `onUnhandledRequest: 'error'` (the old option does not exist in `msw@3.0.3`; `tsc` rejects it). Proven below: an unmocked request fails the test.
-- `tsconfig.app.json` also sets `noUncheckedIndexedAccess` (strictness beyond `strict`; spec 6.11 asks for strict mode, and this is part of "strict TypeScript" in the brief's commit message). It is cheap to remove if the user does not want it.
 - The `test` script writes the JUnit report to `test-results/junit.xml` (brief).
 
 ### The test, red then green
@@ -91,4 +90,13 @@ A throwaway file was written, the gate run, and the file removed (each gate was 
 
 ### Extras for the user to decide
 
+- `noUncheckedIndexedAccess` in `tsconfig.app.json` (not part of `strict` nor of the template; removed in fix round 1). Value: an index read (`array[i]`, `record[key]`) is typed `T | undefined`, so a missing element is a compile error. Cost: every index read in Tasks 3-8 needs a guard, since `no-non-null-assertion` is on. Left out unless you approve.
 - `ignore` of the TypeScript and ESLint major versions in the npm Dependabot entry (value: keeps its pull requests installable; cost: two lines; left out unless you approve).
+
+## Task 1 — fix round 1
+
+Review: functional CHANGES REQUESTED, code APPROVED (`task-1-review.md`). Two findings fixed; the minors wait for the end-of-plan review.
+
+- F1: `typescript` pinned 6.0.3 refused `openapi-typescript@7.13.0` (peer `^5.x`, `ERESOLVE`). Step 1's peer rule applied to the whole package set gives `typescript` 5.9.3 (published 2025-09-30, far over 14 days, newest 5.x: `npm view typescript time --json`). No `overrides`. The version table and the reason above are corrected. Evidence: in a scratch copy of the new `package.json` and lockfile (nothing added to `frontend/package.json`, the brief does not list it), `npm install --save-dev --save-exact --package-lock-only openapi-typescript@7.13.0` succeeds with no `ERESOLVE` and leaves `typescript` 5.9.3. In `frontend/`: `rm -rf node_modules && npm ci`, `npm run verify` (typecheck, ESLint, Prettier, 1 test passed) and `npm run build` all green.
+- F2: `noUncheckedIndexedAccess` removed from `tsconfig.app.json` and listed under "Extras for the user to decide" with its cost and benefit.
+- Checks before the commit: `npm run verify` green; `./gradlew build` and the thermo-nuclear self-review of the diff are recorded in the report (a version pin, one flag removed, doc edits: no finding).
