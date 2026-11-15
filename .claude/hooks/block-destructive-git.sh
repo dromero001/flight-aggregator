@@ -9,28 +9,31 @@ if command -v jq > /dev/null; then
   COMMAND=$(jq -r '.tool_input.command // empty')
 else
   # Without jq (Git for Windows does not ship it), match the raw JSON: the command is inside it. The
-  # JSON spells a backslash continuation as \\ and \n, which becomes a space, and any other line
-  # break as \n, which becomes one.
+  # JSON spells a backslash continuation as \\ and \n, which becomes a space, any other line break
+  # as \n, which becomes one, and a tab as \t, which becomes one too.
   COMMAND=$(cat)
   COMMAND=${COMMAND//\\\\\\n/ }
   COMMAND=${COMMAND//\\n/$'\n'}
+  COMMAND=${COMMAND//\\t/$'\t'}
 fi
 
 # grep matches one line at a time, so a line break ends what a pattern can match, as it ends a
-# command in the shell. A backslash continuation does not: it becomes a space. Nor does a line that
-# starts with an option, which cannot be a command of its own: it is read as part of the line
-# before, so `--force` on the line after a push still makes it a force push.
+# command in the shell. Only an explicit continuation does not: bash's, a backslash at the end of
+# the line, and PowerShell's, a backtick after a space at the end of the line, each become a space.
 COMMAND=${COMMAND//\\$'\n'/ }
-shopt -s extglob
-COMMAND=${COMMAND//$'\n'*([[:space:]])-/ -}
+COMMAND=${COMMAND//[[:space:]]\`$'\n'/ }
 
 # Where a ref or path word ends: at any character that cannot continue it (a space, a quote, `;`,
 # the JSON's closing quote), or at the end of the line. So `main` matches, but `main-fix` does not.
 END='([^[:alnum:]_./-]|$)'
 
-# An option value, possibly quoted; the raw JSON escapes double quotes as \". Unquoted, it ends at
-# a space or at a character that ends the command (`;`, `&`, `|`).
-VALUE="(\\\\?\"[^\"]*\"|'[^']*'|[^[:space:];|&]+)"
+# A quoted string; the raw JSON escapes double quotes as \".
+DOUBLE_QUOTED='\\?"[^"]*"'
+SINGLE_QUOTED="'[^']*'"
+
+# An option value, possibly quoted. Unquoted, it ends at a space or at a character that ends the
+# command (`;`, `&`, `|`).
+VALUE="(${DOUBLE_QUOTED}|${SINGLE_QUOTED}|[^[:space:];|&]+)"
 # `git` and its global options, up to the subcommand: `git -C <dir> push` is still a push.
 OPTION_WITH_VALUE="(-[Cc]|--(git-dir|work-tree|namespace|config-env|attr-source))[[:space:]]+${VALUE}"
 FLAG='--?[a-zA-Z][a-zA-Z-]*(=[^[:space:];|&]+)?'
@@ -45,9 +48,13 @@ HTTP_DELETE='(-X|--method)[=[:space:]]*DELETE\b'
 MAIN_REF="refs/heads/main${END}"
 
 # The text of one simple command: it does not cross `;`, `&&` or `|` (so `||` either). A lone `&`,
-# as in `2>&1`, does not end it, and a quoted string is taken whole, so a separator inside quotes
-# does not end it either. The raw JSON escapes double quotes as \".
-IN_COMMAND="([^;|&\"']|&[^;|&\"']|\\\\?\"[^\"]*\"|'[^']*')*"
+# as in `2>&1`, does not end it, nor does an escaped separator (`a\;b`; `a\\;b` in the raw JSON).
+# A quoted string can be taken whole, so a separator inside quotes does not end the command, and a
+# quote can also be read as a plain character, so quoting that does not pair as written (an escaped
+# quote, a quoted word that holds the target) never hides what follows it: where the reading is
+# ambiguous, the guard blocks.
+ESCAPED_SEPARATOR='\\\\?[;|&]'
+IN_COMMAND="([^;|&]|&[^;|&]|${ESCAPED_SEPARATOR}|${DOUBLE_QUOTED}|${SINGLE_QUOTED})*"
 
 DESTRUCTIVE_PATTERNS=(
   "${GIT}push\b${IN_COMMAND}[[:space:]](--force|--mirror|-[a-zA-Z]*f|\+[^[:space:]])"
