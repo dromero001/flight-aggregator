@@ -13,6 +13,10 @@ public interface SearchCache {
   /** The page cached under this key, if it is still there. */
   Optional<SearchPage> get(SearchKey key);
 
-  /** Keeps the page under this key for the cache's time to live. */
+  /**
+   * Keeps the page under this key for the cache's time to live, or until its first flight leaves
+   * when that is sooner, so a page found is never one that holds a departed flight; a page whose
+   * first flight has left is not kept.
+   */
   void put(SearchKey key, SearchPage page);
 }

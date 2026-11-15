@@ -31,7 +31,9 @@ import java.util.Optional;
  * without Max Price are cached, under the active generation (Q3, §6.2); a page read from a newer
  * generation than that, when a run publishes between the two reads, is served but not cached. A
  * cached page that has lost any row to departure since it was cached is a miss, read again and
- * cached again, so no page is served with a departed flight, shorter or empty (§4.1).
+ * cached again, so no page is served with a departed flight, shorter or empty (§4.1). The cache
+ * keeps no page past its first departure, so this is a safety net, for a cache that does not, or
+ * for instances whose clocks disagree.
  *
  * <p>A search from an origin in the airport catalogue then asks for that origin's background
  * refresh when its last publication or refresh, whichever is later, is more than the freshness
