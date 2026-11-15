@@ -7,6 +7,9 @@ import com.flightaggregator.application.port.out.SearchKey;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,11 +18,13 @@ import tools.jackson.core.json.JsonFactory;
 
 /**
  * The search cache in Valkey: each page a JSON string under its key's value, for the cache's time
- * to live. Each lookup counts once in {@code search.cache}, tagged {@code result=hit|miss|error},
- * so the hit ratio can be read (§6.2, §6.10). A page this version cannot read, such as one another
- * version wrote, counts as an error and is a {@code WARN}: Valkey is a cache, so nothing it holds
- * may fail a search. Many at once, as after a change of format, are one {@code WARN} per time to
- * live, the longest such a page can still be found.
+ * to live or until its first flight leaves, whichever is sooner, by this adapter's clock. Each
+ * lookup counts once in {@code search.cache}, tagged {@code result=hit|miss|error}, so the hit
+ * ratio can be read (§6.2, §6.10); since no page outlives its first departure, a hit is a page
+ * search can serve. A page this version cannot read, such as one another version wrote, counts as
+ * an error and is a {@code WARN}: Valkey is a cache, so nothing it holds may fail a search. Many at
+ * once, as after a change of format, are one {@code WARN} per time to live, the longest such a page
+ * can still be found.
  */
 public final class ValkeySearchCache implements SearchCache {
 
@@ -29,6 +34,7 @@ public final class ValkeySearchCache implements SearchCache {
   private final JsonFactory json;
   private final Duration ttl;
   private final ValkeyFailures failures;
+  private final Clock clock;
   private final Counter hits;
   private final Counter misses;
   private final Counter errors;
@@ -45,6 +51,7 @@ public final class ValkeySearchCache implements SearchCache {
     this.json = json;
     this.ttl = ttl;
     this.failures = failures;
+    this.clock = clock;
     this.hits = lookups(meters, "hit");
     this.misses = lookups(meters, "miss");
     this.errors = lookups(meters, "error");
@@ -59,11 +66,38 @@ public final class ValkeySearchCache implements SearchCache {
     return failures.call(() -> lookUp(key), this::failedLookup);
   }
 
-  /** Keeps nothing when Valkey fails the write. */
+  /**
+   * Keeps the page until its first flight leaves, or for the cache's time to live when that is
+   * sooner; keeps nothing when its first flight has left, or when Valkey fails the write.
+   */
   @Override
   public void put(SearchKey key, SearchPage page) {
+    Optional<Duration> keptFor = timeToLive(page);
+    if (keptFor.isEmpty()) {
+      return;
+    }
     String document = SearchPageJson.write(page, json);
-    failures.run(() -> valkey.opsForValue().set(key.value(), document, ttl));
+    failures.run(() -> valkey.opsForValue().set(key.value(), document, keptFor.get()));
+  }
+
+  /**
+   * The cache's time to live, or the time until the page's first departure when that is sooner, in
+   * Valkey's finest unit, the millisecond (the user's decision, plan 5 Task 6). None when the first
+   * flight has left or leaves within a millisecond: no time would keep the page without a departed
+   * flight, and Valkey would refuse the expiry, or keep a page with none at all.
+   */
+  private Optional<Duration> timeToLive(SearchPage page) {
+    Instant now = clock.now();
+    Duration keptFor =
+        page.itineraries().stream()
+            .map(
+                itinerary ->
+                    Duration.between(now, itinerary.departure().toInstant())
+                        .truncatedTo(ChronoUnit.MILLIS))
+            .filter(untilDeparture -> untilDeparture.compareTo(ttl) < 0)
+            .min(Comparator.naturalOrder())
+            .orElse(ttl);
+    return keptFor.isPositive() ? Optional.of(keptFor) : Optional.empty();
   }
 
   private Optional<SearchPage> lookUp(SearchKey key) {

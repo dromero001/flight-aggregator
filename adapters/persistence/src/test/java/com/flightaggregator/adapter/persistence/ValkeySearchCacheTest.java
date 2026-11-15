@@ -26,12 +26,15 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.KeyValuePair;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -82,9 +85,12 @@ class ValkeySearchCacheTest {
   /** The cache's time to live (§6.4). */
   private static final Duration TTL = Duration.ofMinutes(5);
 
+  /** When each test starts: before every flight of the fixtures above departs. */
+  private static final Instant START = Instant.parse("2026-11-19T10:00:00Z");
+
   private final StringRedisTemplate valkey = ValkeyTestServer.valkey();
   private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
-  private final SettableClock clock = new SettableClock(Instant.parse("2026-11-20T10:00:00Z"));
+  private final SettableClock clock = new SettableClock(START);
   private final ValkeySearchCache cache =
       new ValkeySearchCache(
           valkey,
@@ -138,6 +144,67 @@ class ValkeySearchCacheTest {
     cache.put(key, new SearchPage(List.of(MADRID_PARIS), Optional.empty(), false));
 
     assertThat(valkey.getExpire(key.value(), TimeUnit.SECONDS)).isBetween(295L, 300L);
+  }
+
+  /**
+   * The user's decision (Task 6, fix round 3): a page is kept no longer than until its first flight
+   * leaves, so a cached page never holds a departed flight and a hit is always a page search can
+   * serve. Its earliest departure, 90 s away, is its second row's.
+   */
+  @Test
+  void keepsAPageNoLongerThanUntilItsFirstDeparture() {
+    SearchKey key = new SearchKey(4, FROM_MADRID, 20);
+
+    cache.put(
+        key,
+        new SearchPage(
+            List.of(departingAfter(Duration.ofMinutes(3)), departingAfter(Duration.ofSeconds(90))),
+            Optional.empty(),
+            false));
+
+    assertThat(valkey.getExpire(key.value(), TimeUnit.MILLISECONDS)).isBetween(88_000L, 90_000L);
+  }
+
+  /**
+   * A page whose first flight leaves after the cache's time to live is kept that long, no longer.
+   */
+  @Test
+  void keepsTheCacheTtlWhenTheFirstDepartureIsLater() {
+    SearchKey key = new SearchKey(4, FROM_MADRID, 20);
+
+    cache.put(
+        key, new SearchPage(List.of(departingAfter(TTL.plusMinutes(1))), Optional.empty(), false));
+
+    assertThat(valkey.getExpire(key.value(), TimeUnit.MILLISECONDS)).isBetween(298_000L, 300_000L);
+  }
+
+  /**
+   * A page whose first flight has left, leaves now, or leaves sooner than Valkey's finest expiry (a
+   * millisecond) is not kept at all: no time to live would keep it without a departed flight. Its
+   * write is not sent, so Valkey cannot refuse it, and the cache goes on keeping other pages.
+   */
+  @ParameterizedTest(name = "first flight leaving {0} after the write")
+  @ValueSource(strings = {"-PT1M", "PT0S", "PT0.0005S"})
+  void keepsNoPageWhoseFirstFlightHasLeft(Duration wait) {
+    SearchKey departed = new SearchKey(4, FROM_MADRID, 20);
+    SearchKey later = new SearchKey(4, FROM_MADRID, 50);
+    SearchPage laterPage = new SearchPage(List.of(MADRID_PARIS), Optional.empty(), false);
+
+    cache.put(departed, new SearchPage(List.of(departingAfter(wait)), Optional.empty(), false));
+    cache.put(later, laterPage);
+
+    assertThat(valkey.hasKey(departed.value())).isFalse();
+    assertThat(cache.get(later)).contains(laterPage);
+  }
+
+  /** A page with no flights, as for a route nobody flies, has no departure to wait for. */
+  @Test
+  void keepsAnEmptyPageForTheCacheTtl() {
+    SearchKey key = new SearchKey(4, FROM_MADRID, 20);
+
+    cache.put(key, new SearchPage(List.of(), Optional.empty(), false));
+
+    assertThat(valkey.getExpire(key.value(), TimeUnit.MILLISECONDS)).isBetween(298_000L, 300_000L);
   }
 
   /** A new generation finds none of the pages of the one before it (§6.2). */
@@ -270,6 +337,21 @@ class ValkeySearchCacheTest {
 
   private double lookups(String result) {
     return meters.get("search.cache").tag("result", result).counter().count();
+  }
+
+  /** A direct flight from Madrid to Paris leaving that long after the test starts. */
+  private static Itinerary departingAfter(Duration wait) {
+    OffsetDateTime departure = START.plus(wait).atOffset(ZoneOffset.ofHours(1));
+    return new Itinerary(
+        List.of(
+            leg(
+                "UX",
+                1000 + (int) wait.toSeconds(),
+                "MAD",
+                "CDG",
+                departure.toString(),
+                departure.plusHours(2).toString(),
+                "89.99")));
   }
 
   private static Leg leg(

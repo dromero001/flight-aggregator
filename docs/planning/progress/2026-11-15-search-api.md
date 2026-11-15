@@ -781,4 +781,41 @@ Thermo-nuclear review of the round's diff:
 
 ### Extras for the user to decide
 
-- **Count a page re-read for a departed row as a miss in `search.cache`.** Today Valkey's adapter counts it as a hit. Value: the hit ratio §6.2 cites as evidence matches what PostgreSQL was spared. Cost: the cache port learns of the service's verdict (a method or a result type) and a test in each module. Left out unless you approve.
+- **Count a page re-read for a departed row as a miss in `search.cache`.** Today Valkey's adapter counts it as a hit. Value: the hit ratio §6.2 cites as evidence matches what PostgreSQL was spared. Cost: the cache port learns of the service's verdict (a method or a result type) and a test in each module. Left out unless you approve. *Superseded in fix round 3 by the user's decision on C6: no page outlives its first departure.*
+
+## Task 6 — fix round 3
+
+The re-review of round 2 (under "Fix round 2" in `task-6-rereview-1.md`) answered functional APPROVED and code CHANGES REQUESTED on C6: a stale page thrown away and read again still counted as `search.cache{result=hit}`, so a departure-sorted key read about 100% hits. **The user's decision of 2026-11-15** (recorded under Task 6 in the plan): Valkey's adapter caches a page for the shorter of `search.cache-ttl` and the time until its earliest departure, by the adapter's `Clock` (from Task 5's round 2). A cached page then never holds a departed flight, and a hit is always a usable page. The service's "any departed row is a miss" check stays as a safety net.
+
+Design notes:
+
+- `ValkeySearchCache.put` computes the time to live before writing: the earliest of the page's departures (`Itinerary.departure()`, the first leg's, the same instant `isSellable` compares), as time from `clock.now()`, truncated to the millisecond, Valkey's finest expiry unit. That time is used when it is shorter than `search.cache-ttl`; otherwise the TTL stands. At the departure instant the key expires and `isSellable` turns false, so the two rules agree.
+- **A page whose first flight has left, leaves now, or leaves within a millisecond is not written at all.** No time to live keeps it without a departed flight. A 1 s floor would store a page holding a flight that departs, or has departed, within that second, which is the C6 problem again: a hit the service must throw away. Not writing costs nothing, since the search has already been served from the fresh read and the next one reads PostgreSQL. Writing anyway was also a latent defect, seen in the red run below:
+  - Valkey refuses a negative expiry, and Spring sends a sub-second one as a `SETEX 0` it refuses too. `ValkeyFailures` takes that refusal for an outage, so the breaker opens and Valkey is skipped for 10 s.
+  - Spring sends a zero duration as a plain `SET`, so the page would be kept with no expiry at all.
+- An empty page has no departure to wait for and keeps `search.cache-ttl`.
+- The serialisation is skipped when nothing is written. The port's `put` Javadoc states the contract the service relies on; the service's Javadoc calls its own check a safety net (for a cache that does not honour it, or instances whose clocks disagree).
+- Test fixture: `ValkeySearchCacheTest`'s clock started at 2026-11-20T10:00Z, after its `MADRID_NEW_YORK` fixture departs (07:15Z that day). Under the new rule `roundTripsAPage` would no longer store that page. The start moved to 2026-11-19T10:00Z, before every fixture flight; the tests that move the clock are relative to it.
+
+Cycles (`ValkeySearchCacheTest`, against the Valkey container, each TTL read with `PTTL`, no sleeping):
+
+- `keepsAPageNoLongerThanUntilItsFirstDeparture` (a page whose second row leaves 90 s after the write, its first 3 min after): red = `Expecting actual: 299990L to be between: [88000L, 90000L]`. Green = the shorter of the cache's TTL and the time until the earliest departure.
+- `keepsTheCacheTtlWhenTheFirstDepartureIsLater` (first flight 6 min away): passed on first run, since cycle 1's green keeps the TTL whenever it is sooner. Mutation "the time until departure always wins": `Expecting actual: 360000L to be between: [298000L, 300000L]` (and `expiresAfterItsTtl`: `154799L`).
+- `keepsNoPageWhoseFirstFlightHasLeft` (parameterised: left a minute ago, leaving now, leaving in 0.5 ms; then another page is written and read back): red, each for its own reason:
+  - `-PT1M` and `PT0.0005S` = `Expecting Optional to contain: SearchPage[...]` for the next page: Valkey refused the write, `ValkeyFailures` took it for an outage, and the open breaker dropped the next page;
+  - `PT0S` = `Expecting value to be false but was true`: the page was stored, with no expiry.
+
+  Green = the time truncated to the millisecond, and nothing written unless it is positive.
+- `keepsAnEmptyPageForTheCacheTtl`: passed on first run. A first mutation, "no rows found, a time of zero", also hit every page whose first flight leaves after the TTL (nine failures), so it was replaced by a sharper one, "an empty page is not kept": this test alone failed, `Expecting actual: -2L to be between: [298000L, 300000L]`.
+- The other tests stay as they were: the service's safety-net test (round 2), and everything F1 to C5 added, all green.
+
+Gates: `./gradlew build` green (exit 0, Spotless and the coverage gate included):
+- `adapters/persistence` 109 (6 new cases);
+- `application` 82, `bootstrap` 118, `adapters/providers` 197, `domain` 91, architecture 39, `mock-gds` 201;
+- none failed.
+
+Thermo-nuclear review of the round's diff:
+- The rule lives where the time to live is set, in the adapter, as one pure method, before the write.
+- No branch is added to the service; its check only gains a sentence of Javadoc.
+- The adapter's existing `Clock` port is used, and no file is near 1,000 lines (the adapter 133, its test 376).
+- The write is one command or none: nothing written half-way, and no new way for a search to fail.
