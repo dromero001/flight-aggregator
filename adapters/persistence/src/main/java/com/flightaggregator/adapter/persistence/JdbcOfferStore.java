@@ -6,7 +6,6 @@ import com.flightaggregator.domain.Carrier;
 import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.Money;
 import com.flightaggregator.domain.Provider;
-import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
@@ -14,7 +13,6 @@ import java.time.ZoneOffset;
 import java.util.List;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.jdbc.datasource.DataSourceUtils;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -53,8 +51,7 @@ public final class JdbcOfferStore implements OfferStore {
   }
 
   private void copy(Provider provider, List<Leg> offers) {
-    Connection connection = DataSourceUtils.getConnection(dataSource);
-    try (CopyRows rows = CopyRows.open(connection, COPY)) {
+    try (CopyRows rows = CopyRows.open(dataSource, COPY)) {
       int position = 0;
       for (Leg leg : offers) {
         rows.row(
@@ -72,8 +69,6 @@ public final class JdbcOfferStore implements OfferStore {
             leg.quotedAt().toString());
       }
       rows.finish();
-    } finally {
-      DataSourceUtils.releaseConnection(connection, dataSource);
     }
   }
 

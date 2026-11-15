@@ -1,6 +1,7 @@
 package com.flightaggregator.adapter.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.flightaggregator.adapter.persistence.support.PostgresTestDatabase;
 import java.util.List;
@@ -23,7 +24,8 @@ class CopyRowsTest {
     return transaction.execute(
         status -> {
           jdbc.sql("CREATE TEMP TABLE copied (a text, b text) ON COMMIT DROP").update();
-          try (CopyRows copy = CopyRows.open(connection(), "COPY copied (a, b) FROM STDIN")) {
+          try (CopyRows copy =
+              CopyRows.open(PostgresTestDatabase.dataSource(), "COPY copied (a, b) FROM STDIN")) {
             for (String[] row : rows) {
               copy.row(row);
             }
@@ -36,11 +38,6 @@ class CopyRowsTest {
         });
   }
 
-  private java.sql.Connection connection() {
-    return org.springframework.jdbc.datasource.DataSourceUtils.getConnection(
-        PostgresTestDatabase.dataSource());
-  }
-
   @Test
   void escapesTheTextFormatsSpecialCharacters() {
     String nasty = "a\tb\\c\nd\re";
@@ -51,5 +48,20 @@ class CopyRowsTest {
   @Test
   void writesNullAsNull() {
     assertThat(roundTrip(new String[] {null, "\\N"})).containsExactly("<null>|\\N");
+  }
+
+  @Test
+  void refusesToCopyOutsideATransaction() {
+    // Outside a transaction on its DataSource, the copy would commit apart from the caller's work.
+    assertThatThrownBy(
+            () -> {
+              try (CopyRows copy =
+                  CopyRows.open(
+                      PostgresTestDatabase.dataSource(), "COPY airport (code) FROM STDIN")) {
+                copy.finish();
+              }
+            })
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("transaction");
   }
 }

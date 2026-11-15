@@ -3,14 +3,12 @@ package com.flightaggregator.adapter.persistence;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.ItineraryWriter;
 import com.flightaggregator.application.port.out.Publication;
-import java.sql.Connection;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.jdbc.datasource.DataSourceUtils;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.core.json.JsonFactory;
 
@@ -118,14 +116,11 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
   }
 
   private long copy(Slot slot, ItineraryWriter writer) {
-    Connection connection = DataSourceUtils.getConnection(dataSource);
     try (CopyRows rows =
         CopyRows.open(
-            connection, "COPY " + slot.table() + " (" + ItineraryRow.COLUMNS + ") FROM STDIN")) {
+            dataSource, "COPY " + slot.table() + " (" + ItineraryRow.COLUMNS + ") FROM STDIN")) {
       writer.writeTo(itinerary -> rows.row(ItineraryRow.of(itinerary).cells(json)));
       return rows.finish();
-    } finally {
-      DataSourceUtils.releaseConnection(connection, dataSource);
     }
   }
 }
