@@ -9,4 +9,9 @@ import java.util.Optional;
  * whether the inventory changed since the cursor it followed was issued (§6.3, Q1).
  */
 public record SearchPage(
-    List<Itinerary> itineraries, Optional<PageCursor> next, boolean inventoryChanged) {}
+    List<Itinerary> itineraries, Optional<PageCursor> next, boolean inventoryChanged) {
+
+  public SearchPage {
+    itineraries = List.copyOf(itineraries);
+  }
+}

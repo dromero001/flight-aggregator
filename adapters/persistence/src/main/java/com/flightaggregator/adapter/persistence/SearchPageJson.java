@@ -83,7 +83,7 @@ final class SearchPageJson {
       boolean inventoryChanged = bool(value(parser, INVENTORY_CHANGED));
       expect(parser.nextToken(), JsonToken.END_OBJECT);
       expect(parser.nextToken(), null);
-      return new SearchPage(List.copyOf(itineraries), next, inventoryChanged);
+      return new SearchPage(itineraries, next, inventoryChanged);
     } catch (JacksonException | IllegalArgumentException | DateTimeException e) {
       throw notAPage(e);
     }
