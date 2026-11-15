@@ -6,19 +6,18 @@ import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Provider;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import java.net.SocketTimeoutException;
-import java.net.http.HttpTimeoutException;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import org.springframework.core.retry.RetryException;
 import org.springframework.core.retry.RetryPolicy;
 import org.springframework.core.retry.RetryTemplate;
-import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
@@ -35,6 +34,7 @@ final class ProviderHttp {
   private final Provider provider;
   private final CircuitBreaker circuitBreaker;
   private final RetryTemplate retry;
+  private final Duration requestTimeout;
   private final int maxBodyBytes;
   private final Clock clock;
 
@@ -58,72 +58,101 @@ final class ProviderHttp {
             RetryPolicy.builder()
                 .maxRetries(settings.maxAttempts() - 1L)
                 .delay(settings.firstBackoff())
-                .includes(HttpServerErrorException.class, ResourceAccessException.class)
+                .multiplier(2)
+                .predicate(
+                    failure -> failure instanceof AttemptFailed attempt && attempt.retryable())
                 .build());
+    this.requestTimeout = settings.requestTimeout();
     this.maxBodyBytes = settings.maxBodyBytes();
     this.clock = clock;
   }
 
-  FetchedPage get(String pathAndQuery) {
+  /**
+   * Gets a page. The path is a URI template and each variable is encoded into it, so a cursor with
+   * {@code +}, {@code &} or {@code #} reaches the provider as one value.
+   */
+  FetchedPage get(String pathTemplate, Object... variables) {
     String body;
     try {
-      body = retry.execute(() -> circuitBreaker.executeSupplier(() -> download(pathAndQuery)));
+      body =
+          retry.execute(
+              () -> circuitBreaker.executeSupplier(() -> download(pathTemplate, variables)));
     } catch (RetryException e) {
-      throw new ProviderUnavailableException(provider, reasonOf(e.getCause()), e.getCause());
+      throw unavailable(e);
     }
     return new FetchedPage(body, clock.now().truncatedTo(ChronoUnit.MICROS));
   }
 
+  /**
+   * Classifies the end of the retries. The {@link RetryException} is the cause, so the earlier
+   * attempts stay in it as suppressed exceptions. A failure of any other kind propagates.
+   */
+  private ProviderUnavailableException unavailable(RetryException exhausted) {
+    return switch (exhausted.getCause()) {
+      case AttemptFailed failed ->
+          new ProviderUnavailableException(provider, failed.reason, exhausted);
+      case CallNotPermittedException open ->
+          new ProviderUnavailableException(provider, FailureReason.CIRCUIT_OPEN, exhausted);
+      case RuntimeException other -> throw other;
+      case Error other -> throw other;
+      default -> throw new IllegalStateException(exhausted);
+    };
+  }
+
+  /**
+   * One attempt. Each failure is classified here, where it happens, as an {@link AttemptFailed}.
+   */
+  private String download(String pathTemplate, Object... variables) {
+    long started = System.nanoTime();
+    try {
+      return client.get().uri(pathTemplate, variables).exchange(this::read);
+    } catch (ResourceAccessException e) {
+      // The JDK client reports a timeout as an I/O error, and so does a body cut mid-stream.
+      boolean timedOut = System.nanoTime() - started >= requestTimeout.toNanos();
+      throw new AttemptFailed(
+          timedOut ? FailureReason.TIMEOUT : FailureReason.HTTP_ERROR,
+          true,
+          "No response: " + e.getMessage(),
+          e);
+    }
+  }
+
   /** Reads at most {@code maxBodyBytes + 1} bytes, so a larger body is never held in memory. */
-  private String download(String pathAndQuery) {
-    return client
-        .get()
-        .uri(pathAndQuery)
-        .exchange(
-            (request, response) -> {
-              HttpStatusCode status = response.getStatusCode();
-              if (status.is5xxServerError()) {
-                throw HttpServerErrorException.create(
-                    status, response.getStatusText(), response.getHeaders(), new byte[0], null);
-              }
-              if (!status.is2xxSuccessful()) {
-                throw HttpClientErrorException.create(
-                    status, response.getStatusText(), response.getHeaders(), new byte[0], null);
-              }
-              byte[] body = response.getBody().readNBytes(maxBodyBytes + 1);
-              if (body.length > maxBodyBytes) {
-                throw new BodyTooLargeException(maxBodyBytes);
-              }
-              return new String(body, StandardCharsets.UTF_8);
-            });
+  private String read(HttpRequest request, ClientHttpResponse response) throws IOException {
+    HttpStatusCode status = response.getStatusCode();
+    if (status.is5xxServerError()) {
+      throw new AttemptFailed(FailureReason.HTTP_ERROR, true, "Server error " + status, null);
+    }
+    if (status.value() == 401 || status.value() == 403) {
+      throw new AttemptFailed(FailureReason.UNAUTHORIZED, false, "Refused with " + status, null);
+    }
+    if (!status.is2xxSuccessful()) {
+      throw new AttemptFailed(FailureReason.HTTP_ERROR, false, "Unexpected " + status, null);
+    }
+    byte[] body = response.getBody().readNBytes(maxBodyBytes + 1);
+    if (body.length > maxBodyBytes) {
+      throw new AttemptFailed(
+          FailureReason.MALFORMED_PAGE, false, "The body is over " + maxBodyBytes + " bytes", null);
+    }
+    return new String(body, StandardCharsets.UTF_8);
   }
 
-  private static FailureReason reasonOf(Throwable failure) {
-    if (failure instanceof BodyTooLargeException) {
-      return FailureReason.MALFORMED_PAGE;
-    }
-    if (failure instanceof CallNotPermittedException) {
-      return FailureReason.CIRCUIT_OPEN;
-    }
-    if (failure instanceof HttpClientErrorException rejected
-        && (rejected.getStatusCode() == HttpStatus.UNAUTHORIZED
-            || rejected.getStatusCode() == HttpStatus.FORBIDDEN)) {
-      return FailureReason.UNAUTHORIZED;
-    }
-    if (failure instanceof ResourceAccessException io
-        && (io.getCause() instanceof HttpTimeoutException
-            || io.getCause() instanceof SocketTimeoutException)) {
-      return FailureReason.TIMEOUT;
-    }
-    return FailureReason.HTTP_ERROR;
-  }
-
-  private static final class BodyTooLargeException extends RuntimeException {
+  /** How one attempt failed, and whether another attempt may help. */
+  private static final class AttemptFailed extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
-    BodyTooLargeException(int limit) {
-      super("The response body is over " + limit + " bytes");
+    private final FailureReason reason;
+    private final boolean retryable;
+
+    AttemptFailed(FailureReason reason, boolean retryable, String message, Throwable cause) {
+      super(message, cause);
+      this.reason = reason;
+      this.retryable = retryable;
+    }
+
+    boolean retryable() {
+      return retryable;
     }
   }
 }

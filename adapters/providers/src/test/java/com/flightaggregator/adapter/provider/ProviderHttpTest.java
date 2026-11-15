@@ -5,7 +5,9 @@ import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import com.flightaggregator.application.port.out.Clock;
@@ -22,9 +24,11 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig.SlidingWindowT
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.retry.RetryException;
 
 class ProviderHttpTest {
 
@@ -45,25 +49,6 @@ class ProviderHttpTest {
     server.stop();
   }
 
-  private ProviderHttp http() {
-    return http(CircuitBreaker.ofDefaults("alpha"));
-  }
-
-  private ProviderHttp http(CircuitBreaker breaker) {
-    ProviderEndpoint endpoint =
-        new ProviderEndpoint(Provider.ALPHA, URI.create(server.baseUrl()), KEY);
-    ResilienceSettings settings =
-        new ResilienceSettings(
-            Duration.ofMillis(500),
-            Duration.ofSeconds(60),
-            3,
-            Duration.ofMillis(10),
-            1000,
-            200,
-            1024);
-    return new ProviderHttp(endpoint, settings, breaker, clock);
-  }
-
   @Test
   void sendsTheApiKeyAndReturnsTheBody() {
     server.stubFor(
@@ -75,6 +60,17 @@ class ProviderHttpTest {
     assertThat(page.receivedAt()).isEqualTo(Instant.parse("2026-11-15T10:00:00.123456Z"));
     server.verify(
         getRequestedFor(urlEqualTo("/flights?page=0")).withHeader("X-Api-Key", equalTo(KEY)));
+  }
+
+  @Test
+  void encodesTheValuesOfTheUriTemplate() {
+    server.stubFor(get(urlPathEqualTo("/flights")).willReturn(aResponse().withBody("ok")));
+
+    http().get("/flights?cursor={cursor}", "a+b&c#d{e}");
+
+    server.verify(
+        getRequestedFor(urlPathEqualTo("/flights"))
+            .withQueryParam("cursor", equalTo("a+b&c#d{e}")));
   }
 
   @Test
@@ -97,12 +93,39 @@ class ProviderHttpTest {
   }
 
   @Test
+  void doublesTheBackoffBetweenAttempts() {
+    server.stubFor(get(urlEqualTo("/flights")).willReturn(aResponse().withStatus(500)));
+
+    failureOf(http(CircuitBreaker.ofDefaults("alpha"), Duration.ofMillis(100)), "/flights");
+
+    List<Instant> arrivals =
+        server.getAllServeEvents().stream()
+            .map(event -> event.getRequest().getLoggedDate().toInstant())
+            .sorted()
+            .toList();
+    assertThat(arrivals).hasSize(3);
+    // A lower bound only: a loaded machine may wait longer, never less.
+    assertThat(Duration.between(arrivals.get(1), arrivals.get(2)))
+        .isGreaterThanOrEqualTo(Duration.ofMillis(200));
+  }
+
+  @Test
   void failsAfterTheLastAttempt() {
     server.stubFor(get(urlEqualTo("/flights")).willReturn(aResponse().withStatus(500)));
 
     assertThat(failureOf("/flights")).isEqualTo(FailureReason.HTTP_ERROR);
 
     server.verify(3, getRequestedFor(urlEqualTo("/flights")));
+  }
+
+  @Test
+  void keepsTheEarlierAttemptsAsSuppressedExceptions() {
+    server.stubFor(get(urlEqualTo("/flights")).willReturn(aResponse().withStatus(500)));
+
+    ProviderUnavailableException failure = failure(http(), "/flights");
+
+    assertThat(failure.getCause()).isInstanceOf(RetryException.class);
+    assertThat(failure.getCause().getSuppressed()).hasSize(2);
   }
 
   @Test
@@ -115,14 +138,20 @@ class ProviderHttpTest {
   }
 
   @Test
-  void mapsForbiddenToUnauthorizedAndOtherClientErrorsToHttpErrorWithoutRetry() {
+  void treatsForbiddenAsUnauthorizedWithoutRetry() {
     server.stubFor(get(urlEqualTo("/forbidden")).willReturn(aResponse().withStatus(403)));
-    server.stubFor(get(urlEqualTo("/missing")).willReturn(aResponse().withStatus(404)));
 
     assertThat(failureOf("/forbidden")).isEqualTo(FailureReason.UNAUTHORIZED);
-    assertThat(failureOf("/missing")).isEqualTo(FailureReason.HTTP_ERROR);
 
     server.verify(1, getRequestedFor(urlEqualTo("/forbidden")));
+  }
+
+  @Test
+  void treatsAnotherClientErrorAsAnHttpErrorWithoutRetry() {
+    server.stubFor(get(urlEqualTo("/missing")).willReturn(aResponse().withStatus(404)));
+
+    assertThat(failureOf("/missing")).isEqualTo(FailureReason.HTTP_ERROR);
+
     server.verify(1, getRequestedFor(urlEqualTo("/missing")));
   }
 
@@ -132,6 +161,19 @@ class ProviderHttpTest {
         get(urlEqualTo("/slow")).willReturn(aResponse().withFixedDelay(3000).withBody("late")));
 
     assertThat(failureOf("/slow")).isEqualTo(FailureReason.TIMEOUT);
+
+    server.verify(3, getRequestedFor(urlEqualTo("/slow")));
+  }
+
+  @Test
+  void timesOutAStalledBody() {
+    server.stubFor(
+        get(urlEqualTo("/stalled"))
+            .willReturn(aResponse().withChunkedDribbleDelay(10, 3000).withBody("x".repeat(100))));
+
+    assertThat(failureOf("/stalled")).isEqualTo(FailureReason.TIMEOUT);
+
+    server.verify(3, getRequestedFor(urlEqualTo("/stalled")));
   }
 
   @Test
@@ -187,13 +229,12 @@ class ProviderHttpTest {
     server.verify(1, getRequestedFor(urlEqualTo("/moved")));
   }
 
-  private FailureReason failureOf(String pathAndQuery) {
-    return failureOf(http(), pathAndQuery);
-  }
+  @Test
+  void letsAnUnexpectedFailurePropagate() {
+    ProviderHttp http = http();
 
-  private static FailureReason failureOf(ProviderHttp http, String pathAndQuery) {
-    return catchThrowableOfType(ProviderUnavailableException.class, () -> http.get(pathAndQuery))
-        .reason();
+    assertThatThrownBy(() -> http.get("/flights/{missing}"))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
@@ -202,5 +243,37 @@ class ProviderHttpTest {
         new ProviderEndpoint(Provider.ALPHA, URI.create("http://localhost:1"), KEY);
 
     assertThat(endpoint.toString()).doesNotContain(KEY).contains("apiKey=***");
+  }
+
+  private ProviderHttp http() {
+    return http(CircuitBreaker.ofDefaults("alpha"));
+  }
+
+  private ProviderHttp http(CircuitBreaker breaker) {
+    return http(breaker, Duration.ofMillis(10));
+  }
+
+  private ProviderHttp http(CircuitBreaker breaker, Duration firstBackoff) {
+    ProviderEndpoint endpoint =
+        new ProviderEndpoint(Provider.ALPHA, URI.create(server.baseUrl()), KEY);
+    ResilienceSettings settings =
+        new ResilienceSettings(
+            Duration.ofMillis(500), Duration.ofSeconds(60), 3, firstBackoff, 1000, 200, 1024);
+    return new ProviderHttp(endpoint, settings, breaker, clock);
+  }
+
+  private FailureReason failureOf(String pathAndQuery) {
+    return failureOf(http(), pathAndQuery);
+  }
+
+  private static FailureReason failureOf(ProviderHttp http, String pathAndQuery) {
+    return failure(http, pathAndQuery).reason();
+  }
+
+  private static ProviderUnavailableException failure(ProviderHttp http, String pathAndQuery) {
+    ProviderUnavailableException failure =
+        catchThrowableOfType(ProviderUnavailableException.class, () -> http.get(pathAndQuery));
+    assertThat(failure).as("the call to " + pathAndQuery + " must fail").isNotNull();
+    return failure;
   }
 }
