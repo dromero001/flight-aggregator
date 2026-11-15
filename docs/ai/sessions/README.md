@@ -12,3 +12,4 @@ The sessions were held in Spanish. Every prompt quoted here has been translated 
 6. [Grill-me: observability, CI and pagination](06-grill-me-observability-ci-pagination.md)
 7. [Plans, a review protocol and the foundations run](07-plans-review-protocol-and-foundations.md)
 8. [The domain plan, its review and its run](08-domain-plan-and-run.md)
+9. [Lost sessions, recovery, and the providers and ingestion plan](09-lost-sessions-and-recovery.md)

@@ -1,0 +1,83 @@
+# Session 09 — Lost sessions, recovery, and the providers and ingestion plan
+
+- **Date:** 2026-11-15
+- **Tooling:** Claude Code (Claude Opus 5.5) as the controller, opened from the folder above the repository; reviewer and implementer subagents
+- **Goal:** pick up the work after a dropped session, close plan 3 (mock providers over HTTP), and write plan 4 (providers and ingestion).
+
+## 1. The problem: sessions that drop
+
+The work runs on a laptop behind a corporate VPN client whose disconnections cut the Claude Code session several times over the weekend. Each cut loses the conversation: the question being answered, the reasoning behind the last steps, and any state that lived only in the chat.
+
+Safeguards in place before this session:
+- **The repository as the source of truth.** `CLAUDE.md` asks for every decision to be written into the spec or the day's progress report, never left only in the conversation, and for every session to end with a commit and a push.
+- **Persistent memory** of the agent on the Mac, holding the user's decisions and the next step.
+- **A private handoff page** with the state of the project, the user's rules and the next step, so that a fresh session, or the other machine, can continue.
+- **A network watcher** script on the Mac that writes a warning file when the VPN drops, so that the agent can save its state first.
+
+## 2. What this cut left behind
+
+The previous session ended while the user was answering a question about plan 4's persistence. The new session recovered the state from memory, `git status`, `git log` and the progress report, and found:
+
+- Plan 3's six tasks were done, plus **six local commits that were not pushed** and three uncommitted changes.
+- The progress report had **no red → green evidence** for three of those commits, and no record that the end-of-plan reviews had run.
+- The user's answers to the plan 4 questions, which were only in the lost conversation. The user gave them again at the start of the session.
+
+The controller did not assume that the plan was closed. It ran the full suite and then the three end-of-plan reviews that the protocol requires. All three asked for changes, and they found what the cut had hidden:
+
+| Finding | Why the cut hid it |
+|---|---|
+| One of the unrecorded commits had **replaced the user's decision on the mock's latency** (uniform 100–5000 ms) with a long-tailed model, and no decision recorded it | The reasoning existed only in the lost conversation |
+| The README still documented the **old property names**, which Spring ignored without a warning. A reviewer proved it at runtime: the override changed nothing | The override was checked before the rename, and never again |
+| A green Dependabot pull request would have moved the image to **Java 26**, which is not an LTS. Its build passed only because Gradle silently downloaded a JDK 25 | Nobody was watching the pull requests while the session was down |
+
+The user ratified the long-tailed latency, because with the uniform model and a 2.5 s timeout half of the requests would time out. The user also approved an extra that makes a mistyped property stop the mock from starting. The missing TDD evidence was **re-established after the fact by mutation**: the controller broke the code, recorded which test failed and with what message, and restored it. The progress report labels these entries as such instead of presenting them as if recorded at the time.
+
+## 3. A second, quieter problem: working from the parent folder
+
+The user opens Claude Code in the folder that holds all projects, not inside the repository. From there, Claude Code does not load the repository's `.claude/` directory. That came to light when the reviewer subagents could not be started (`Agent type 'risk-reviewer' not found`). The checks that followed showed:
+
+- **The git guard hook was not running.** Its configuration lives in the repository's `.claude/settings.json`, and its path depends on the project directory.
+- **Two declared plugins had never been installed** (`elements-of-style` and `frontend-design`), because Claude Code offers them only when the repository itself is opened.
+- **The reviewer subagents were not registered.**
+
+What was fixed, with the user's approval:
+- The hook is also configured in the parent folder's settings, calling the repository's script by absolute path. It was tested: it blocked a `git push --force --dry-run`.
+- Both plugins are installed for the user.
+- The reviewers run as general-purpose subagents told to act exactly as their definition in `.claude/agents/`.
+- The project skills are read from `.claude/skills/` and applied.
+
+`CLAUDE.md` now says how to work from the parent folder, so that the next session checks this first.
+
+## 4. The continuity policy adopted
+
+The cost of a cut depends on how much state lives only in the conversation, so the policy keeps that amount small:
+
+- **Push every finished task**, and watch its CI run, instead of pushing only at the end of a plan.
+- **Update the handoff page after every finished task and every user decision.**
+- **Record every user decision in the repository** (the spec, the plan or the progress report) before moving on, and in the agent's memory at once.
+- **On resuming**, never assume that a plan is closed: compare the local commits with the progress report and run the reviews whose approval is not recorded.
+
+## 5. Plan 3 and plan 4
+
+- **Plan 3:** see the [progress report](../../planning/progress/2026-11-15.md), "Plan 3 close-out", for the findings and how each was fixed or decided.
+- **Plan 4:** [providers and ingestion](../../planning/plans/2026-11-15-providers-and-ingestion.md). The user decided four points before it was written:
+  - a double buffer: two itinerary slots, loaded with `TRUNCATE` and `COPY` and switched in one transaction;
+  - the stale-route refresh moves to plan 5;
+  - a ceiling of 2,000,000 itineraries per run;
+  - `JdbcClient` with `COPY` instead of JPA, chosen from a side-by-side comparison of both options for the plan's five persistence jobs.
+- **The user's review of plan 4:**
+  - approved the one extra, an 8 MB limit on each provider response;
+  - moved the per-provider concurrency limit (bulkhead) to plan 5, where re-price and the refresh call providers while ingestion runs;
+  - asked to be reminded of spec §6.1 and why the plan departed from it. The plan used only the HTTP client's timeout, while §6.1 names Resilience4j's time limiter. The controller recommended the client timeout alone (option A) over adding a time limiter on each provider's whole download (option B). The user asked whether B was not more complete. Redoing the numbers showed it was: with per-request timeouts alone, a provider that is slow but never fails can stretch a run to about 27 minutes, close to the 30-minute cadence, and the circuit breaker never opens because nothing fails. The controller changed its recommendation, the user chose B, and spec §6.1 now records the two time bounds.
+
+## 6. Prompts that added value
+
+- *"I have always been working with Claude from the parent folder. Make sure you use every skill documented in the GitHub repository of flight-aggregator."*: exposed that the hook, two plugins and the reviewer subagents had never been active in these sessions, and led to the fixes in section 3.
+- *"Since the connection can be lost again at any moment, let's set a policy of creating an artifact for every finished task, or if you think that is too much, propose another frequency."*: turned an ad hoc handoff page into the continuity policy of section 4.
+- *"You recommend option A, but isn't B more complete?"*: made the controller redo the worst case it had assumed was bounded. Its recommendation was wrong: a slow provider could stretch ingestion to nearly the full cadence, and the plan now bounds each provider's download (spec §6.1).
+- *"Remember they also want the prompts. Make a skill for it, so that the relevant prompts are saved translated into English and I don't have to keep reminding you."*: turned a rule the agent kept forgetting into a skill, `prompt-log`, that records each prompt when it happens instead of at the end of the session.
+- The brief for the fix round (a subagent prompt): *"For the commits whose evidence was never recorded because the session was cut off, say so honestly and, where you can, re-establish evidence after the fact by mutation, labelled 'recorded after the fact by mutation'."*: kept the TDD record truthful instead of reconstructing it as if it had been recorded at the time.
+
+## 7. Lesson
+
+The cut itself was not the risk. The risk was state that lived only in the conversation: a design change without a recorded decision, and commits without evidence or review. The reviews caught it because the recovery treated the plan as open until the record proved otherwise.

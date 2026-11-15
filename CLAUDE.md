@@ -37,6 +37,12 @@ The work moves between a Mac and a Windows PC, so nothing may live on only one o
 - **End of a session, or before switching machines:** commit and push. The open question or next step goes into the spec's open decisions or the day's progress report, never only into the conversation.
 - **Windows:** the repository's scripts are bash; run them with Git Bash. Install `jq` (`winget install jqlang.jq`): the hook tests need it, and the git guard reads the command more precisely with it than from the raw hook input.
 
+## Continuity (sessions can drop at any moment)
+- **Push every finished task** and watch its CI run, instead of pushing only at the end of a plan. Update the private handoff page after every finished task and every user decision.
+- **Record every user decision in the repository** (spec, plan or progress report) before moving on. Nothing that changes the design may live only in the conversation.
+- **On resuming,** compare the local commits with the day's progress report. A commit without recorded evidence, or a plan without recorded review verdicts, counts as open: run the missing reviews before building on it. Evidence re-established later is labelled "recorded after the fact by mutation".
+- **Opened from the parent folder** (`~/IdeaProjects` instead of the repository): Claude Code does not load this repository's `.claude/`. The git guard runs only if the parent folder's settings also configure it; the reviewers run as general-purpose subagents told to act exactly as their file in `.claude/agents/`; the skills are read from `.claude/skills/`; the declared plugins must be installed for the user. Check all four at the start of the session. Why: [session 09](docs/ai/sessions/09-lost-sessions-and-recovery.md).
+
 ## Documenting AI usage
 - Every relevant working session gets a file in `docs/ai/sessions/` (numbered, in English): goal, what happened, decisions, lesson.
 - Each session ends with a **"Prompts that added value"** section, holding only the prompts (the user's, or the briefs given to subagents) that changed the outcome: a challenge that exposed a wrong assumption, a framing that reshaped the design, a brief that made delegated work verifiable. For each prompt, quote or paraphrase it faithfully and say what it changed.
