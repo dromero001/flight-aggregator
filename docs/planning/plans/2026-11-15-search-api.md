@@ -335,7 +335,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 **Files:**
 - Modify: `docs/architecture/openapi.json`, regenerated with `-Dopenapi.write=true` so that Task 9's `OpenApiContractTest` passes (the user's decision of 2026-11-15)
-- Create: `port/in/AdmitRequest.java`, `Admission.java`, `RateLimitedAction.java`, `RateLimit.java`; `service/RateLimitService.java`; in `adapters/web`: `RepriceController.java`, `RepriceResponse.java`, `RateLimitInterceptor.java`; `bootstrap/.../config/WebConfig.java`
+- Create: `port/in/AdmitRequest.java`, `Admission.java`, `RateLimitedAction.java`, `RateLimit.java`; `service/RateLimitService.java`; in `adapters/web`: `RepriceController.java`, `RepriceResponse.java`, `RateLimitInterceptor.java`
+- Modify: `bootstrap/.../config/WebConfig.java` (created by Task 9; amended after Task 9's review, F1)
 - Modify: `application.yaml` (`server.forward-headers-strategy: native`)
 - Test: `RateLimitServiceTest.java`, `RepriceControllerTest.java`, `RateLimitInterceptorTest.java`, `bootstrap/.../ClientAddressTest.java`
 
@@ -343,6 +344,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - `POST /api/itineraries/{id}/reprice`, per Q4: `Confirmed`, `PriceChanged` (with `previousPrice`) and `Alternative` (with `notice`, the §6.5 text) → 200 with `outcome` and Task 9's itinerary; `Unconfirmable` → 503 problem, `Retry-After` (Q9), `detail` the §6.5 text; `NotFound` → 404; a malformed id → 400.
 - `interface AdmitRequest { Admission admit(String clientAddress, RateLimitedAction action); }`; `enum RateLimitedAction { SEARCH, REPRICE }`; `sealed interface Admission` of `Admitted()` and `Rejected(Duration retryAfter)`; `record RateLimit(int requests, Duration window)`; `RateLimitService(RequestCounter, Map<RateLimitedAction, RateLimit>)`; an unavailable counter admits (§6.2).
 - `RateLimitInterceptor` on `/api/itineraries/**` picks the action by method and path, uses `request.getRemoteAddr()`, and answers 429 problem with `Retry-After` in whole seconds.
+
+- **From Task 9 (its implementer and review):** each new error response is documented on its own operation with `@ApiResponse`, never with `@ResponseStatus` on the shared advice (springdoc would put that code on every operation); controllers bind with named `@RequestParam`s or `@PathVariable`s, because Spring 7 binds request headers into objects bound from the query.
 
 - [ ] **Step 1: `RateLimitServiceTest`, one test at a time:** `admitsUpToTheLimitInAWindow`; `rejectsPastItWithTheTimeLeft`; `countsSearchAndRepriceApart`; `admitsWhenTheCounterIsUnavailable`.
 - [ ] **Step 2: one test at a time:** `RepriceControllerTest.answersEachOutcome` (parameterised over the three 200s, notice text exact), `answers503WithRetryAfterAndTheMessage`, `answers404ForAnUnknownId`, `answers400ForAMalformedId`; `RateLimitInterceptorTest.answers429WithRetryAfter`.

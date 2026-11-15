@@ -178,6 +178,8 @@ Booking (§6.8: "Select" goes no further); `SOLUTION.md`, Grafana and the final 
 
 ### Task 2: Generated API types, the client and API errors
 
+**Started on plan 5 Task 9's contract (the controller's reading of the user's decision to move the contract to Task 9 so that plan 6 starts earlier; put to the user on 2026-11-15):** `types.ts` aliases only the schemas the committed contract has (the search's); `RepriceResponse`, `StatusReport` and `ProviderStatus` are added by Tasks 6 and 8, after regenerating `schema.d.ts` from the contract plan 5 Tasks 10 and 12 commit.
+
 **Files:**
 - Create: `frontend/src/api/schema.d.ts` (generated), `client.ts`, `apiError.ts`, `types.ts`, `frontend/src/test/fixtures.ts`
 - Modify: `frontend/package.json` (`api:generate`, `api:check`), `ci.yml` (job `frontend`: step "Contract drift", §6.11 step 3)
