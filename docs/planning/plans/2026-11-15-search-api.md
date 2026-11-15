@@ -228,6 +228,7 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - Test: `ValkeySearchCacheTest.java`, `ValkeyRefreshCoordinationTest.java`, `ValkeyRequestCounterTest.java`, `support/ValkeyTestServer.java`
 
 **Interfaces:**
+- **Changed by the user on 2026-11-15, after the task's review:** a failed Valkey command opens a Resilience4j circuit breaker (the project's own mechanism, as for the providers), so callers skip Valkey for **10 seconds** and fail open at once, then one call probes it; this bounds a hung Valkey to one command timeout per 10 s instead of up to five per search, including before the first connection. A cached value that does not parse is a counted miss, not an error.
 - `interface SearchCache { Optional<SearchPage> get(SearchKey key); void put(SearchKey key, SearchPage page); }`, TTL `search.cache-ttl`. `record SearchKey(long generation, SearchCriteria criteria, int limit)` with `String value()`: `search:<generation>:<sort>:<origin|->:<destination|->:<carrier|->:<maxPrice|->:<limit>`. Values are JSON: itineraries through `LegsJson`, the cursor's fields.
 - `interface RefreshCoordination { Optional<Instant> refreshedAt(Airport origin); boolean claim(Airport origin); void refreshed(Airport origin, Instant at); }`: `claim` is `SET refresh:<origin> NX EX <claim TTL>` (§6.2); `refreshed` writes `fresh:<origin>` with the threshold as TTL.
 - `interface RequestCounter { WindowCount increment(String bucket, Duration window); }`, `record WindowCount(long count, Duration resetsIn)` with `static WindowCount unavailable()`: a fixed window, `INCR` then `EXPIRE … NX`.
@@ -283,6 +284,7 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - Test: `ItineraryTest.java`, `RepriceItineraryServiceTest.java`, `JdbcOfferStoreTest.java`, `JdbcItineraryRepositoryTest.java`
 
 **Interfaces:**
+- **Changed by the user on 2026-11-15, after the implementation:** when `updateInPlace` cannot store a live-confirmed price because a run holds the publication row (lock timeout, `55P03`), the re-price still answers with the live result; the store is skipped, logged at WARN and counted. The next run rebuilds every itinerary from the providers.
 - Domain (R5): `public boolean isSellable(Instant now)` on `Itinerary`, delegating to `ConnectionRules.isSellable` for the first leg.
 - `interface RepriceItinerary { RepriceResult reprice(ItineraryId id); }`; `sealed interface RepriceResult` of `Confirmed(Itinerary itinerary)`, `PriceChanged(Itinerary itinerary, Money previousPrice)`, `Alternative(Itinerary itinerary)`, `Unconfirmable()`, `NotFound()`.
 - `OfferStore.offersOf(LegKey flight) → List<Leg>`: every provider's stored offer of the flight, cheapest first; V6 indexes `provider_offer (carrier, flight_number, origin, departure)`.
