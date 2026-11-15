@@ -34,10 +34,33 @@ class ProviderSettingsTest {
     runner
         .withPropertyValues(KEYS)
         .withPropertyValues(
-            "mockgds.providers.beta.latency-min=2s", "mockgds.providers.beta.latency-max=1s")
+            "mockgds.providers.beta.fast-latency-min=2s",
+            "mockgds.providers.beta.fast-latency-max=1s")
         .run(
             context ->
-                assertThat(context).getFailure().hasStackTraceContaining("beta.latency-min"));
+                assertThat(context).getFailure().hasStackTraceContaining("beta.fast-latency-min"));
+  }
+
+  @Test
+  void rejectsASlowLatencyMinimumAboveItsMaximum() {
+    runner
+        .withPropertyValues(KEYS)
+        .withPropertyValues(
+            "mockgds.providers.beta.slow-latency-min=6s",
+            "mockgds.providers.beta.slow-latency-max=5s")
+        .run(
+            context ->
+                assertThat(context).getFailure().hasStackTraceContaining("beta.slow-latency-min"));
+  }
+
+  @Test
+  void rejectsASlowRangeStartingBeforeTheFastRangeEnds() {
+    runner
+        .withPropertyValues(KEYS)
+        .withPropertyValues("mockgds.providers.alpha.fast-latency-max=2s")
+        .run(
+            context ->
+                assertThat(context).getFailure().hasStackTraceContaining("alpha.fast-latency-max"));
   }
 
   @Test
@@ -57,13 +80,28 @@ class ProviderSettingsTest {
   }
 
   @Test
+  void rejectsASlowShareOutsideZeroToOne() {
+    for (var share : new String[] {"1.5", "-0.1", "NaN"}) {
+      runner
+          .withPropertyValues(KEYS)
+          .withPropertyValues("mockgds.providers.gamma.slow-share=" + share)
+          .run(
+              context ->
+                  assertThat(context)
+                      .as(share)
+                      .getFailure()
+                      .hasStackTraceContaining("gamma.slow-share"));
+    }
+  }
+
+  @Test
   void rejectsANegativeLatency() {
     runner
         .withPropertyValues(KEYS)
-        .withPropertyValues("mockgds.providers.alpha.latency-min=-1ms")
+        .withPropertyValues("mockgds.providers.alpha.fast-latency-min=-1ms")
         .run(
             context ->
-                assertThat(context).getFailure().hasStackTraceContaining("alpha.latency-min"));
+                assertThat(context).getFailure().hasStackTraceContaining("alpha.fast-latency-min"));
   }
 
   @Test
@@ -91,7 +129,7 @@ class ProviderSettingsTest {
   }
 
   @Test
-  void defaultsTheLatencyRangeAndTheErrorRate() {
+  void defaultsTheLatencyRangesTheSlowShareAndTheErrorRate() {
     runner
         .withPropertyValues(KEYS)
         .run(
@@ -99,8 +137,11 @@ class ProviderSettingsTest {
               var settings = context.getBean(ProviderSettings.class);
               for (var provider : Provider.values()) {
                 var entry = settings.forProvider(provider);
-                assertThat(entry.latencyMin()).isEqualTo(Duration.ofMillis(100));
-                assertThat(entry.latencyMax()).isEqualTo(Duration.ofMillis(5000));
+                assertThat(entry.fastLatencyMin()).isEqualTo(Duration.ofMillis(100));
+                assertThat(entry.fastLatencyMax()).isEqualTo(Duration.ofMillis(1000));
+                assertThat(entry.slowLatencyMin()).isEqualTo(Duration.ofMillis(1000));
+                assertThat(entry.slowLatencyMax()).isEqualTo(Duration.ofMillis(5000));
+                assertThat(entry.slowShare()).isEqualTo(0.1);
                 assertThat(entry.errorRate()).isEqualTo(0.05);
               }
             });

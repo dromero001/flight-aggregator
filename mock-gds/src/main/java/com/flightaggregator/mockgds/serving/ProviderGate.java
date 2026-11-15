@@ -38,9 +38,15 @@ class ProviderGate implements HandlerInterceptor {
     return true;
   }
 
+  /** A time in the slow range for the slow share of requests, and in the fast range otherwise. */
   private Duration latency() {
-    return Duration.ofNanos(
-        random.nextLong(entry.latencyMin().toNanos(), entry.latencyMax().toNanos() + 1));
+    return random.nextDouble() < entry.slowShare()
+        ? between(entry.slowLatencyMin(), entry.slowLatencyMax())
+        : between(entry.fastLatencyMin(), entry.fastLatencyMax());
+  }
+
+  private Duration between(Duration min, Duration max) {
+    return Duration.ofNanos(random.nextLong(min.toNanos(), max.toNanos() + 1));
   }
 
   /** Compares in constant time, so the response time reveals nothing about the key. */

@@ -28,13 +28,26 @@ public record ProviderSettings(Entry alpha, Entry beta, Entry gamma) {
     if (entry == null || entry.apiKey() == null || entry.apiKey().isBlank()) {
       throw new IllegalArgumentException("mockgds.providers." + provider + ".api-key must be set");
     }
-    if (entry.latencyMin().isNegative()) {
+    if (entry.fastLatencyMin().isNegative()) {
       throw new IllegalArgumentException(
-          "mockgds.providers." + provider + ".latency-min must not be negative");
+          "mockgds.providers." + provider + ".fast-latency-min must not be negative");
     }
-    if (entry.latencyMin().compareTo(entry.latencyMax()) > 0) {
+    // The four latency bounds in order: the slow range starts where the fast range ends, or later.
+    if (entry.fastLatencyMin().compareTo(entry.fastLatencyMax()) > 0) {
       throw new IllegalArgumentException(
-          "mockgds.providers." + provider + ".latency-min must not exceed latency-max");
+          "mockgds.providers." + provider + ".fast-latency-min must not exceed fast-latency-max");
+    }
+    if (entry.fastLatencyMax().compareTo(entry.slowLatencyMin()) > 0) {
+      throw new IllegalArgumentException(
+          "mockgds.providers." + provider + ".fast-latency-max must not exceed slow-latency-min");
+    }
+    if (entry.slowLatencyMin().compareTo(entry.slowLatencyMax()) > 0) {
+      throw new IllegalArgumentException(
+          "mockgds.providers." + provider + ".slow-latency-min must not exceed slow-latency-max");
+    }
+    if (!(entry.slowShare() >= 0 && entry.slowShare() <= 1)) {
+      throw new IllegalArgumentException(
+          "mockgds.providers." + provider + ".slow-share must be within [0, 1]");
     }
     if (!(entry.errorRate() >= 0 && entry.errorRate() <= 1)) {
       throw new IllegalArgumentException(
@@ -42,18 +55,26 @@ public record ProviderSettings(Entry alpha, Entry beta, Entry gamma) {
     }
   }
 
-  /** One provider's key, latency range and error rate. */
+  /**
+   * One provider's key, latency and error rate. Most requests wait a time in the fast range, and
+   * the slow share of them a time in the slow range.
+   */
   public record Entry(
       String apiKey,
-      @DefaultValue("100ms") Duration latencyMin,
-      @DefaultValue("5000ms") Duration latencyMax,
+      @DefaultValue("100ms") Duration fastLatencyMin,
+      @DefaultValue("1000ms") Duration fastLatencyMax,
+      @DefaultValue("1000ms") Duration slowLatencyMin,
+      @DefaultValue("5000ms") Duration slowLatencyMax,
+      @DefaultValue("0.1") double slowShare,
       @DefaultValue("0.05") double errorRate) {
 
     /** Redacts the key, so logging the settings can never leak it. */
     @Override
     public String toString() {
-      return "Entry[apiKey=***, latencyMin=%s, latencyMax=%s, errorRate=%s]"
-          .formatted(latencyMin, latencyMax, errorRate);
+      return ("Entry[apiKey=***, fastLatencyMin=%s, fastLatencyMax=%s, slowLatencyMin=%s,"
+              + " slowLatencyMax=%s, slowShare=%s, errorRate=%s]")
+          .formatted(
+              fastLatencyMin, fastLatencyMax, slowLatencyMin, slowLatencyMax, slowShare, errorRate);
     }
   }
 }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
 import java.util.Collections;
+import java.util.List;
 import java.util.Random;
 import java.util.random.RandomGenerator;
 import org.junit.jupiter.api.Test;
@@ -25,12 +26,18 @@ import org.springframework.mock.web.MockHttpServletResponse;
       "mockgds.providers.alpha.api-key=test-alpha-key",
       "mockgds.providers.beta.api-key=test-beta-key",
       "mockgds.providers.gamma.api-key=test-gamma-key",
-      "mockgds.providers.alpha.latency-min=0",
-      "mockgds.providers.alpha.latency-max=0",
-      "mockgds.providers.beta.latency-min=0",
-      "mockgds.providers.beta.latency-max=0",
-      "mockgds.providers.gamma.latency-min=0",
-      "mockgds.providers.gamma.latency-max=0",
+      "mockgds.providers.alpha.fast-latency-min=0",
+      "mockgds.providers.alpha.fast-latency-max=0",
+      "mockgds.providers.alpha.slow-latency-min=0",
+      "mockgds.providers.alpha.slow-latency-max=0",
+      "mockgds.providers.beta.fast-latency-min=0",
+      "mockgds.providers.beta.fast-latency-max=0",
+      "mockgds.providers.beta.slow-latency-min=0",
+      "mockgds.providers.beta.slow-latency-max=0",
+      "mockgds.providers.gamma.fast-latency-min=0",
+      "mockgds.providers.gamma.fast-latency-max=0",
+      "mockgds.providers.gamma.slow-latency-min=0",
+      "mockgds.providers.gamma.slow-latency-max=0",
       "mockgds.providers.alpha.error-rate=0",
       "mockgds.providers.beta.error-rate=0",
       "mockgds.providers.gamma.error-rate=0"
@@ -60,9 +67,7 @@ class ProviderGateTest {
     var sleeper = new RecordingSleeper();
     var gate =
         new ProviderGate(
-            settings(Duration.ofSeconds(5), Duration.ofSeconds(5), 1.0).gamma(),
-            new Random(1),
-            sleeper);
+            constantLatency("test-gamma-key", Duration.ofSeconds(5), 1.0), new Random(1), sleeper);
     var request = new MockHttpServletRequest("GET", "/gamma/probe");
     request.addHeader("X-Api-Key", "wrong-key");
     var response = new MockHttpServletResponse();
@@ -110,9 +115,7 @@ class ProviderGateTest {
     var sleeper = new RecordingSleeper();
     var gate =
         new ProviderGate(
-            settings(Duration.ofSeconds(2), Duration.ofSeconds(2), 1.0).alpha(),
-            new Random(3),
-            sleeper);
+            constantLatency("test-alpha-key", Duration.ofSeconds(2), 1.0), new Random(3), sleeper);
     var response = new MockHttpServletResponse();
 
     gate.preHandle(request("/alpha/probe", "test-alpha-key"), response, new Object());
@@ -122,26 +125,32 @@ class ProviderGateTest {
   }
 
   @Test
-  void waitsALatencyInsideTheConfiguredRange() throws Exception {
+  void waitsALatencyInsideTheWholeRange() throws Exception {
     var min = Duration.ofMillis(100);
     var max = Duration.ofMillis(5000);
-    var sleeper = new RecordingSleeper();
-    var gate = new ProviderGate(settings(min, max, 0.0).beta(), new Random(7), sleeper);
 
-    for (var i = 0; i < 1_000; i++) {
-      assertThat(
-              gate.preHandle(
-                  request("/beta/probe", "test-beta-key"),
-                  new MockHttpServletResponse(),
-                  new Object()))
-          .isTrue();
-    }
+    var latencies = latencies(withSlowShare(0.1), 10_000);
 
-    var sleeps = sleeper.sleeps();
     var tolerance = max.minus(min).dividedBy(20);
-    assertThat(sleeps).hasSize(1_000).allSatisfy(d -> assertThat(d).isBetween(min, max));
-    assertThat(Collections.min(sleeps)).isLessThanOrEqualTo(min.plus(tolerance));
-    assertThat(Collections.max(sleeps)).isGreaterThanOrEqualTo(max.minus(tolerance));
+    assertThat(latencies).hasSize(10_000).allSatisfy(d -> assertThat(d).isBetween(min, max));
+    assertThat(Collections.min(latencies)).isLessThanOrEqualTo(min.plus(tolerance));
+    assertThat(Collections.max(latencies)).isGreaterThanOrEqualTo(max.minus(tolerance));
+  }
+
+  @Test
+  void waitsOnlyAFastLatencyWhenTheSlowShareIsZero() throws Exception {
+    assertThat(latencies(withSlowShare(0.0), 10_000))
+        .allSatisfy(latency -> assertThat(latency).isLessThanOrEqualTo(Duration.ofMillis(1000)));
+  }
+
+  @Test
+  void waitsASlowLatencyForTheSlowShareOfRequests() throws Exception {
+    var aboveOneSecond =
+        latencies(withSlowShare(0.1), 10_000).stream()
+            .filter(latency -> latency.compareTo(Duration.ofMillis(1000)) > 0)
+            .count();
+
+    assertThat(aboveOneSecond).as("draws above 1000 ms of 10,000").isBetween(900L, 1100L);
   }
 
   @Test
@@ -154,7 +163,7 @@ class ProviderGateTest {
   private static int failuresOutOf(double errorRate, int requests) throws Exception {
     var gate =
         new ProviderGate(
-            settings(Duration.ZERO, Duration.ZERO, errorRate).alpha(),
+            constantLatency("test-alpha-key", Duration.ZERO, errorRate),
             new Random(11),
             new RecordingSleeper());
     var failures = 0;
@@ -170,17 +179,40 @@ class ProviderGateTest {
     return failures;
   }
 
+  /** The default latency model: 100–1000 ms, and 1000–5000 ms for the slow share of requests. */
+  private static ProviderSettings.Entry withSlowShare(double slowShare) {
+    return new ProviderSettings.Entry(
+        "test-beta-key",
+        Duration.ofMillis(100),
+        Duration.ofMillis(1000),
+        Duration.ofMillis(1000),
+        Duration.ofMillis(5000),
+        slowShare,
+        0.0);
+  }
+
+  /** The latency of each of {@code requests} requests through one seeded gate. */
+  private static List<Duration> latencies(ProviderSettings.Entry entry, int requests)
+      throws Exception {
+    var sleeper = new RecordingSleeper();
+    var gate = new ProviderGate(entry, new Random(7), sleeper);
+    for (var i = 0; i < requests; i++) {
+      gate.preHandle(
+          request("/beta/probe", "test-beta-key"), new MockHttpServletResponse(), new Object());
+    }
+    return sleeper.sleeps();
+  }
+
   private static MockHttpServletRequest request(String path, String apiKey) {
     var request = new MockHttpServletRequest("GET", path);
     request.addHeader("X-Api-Key", apiKey);
     return request;
   }
 
-  private static ProviderSettings settings(Duration min, Duration max, double errorRate) {
-    return new ProviderSettings(
-        new ProviderSettings.Entry("test-alpha-key", min, max, errorRate),
-        new ProviderSettings.Entry("test-beta-key", min, max, errorRate),
-        new ProviderSettings.Entry("test-gamma-key", min, max, errorRate));
+  /** Every request waits exactly {@code latency}. */
+  private static ProviderSettings.Entry constantLatency(
+      String apiKey, Duration latency, double errorRate) {
+    return new ProviderSettings.Entry(apiKey, latency, latency, latency, latency, 0.0, errorRate);
   }
 
   private ResponseEntity<String> get(String path, String apiKey) {
