@@ -6,17 +6,13 @@ import com.flightaggregator.application.port.in.ProviderReport;
 import com.flightaggregator.application.port.out.AirportCatalogue;
 import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.DiscardReason;
-import com.flightaggregator.application.port.out.DiscardedRecord;
 import com.flightaggregator.application.port.out.DiscardedRecords;
-import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.FlightProvider;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.ItineraryWriter;
 import com.flightaggregator.application.port.out.OfferStore;
-import com.flightaggregator.application.port.out.ProviderDownload;
-import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.application.port.out.Publication;
-import com.flightaggregator.domain.Airport;
+import com.flightaggregator.application.service.ProviderDownloads.CheckedDownload;
 import com.flightaggregator.domain.Deduplication;
 import com.flightaggregator.domain.ItineraryBuilder;
 import com.flightaggregator.domain.Leg;
@@ -24,7 +20,6 @@ import com.flightaggregator.domain.LegDeduplicator;
 import com.flightaggregator.domain.Provider;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.EnumSet;
@@ -32,10 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -46,10 +37,8 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class IngestInventoryService implements IngestInventory {
 
-  private final List<FlightProvider> providers;
+  private final ProviderDownloads downloads;
   private final OfferStore store;
-  private final AirportCatalogue catalogue;
-  private final DiscardedRecords discardedRecords;
   private final ItineraryRepository repository;
   private final Clock clock;
   private final long maxItineraries;
@@ -62,17 +51,8 @@ public final class IngestInventoryService implements IngestInventory {
       ItineraryRepository repository,
       Clock clock,
       long maxItineraries) {
-    Set<Provider> seen = EnumSet.noneOf(Provider.class);
-    for (FlightProvider provider : providers) {
-      if (!seen.add(provider.provider())) {
-        throw new IllegalArgumentException("Two providers named " + provider.provider());
-      }
-    }
-    this.providers =
-        providers.stream().sorted(Comparator.comparing(FlightProvider::provider)).toList();
+    this.downloads = new ProviderDownloads(providers, catalogue, discardedRecords);
     this.store = store;
-    this.catalogue = catalogue;
-    this.discardedRecords = discardedRecords;
     this.repository = repository;
     this.clock = clock;
     this.maxItineraries = maxItineraries;
@@ -81,16 +61,17 @@ public final class IngestInventoryService implements IngestInventory {
   @Override
   public IngestionReport ingest() {
     Instant startedAt = clock.now();
-    List<ProviderRun> runs = downloadAndStore();
-    Map<Provider, List<Leg>> stored = storedOffers();
+    List<CheckedDownload> runs = downloads.downloadEach(FlightProvider::download, store::replace);
+    Map<Provider, List<Leg>> stored = storedOffers(runs);
     List<Leg> offers = stored.values().stream().flatMap(List::stream).toList();
     Deduplication deduplication = LegDeduplicator.deduplicate(offers);
     Set<Provider> fresh = freshProviders(runs);
+    // Reported once, by the run that downloaded them: a kept provider's conflicts are not re-sent.
     deduplication.conflicting().stream()
         .filter(conflicting -> fresh.contains(conflicting.provider()))
-        .forEach(this::discardConflicting);
+        .forEach(downloads::discardConflicting);
     List<ProviderReport> reports =
-        runs.stream().map(run -> run.report(stored.get(run.provider()), deduplication)).toList();
+        runs.stream().map(run -> report(run, stored.get(run.provider()), deduplication)).toList();
     if (offers.isEmpty()) {
       return report(
           startedAt, IngestionReport.Outcome.NOTHING_TO_PUBLISH, Optional.empty(), reports);
@@ -108,49 +89,20 @@ public final class IngestInventoryService implements IngestInventory {
     }
   }
 
-  /** Downloads every provider at once and stores what arrived whole, in {@code Provider} order. */
-  private List<ProviderRun> downloadAndStore() {
-    List<Future<Outcome>> downloads = new ArrayList<>();
-    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-      for (FlightProvider provider : providers) {
-        downloads.add(executor.submit(() -> download(provider)));
-      }
-    }
-    Set<Airport> airports = catalogue.airports();
-    List<ProviderRun> runs = new ArrayList<>();
-    for (Future<Outcome> future : downloads) {
-      runs.add(
-          switch (join(future)) {
-            case Outcome.Downloaded(var provider, var download) ->
-                store(provider, download, airports);
-            case Outcome.Failed(var provider, var reason, var cause) ->
-                new ProviderRun(provider, Optional.of(reason), Optional.of(cause), 0, Map.of());
-          });
-    }
-    return runs;
-  }
-
   /** Each provider's stored offers after the downloads, fresh or kept, read once. */
-  private Map<Provider, List<Leg>> storedOffers() {
+  private Map<Provider, List<Leg>> storedOffers(List<CheckedDownload> runs) {
     Map<Provider, List<Leg>> stored = new EnumMap<>(Provider.class);
-    for (FlightProvider provider : providers) {
-      stored.put(provider.provider(), store.offers(provider.provider()));
+    for (CheckedDownload run : runs) {
+      stored.put(run.provider(), store.offers(run.provider()));
     }
     return stored;
   }
 
   /** The providers whose download was stored in this run. */
-  private static Set<Provider> freshProviders(List<ProviderRun> runs) {
+  private static Set<Provider> freshProviders(List<CheckedDownload> runs) {
     Set<Provider> fresh = EnumSet.noneOf(Provider.class);
-    runs.stream().filter(ProviderRun::fresh).map(ProviderRun::provider).forEach(fresh::add);
+    runs.stream().filter(CheckedDownload::fresh).map(CheckedDownload::provider).forEach(fresh::add);
     return fresh;
-  }
-
-  /** Reported once, by the run that downloaded it: a kept provider's conflicts are not re-sent. */
-  private void discardConflicting(Leg conflicting) {
-    discardedRecords.discarded(
-        conflicting.provider(),
-        new DiscardedRecord(DiscardReason.CONFLICTING, conflicting.key().toString()));
   }
 
   /** The report of a run that ends now. */
@@ -181,43 +133,27 @@ public final class IngestInventoryService implements IngestInventory {
   }
 
   /**
-   * Stores the download's legs that the catalogue knows, and discards the others. A download left
-   * with no leg is a failed one: the provider's last good offers are kept (§6.5).
+   * One provider's report, built once its stored offers were deduplicated with the others': the
+   * conflicting offers take no part, and those the deduplication left out are lost to it. Only a
+   * fresh download counts its conflicting offers as discarded.
    */
-  private ProviderRun store(Provider provider, ProviderDownload download, Set<Airport> airports) {
-    Map<DiscardReason, Integer> discardedByReason = new EnumMap<>(DiscardReason.class);
-    for (DiscardedRecord record : download.discarded()) {
-      discard(provider, record, discardedByReason);
-    }
-    List<Leg> inCatalogue = new ArrayList<>();
-    for (Leg leg : download.legs()) {
-      if (airports.contains(leg.origin()) && airports.contains(leg.destination())) {
-        inCatalogue.add(leg);
-      } else {
-        discard(
-            provider,
-            new DiscardedRecord(DiscardReason.UNKNOWN_AIRPORT, leg.key().toString()),
-            discardedByReason);
-      }
-    }
-    int fetched = download.legs().size();
-    if (inCatalogue.isEmpty()) {
-      return new ProviderRun(
-          provider,
-          Optional.of(FailureReason.EMPTY_DOWNLOAD),
-          Optional.empty(),
-          fetched,
-          discardedByReason);
-    }
-    store.replace(provider, inCatalogue);
-    return new ProviderRun(
-        provider, Optional.empty(), Optional.empty(), fetched, discardedByReason);
+  private static ProviderReport report(
+      CheckedDownload run, List<Leg> stored, Deduplication deduplication) {
+    int conflicting = ofProvider(run.provider(), deduplication.conflicting());
+    int chosen = ofProvider(run.provider(), deduplication.legs());
+    return new ProviderReport(
+        run.provider(),
+        run.failure(),
+        run.cause(),
+        run.fetched(),
+        run.fresh() ? withConflicting(run.discarded(), conflicting) : run.discarded(),
+        stored.size() - conflicting,
+        stored.size() - conflicting - chosen,
+        newestQuote(stored));
   }
 
-  private void discard(
-      Provider provider, DiscardedRecord record, Map<DiscardReason, Integer> byReason) {
-    discardedRecords.discarded(provider, record);
-    byReason.merge(record.reason(), 1, Integer::sum);
+  private static int ofProvider(Provider provider, List<Leg> legs) {
+    return (int) legs.stream().filter(leg -> leg.provider() == provider).count();
   }
 
   private static Map<DiscardReason, Integer> withConflicting(
@@ -234,77 +170,5 @@ public final class IngestInventoryService implements IngestInventory {
   /** The newest quote among the offers, empty when there are none. */
   private static Optional<Instant> newestQuote(List<Leg> offers) {
     return offers.stream().map(Leg::quotedAt).max(Comparator.naturalOrder());
-  }
-
-  private static Outcome download(FlightProvider provider) {
-    try {
-      return new Outcome.Downloaded(provider.provider(), provider.download());
-    } catch (ProviderUnavailableException e) {
-      return new Outcome.Failed(provider.provider(), e.reason(), e);
-    } catch (RuntimeException e) {
-      return new Outcome.Failed(provider.provider(), FailureReason.UNEXPECTED, e);
-    }
-  }
-
-  private static Outcome join(Future<Outcome> future) {
-    try {
-      return future.get();
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IllegalStateException("Interrupted while waiting for a provider", e);
-    } catch (ExecutionException e) {
-      // The handler catches every runtime exception, so an error is what can end up here, and it is
-      // the run's own; anything else would be a bug of the handler.
-      if (e.getCause() instanceof Error error) {
-        throw error;
-      }
-      throw new IllegalStateException("A provider download escaped its handler", e.getCause());
-    }
-  }
-
-  /** One provider's download: what it returned, or why it failed. */
-  private sealed interface Outcome {
-    record Downloaded(Provider provider, ProviderDownload download) implements Outcome {}
-
-    record Failed(Provider provider, FailureReason reason, Throwable cause) implements Outcome {}
-  }
-
-  /**
-   * What one provider's download did in this run: stored as its new offers, or failed so that its
-   * last good ones are kept; and what it fetched and discarded.
-   */
-  private record ProviderRun(
-      Provider provider,
-      Optional<FailureReason> failure,
-      Optional<Throwable> cause,
-      int fetched,
-      Map<DiscardReason, Integer> discarded) {
-
-    /**
-     * Its report, built once its stored offers were deduplicated with the others': the conflicting
-     * offers take no part, and those the deduplication left out are lost to it. Only a fresh
-     * download counts its conflicting offers as discarded.
-     */
-    ProviderReport report(List<Leg> stored, Deduplication deduplication) {
-      int conflicting = ofThisProvider(deduplication.conflicting());
-      int chosen = ofThisProvider(deduplication.legs());
-      return new ProviderReport(
-          provider,
-          failure,
-          cause,
-          fetched,
-          fresh() ? withConflicting(discarded, conflicting) : discarded,
-          stored.size() - conflicting,
-          stored.size() - conflicting - chosen,
-          newestQuote(stored));
-    }
-
-    boolean fresh() {
-      return failure.isEmpty();
-    }
-
-    private int ofThisProvider(List<Leg> legs) {
-      return (int) legs.stream().filter(leg -> leg.provider() == provider).count();
-    }
   }
 }
