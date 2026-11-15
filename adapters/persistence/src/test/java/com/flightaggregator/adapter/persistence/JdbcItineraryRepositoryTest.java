@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +31,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.core.json.JsonFactory;
 
@@ -143,6 +146,33 @@ class JdbcItineraryRepositoryTest {
       assertThat(written).isFalse();
     }
     assertThat(rows("itinerary_b")).isEqualTo(1);
+  }
+
+  /**
+   * A statement of the load that hangs is cut after 5 minutes, and the run fails and rolls back.
+   */
+  @Test
+  void boundsEachStatementOfTheLoad() {
+    AtomicReference<String> statementTimeout = new AtomicReference<>();
+
+    repository.replaceInventory(
+        NOW,
+        sink -> {
+          // The writer runs during the COPY, so the setting is read just before the commit, on the
+          // load's connection, once the COPY has ended.
+          TransactionSynchronizationManager.registerSynchronization(
+              new TransactionSynchronization() {
+                @Override
+                public void beforeCommit(boolean readOnly) {
+                  statementTimeout.set(
+                      jdbc.sql("SHOW statement_timeout").query(String.class).single());
+                }
+              });
+          sink.accept(direct(1, "2026-11-25T07:15:00Z"));
+        });
+
+    assertThat(statementTimeout).hasValue("5min");
+    assertThat(jdbc.sql("SHOW statement_timeout").query(String.class).single()).isEqualTo("0");
   }
 
   @Test

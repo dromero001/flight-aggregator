@@ -4,6 +4,15 @@ spring:
   threads:
     virtual:
       enabled: true
+  datasource:
+    hikari:
+      # Passed to the PostgreSQL driver on every connection, whatever the URL (compose sets only the
+      # URL): a read that waits more than 120 s for the server fails instead of blocking a run for
+      # ever, and TCP keepalive notices a server that is gone. Each store's transaction also bounds
+      # its statements to 5 minutes (StatementTimeout).
+      data-source-properties:
+        socketTimeout: 120
+        tcpKeepAlive: true
 
 ingestion:
   # A run that would build more itineraries publishes nothing (R7).

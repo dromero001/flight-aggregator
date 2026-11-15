@@ -34,6 +34,7 @@ services:
     environment:
       # 512 MB of heap: the ingestion streams its ~1M itineraries into COPY, never holding them (R4).
       JAVA_TOOL_OPTIONS: -Xmx512m
+      # The driver's socketTimeout (120 s) and tcpKeepAlive come from application.yaml, for any URL.
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/flightaggregator
       SPRING_DATASOURCE_USERNAME: flightaggregator
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-demo-postgres-password}

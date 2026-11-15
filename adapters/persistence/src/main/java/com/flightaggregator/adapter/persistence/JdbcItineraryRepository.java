@@ -55,6 +55,7 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
 
   private Publication load(Instant now, ItineraryWriter writer) {
     jdbc.sql("SET LOCAL lock_timeout = '" + LOCK_TIMEOUT + "'").update();
+    StatementTimeout.boundTheTransaction(jdbc);
     Slot slot = activeSlotLocked().other();
     LocalDate today = PartitionCalendar.dayOf(now);
     LocalDate lastPartitionDay = today.plusDays(partitionDaysAhead);

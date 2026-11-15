@@ -15,11 +15,14 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.AbstractList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 class JdbcOfferStoreTest {
@@ -83,6 +86,44 @@ class JdbcOfferStoreTest {
 
     assertThat(store.offers(ALPHA)).containsExactly(newAlpha);
     assertThat(store.offers(BETA)).containsExactly(beta);
+  }
+
+  /**
+   * A statement of the replacement that hangs is cut after 5 minutes. The offers are read during
+   * the COPY, so the setting is read just before the commit, on the replacement's connection.
+   */
+  @Test
+  void boundsEachStatementOfAReplacement() {
+    Leg offer = leg(ALPHA, 1, "2026-11-20T07:00:00Z", "50.00");
+    AtomicReference<String> statementTimeout = new AtomicReference<>();
+    List<Leg> offers =
+        new AbstractList<>() {
+          @Override
+          public Leg get(int index) {
+            TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                  @Override
+                  public void beforeCommit(boolean readOnly) {
+                    statementTimeout.set(
+                        JdbcClient.create(dataSource)
+                            .sql("SHOW statement_timeout")
+                            .query(String.class)
+                            .single());
+                  }
+                });
+            return offer;
+          }
+
+          @Override
+          public int size() {
+            return 1;
+          }
+        };
+
+    store.replace(ALPHA, offers);
+
+    assertThat(statementTimeout).hasValue("5min");
+    assertThat(store.offers(ALPHA)).containsExactly(offer);
   }
 
   @Test

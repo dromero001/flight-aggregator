@@ -20,8 +20,11 @@ import com.flightaggregator.domain.Carrier;
 import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.Money;
 import com.flightaggregator.domain.Provider;
+import com.zaxxer.hikari.HikariDataSource;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -29,6 +32,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
+import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationState;
@@ -82,6 +86,7 @@ class FlightAggregatorApplicationTest {
   @Autowired private ItineraryRepository itineraries;
   @Autowired private TransactionTemplate transaction;
   @Autowired private JdbcClient jdbc;
+  @Autowired private DataSource dataSource;
   @Autowired private IngestInventory ingestion;
   @Autowired private IngestionJob job;
   @Autowired private DiscardedRecords discarded;
@@ -207,6 +212,19 @@ class FlightAggregatorApplicationTest {
             .toList();
     assertThat(runIds).hasSize(4).doesNotContain("");
     assertThat(Set.copyOf(runIds)).hasSize(1);
+  }
+
+  /**
+   * A connection whose server stops answering mid-statement fails after two minutes instead of
+   * blocking a run for ever, and TCP keepalive notices a peer that is gone.
+   */
+  @Test
+  void connectsWithAReadTimeoutAndTcpKeepAlive() throws SQLException {
+    try (Connection connection = dataSource.getConnection()) {
+      assertThat(connection.getNetworkTimeout()).isEqualTo(120_000);
+    }
+    assertThat(((HikariDataSource) dataSource).getDataSourceProperties())
+        .containsEntry("tcpKeepAlive", "true");
   }
 
   /** Boot's own tasks, and the schedule of Task 10 with them, run on virtual threads (§6.1). */
