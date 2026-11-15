@@ -31,7 +31,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -123,24 +122,6 @@ class SearchConfigTest {
 
           assertThat(catalogueReads).hasValue(1);
         });
-  }
-
-  /**
-   * The user's decision of 2026-11-15: RefreshConfig's provisional scheduler cannot stay beside the
-   * one Task 7 builds, here the test's own. With both, the search use case has two to choose from,
-   * and startup stops instead of picking one silently.
-   */
-  @Test
-  void refusesToStartWithTheProvisionalSchedulerBesideAnother() {
-    runner
-        .withUserConfiguration(RefreshConfig.class)
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasRootCauseInstanceOf(NoUniqueBeanDefinitionException.class)
-                  .hasStackTraceContaining(RefreshScheduler.class.getName());
-            });
   }
 
   /** An inventory of no rows, published at {@code publishedAt}. */

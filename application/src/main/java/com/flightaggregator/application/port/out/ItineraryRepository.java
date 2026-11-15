@@ -1,5 +1,6 @@
 package com.flightaggregator.application.port.out;
 
+import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Itinerary;
 import java.time.Instant;
 
@@ -13,6 +14,17 @@ public interface ItineraryRepository {
    * not use the storage ports.
    */
   Publication replaceInventory(Instant now, ItineraryWriter writer);
+
+  /**
+   * Replaces, in the published generation, every itinerary with a leg departing from the origin by
+   * those the writer pushes, and publishes them as the next generation (a stale-route refresh,
+   * Q2-B); the other itineraries, and when the inventory was last published, do not change. If
+   * {@code writeTo} throws, nothing changes and the exception propagates. {@code writeTo} runs
+   * inside the write, on its connection, and must not use the storage ports. The {@link
+   * Publication} counts the itineraries the writer pushed. Before the first run has published,
+   * there is nothing to rewrite: it throws {@link IllegalStateException} and changes nothing.
+   */
+  Publication replaceThrough(Airport origin, ItineraryWriter writer);
 
   /**
    * Replaces the active generation's itinerary of the same id by this re-quote of it (Q5): its legs

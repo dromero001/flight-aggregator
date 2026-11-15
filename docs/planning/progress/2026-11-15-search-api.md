@@ -1092,3 +1092,103 @@ The double review (`.superpowers/sdd/2026-11-15-search-api/task-9-review.md`) an
 - C3: the sort values are written twice, in the parser and in the contract annotation.
 - C4: `CursorCodec`'s Javadoc claims more strictness than the code has (leading zeros are accepted).
 Approved extra E2 (Swagger UI) is built by no task: a plan gap for the user, not a finding.
+
+## Task 7 — evidence
+
+The stale-route refresh (Q2-B), built in its own worktree from `e791cdb`. One test at a time, in the order of the plan's Steps; the module's suite ran after each cycle. A test that passed on its first run is labelled and shown red by a mutation of the production code, which was then restored. Docker was shared with other agents; no container failed to connect.
+
+Preparatory commits, each a pure change under a green suite:
+
+- **The repository's tests split by concern** (the brief): `JdbcItineraryRepositoryTest` (730 lines) became `JdbcItineraryRepositoryLoadTest` (load and switch) and `JdbcItineraryRepositoryUpdateTest` (re-price update); the refresh's tests went into a third class, `JdbcItineraryRepositoryRefreshTest`. The helpers more than one class uses moved to `support/`: `ItinerarySlots.published` and `rows`, `Trips.direct`, `LockWaits.awaitAStatementBlockedBy`. 25 cases before, 16 + 9 after, all green.
+- **`ProviderDownloads` lifted out of `IngestInventoryService`:**
+  - What a run and a refresh share: every provider downloaded at once, a `ProviderUnavailableException` as its reason and any other runtime exception as `UNEXPECTED` (so a rejection by the concurrency limit keeps the provider), each download's discarded records and unknown airports reported, and `EMPTY_DOWNLOAD`.
+  - A usable download hands its legs to a callback: the run's `store::replace`, the refresh's in-memory map. So the legs are not held in the run's per-provider results while it builds.
+  - The run's reports are built as before; `application` stayed at 82 tests, all green. The refresh adds no third copy of the virtual-thread fan-out (Task 8's review, C2); re-price's own copy is untouched.
+
+Design notes:
+
+- `ItineraryRepository.replaceThrough(Airport origin, ItineraryWriter writer)`, one transaction of the store's own `TransactionTemplate` (E6):
+  - the store's 5 s lock timeout and 5 min statement timeout;
+  - the publication row `FOR UPDATE` through the load's own `activeSlotLocked()`;
+  - where the active slot's day partitions end, read back from the partitions' names through `Slot` (the load's `dropPartitionsBefore` now shares that read, `dayPartitions`), failing plainly if no run has loaded the slot;
+  - `DELETE` where `legs @> jsonb_build_array(jsonb_build_object('origin', ?))`, then the writer's itineraries copied in through the load's own `copy()` and `ItineraryRow`;
+  - `generation + 1`, `published_at` unchanged.
+  The `Publication` counts the rows the refresh wrote, and reports the active slot's `DEFAULT` rows and partition end after the rewrite; `Publication`'s Javadoc now covers both writes.
+- **Q9's 60 s:** a run's load waits up to 60 s for the publication row (`SET LOCAL lock_timeout = '60s'` before its `FOR UPDATE`, then `5s` for the rest of the load), so a run that starts during a refresh waits for it instead of failing at 5 s. A refresh waits 5 s, as every store does: Q9 sets the 60 s for the run only.
+- `RefreshStaleRouteService`:
+  - `downloadFrom(origin)` through `ProviderDownloads`; each fresh provider's stored offers from the origin swapped in memory for its download, a kept provider's left whole;
+  - `LegDeduplicator` and `ItineraryBuilder` with the refresh's start as `now`; only the itineraries with a leg departing from the origin pushed;
+  - then `refreshed(origin, now)`. `provider_offer` is not written.
+  - With no fresh download it answers `NOTHING_FRESH` with generation and itineraries 0, before reading the store, writes nothing and marks nothing.
+  - The conflicting offers of the origin's fresh downloads are reported as `CONFLICTING`, as a run reports its own ("discarded records as in ingestion"); stored ones, reported by the run that downloaded them, are not reported again.
+- `BackgroundRefresh`: `Thread.ofVirtual()` per request; a new UUID under `correlation.id` in the MDC, removed in the `finally` after the catch; one `INFO` line per report (origin, outcome, generation, itineraries, `alpha.status` …), one `ERROR` line with the origin and the cause for anything thrown, an `Error` included (the thread ends there, so nothing above it would report it). The MDC key moved from `IngestionJob`'s private constant to `bootstrap.observability.CorrelationId`, so both use one.
+- `RefreshConfig` declares `RefreshStaleRoute` and the `BackgroundRefresh` scheduler; the provisional scheduler and its test are deleted. `SearchConfigTest.refusesToStartWithTheProvisionalSchedulerBesideAnother` is deleted too: its subject is gone. `FlightAggregatorApplicationTest.holdsOneRefreshScheduler` now asserts that the one scheduler is the `BackgroundRefresh`.
+- `CountedItineraryRepository` forwards `replaceThrough` uncounted. Its `BUSY` WARN line now reads "an ingestion run or a refresh holds the inventory", and `StoreOutcome.BUSY` and `GONE` name the refresh too: a re-price during a refresh is refused by the refresh's `FOR UPDATE`.
+- A refactor in the file this task edits: `switchTo` binds its instant through `ProviderTime.instantParameter` (Task 8's review C5, left to Task 7 by Task 8's report), and the three writes set their lock timeout through one helper.
+- Docs: `docs/architecture/ingestion.md` gains "The stale-route refresh" and the run's 60 s wait.
+
+Cycles, Step 1 (`RefreshStaleRouteServiceTest`):
+
+- `replacesTheItinerariesThroughTheOrigin` (Alpha's stored Madrid-London, Barcelona-Madrid and London-New York; Alpha now sells Madrid-London at 120.00): red with a skeleton returning `null` = `Expecting Optional to contain: Airport[code=MAD] but was empty.` Green = the download through `ProviderDownloads`, the swap, the build filtered to a leg from the origin, `replaceThrough`, the report. Pushed: Madrid-London, Madrid-London-New York, Barcelona-Madrid-London and Barcelona-Madrid-London-New York; not Barcelona-Madrid nor London-New York.
+- `keepsAFailedProvidersStoredOffersOfTheOrigin`, over Beta unavailable, rejected (`RejectedExecutionException`) and with no usable leg (Madrid to `ZZZ`): red in all three = `could not find the following elements: [[Leg[... flightNumber=7, origin=MAD, destination=CDG ...]]]` (Beta's stored Madrid-Paris dropped). Green = a provider swaps its origin offers only when its download is fresh, and its status follows.
+- `writesNothingWhenEveryProviderFails`: red = `expected: RefreshReport[... outcome=NOTHING_FRESH, generation=0, itineraries=0 ...] but was: RefreshReport[... outcome=REFRESHED, generation=7, itineraries=1 ...]`. Green = no fresh download returns before the store is read.
+- `marksTheOriginRefreshedOnlyAfterTheWrite` (the repository reads the mark during the write): red = `Expecting Optional to contain: 2026-11-20T09:00:00Z but was empty.` Green = `refreshed(origin, now)` once `replaceThrough` returns. Mutation "mark before the write": `Expecting AtomicReference[Optional[2026-11-20T09:00:00Z]] to have value: Optional.empty`.
+- `propagatesAFailedWriteAndLeavesTheOriginUnmarked` (beyond the plan's list: the failure path `BackgroundRefresh` relies on): passed on its first run. Mutation "mark in a `finally`": `Expecting an empty Optional but was containing value: 2026-11-20T09:00:00Z`.
+- `reportsTheConflictsOfItsFreshDownloadOnly` (beyond the plan's list: "discarded records as in ingestion"; Gamma's fresh Madrid offers conflict, and so do its stored Barcelona offers and kept Beta's stored Madrid offers): red = `Expecting actual: [] to contain exactly ... [Entry[provider=GAMMA, record=DiscardedRecord[reason=CONFLICTING, excerpt=IB1 MAD-LHR 2026-11-25T07:15:00Z]], ...]`. Green = the conflicting offers of a fresh provider from the origin, through `ProviderDownloads.discardConflicting`. Mutation "no origin condition": Gamma's stored `IB5 BCN-LHR` reported too. Mutation "no fresh condition": Beta's kept `IB9 MAD-CDG` reported too.
+- Refactor under green: `offersWith`, `statusesOf`, `hasALegFrom`, and the class Javadoc. `application` 90 tests.
+
+Cycles, Step 2 (`JdbcItineraryRepositoryRefreshTest`, against PostgreSQL):
+
+- `replacesOnlyTheItinerariesThroughTheOrigin` (four trips published at 10:00 into slot b; the refresh writes Madrid-London at 120.00 and a Madrid-London of 30 December, past the partitions): red = `UnsupportedOperationException: Built in plan 5 Task 7, Step 2` (the stub of Step 1). Green = the rewrite above. Expected `Publication(2, 2, 1, 2026-12-28T00:00:00Z)`, `published_at` still 10:00, slot b holding Barcelona-Madrid, Barcelona-London and the two new rows, Madrid-London at 126.00. Mutation "delete by the itinerary's `origin` column": the Barcelona-Madrid-London row stayed (five ids).
+- `aFailedRefreshLeavesTheActiveSlotWhole` (the writer throws after its first itinerary): passed on its first run. Mutation "no transaction around the rewrite": `IllegalStateException: COPY must run in a transaction on its DataSource ...` instead of the writer's exception. Mutation "the writer's failure swallowed": the commit failed with `25P02` (`current transaction is aborted`) instead of the writer's exception.
+- `aRunSwitchesAfterARefreshReleasesThePublicationRow` (a refresh held open after its write, as `HeldUpdate` holds an update; a run started on another thread and seen blocked through `pg_blocking_pids`; the refresh held 5.5 s longer): red = the run had already failed: `UncategorizedSQLException ... [SELECT active_slot FROM inventory_publication FOR UPDATE]; SQL state [55P03] ... canceling statement due to lock timeout`. Green = the load's 60 s wait for the publication row; then the refresh is generation 2, the run generation 3 in slot a, and slot b keeps the refresh's 126.00. 5.8 s.
+  - `JdbcItineraryRepositoryLoadTest.aSecondLoadTouchesNoSlotWhileAnotherHoldsThePublication` waited for a second run to give up at the 5 s timeout, and would now wait 60 s. It now observes the wait instead: blocked by the first run's backend, nothing written, slot b whole; the first run rolls back and the second publishes generation 2. The 60 s give-up itself is not waited for by any test.
+  - Mutation "60 s for the whole load": `givesUpWhenTheInactiveSlotStaysLocked` failed, `execution timed out after 15000 ms`, so the rest of the load keeps its 5 s.
+- `boundsTheTransactionOfARefresh` (beyond the plan's list: every store's bounds), over `statement_timeout` and `lock_timeout`: red = `expected: "5min" but was: "0"` and `expected: "5s" but was: "0"`. Green = the two `SET LOCAL`s.
+- `writesIntoTheSlotARunSwitchedToWhileItWaited` (beyond the plan's list: the lock at the start of the rewrite; a second connection holds the row, switches to slot b and commits while the refresh waits): passed on its first run. Mutation "read the active slot without the lock": `expected: 126.00 but was: 105.00` (written into slot a, switched from).
+- `refusesARefreshBeforeTheFirstPublication` (beyond the plan's list): red = `NoSuchElementException: No value present`. Green = `IllegalStateException("itinerary_a has no day partition: no run has published into it")`, raised before any write.
+- Refactor under green: one `waitForEachLockAtMost` for the three writes, and `switchTo`'s instant through `ProviderTime`. `adapters/persistence` 116 tests.
+
+Cycles, Step 3 and the wiring (`bootstrap`):
+
+- `CountedItineraryRepositoryTest.passesARefreshThroughUncounted`: red = `UnsupportedOperationException: Forwarded once a test asks for it (Task 7)`. Green = forwarded.
+- `logsAnUpdateSkippedWhileARunOrARefreshHoldsTheInventory` (renamed, its expected line reworded first): red = `[(WARN, "Skipped storing a re-price: an ingestion run holds the inventory", ...)]`. Green = the reworded line.
+- `BackgroundRefreshTest.logsAFailureWithoutThrowing`, over a runtime exception and an `OutOfMemoryError`; the test counts the lines as they are appended, never a time: red with a skeleton that calls the refresh = `Expecting code not to raise a throwable but caught "java.lang.IllegalStateException: lock timeout"` (and the error). Green = catch, one ERROR line with `origin=MAD` and the failure.
+- `returnsBeforeTheRefreshEnds` (beyond the plan's list: the port's "returns at once"): red = `execution timed out after 2000 ms`. Green = `Thread.ofVirtual()`; the refresh ran on a virtual thread.
+- `logsTheReport` (beyond the plan's list: "logs the report (INFO)"): red = `[1 lines logged] Expecting value to be true but was false`. Green = `INFO` "The refresh of a stale origin ended" with `origin=MAD outcome=REFRESHED generation=8 itineraries=3 alpha.status=FRESH beta.status=KEPT`.
+- `logsEachRefreshUnderItsOwnCorrelationId` (beyond the plan's list: the plan's MDC): red = `Expecting actual: [null, null] not to contain null elements`. Green = a new UUID per refresh, removed in the `finally`; the search's own MDC is untouched. Mutation "the id removed before the catch logs": `["66d0f568-...", null]`.
+- `RefreshConfigTest.refreshesARequestedOriginInTheBackground` (the scheduler search holds, over one provider and the test's stores): red against the provisional scheduler = `TimeoutException` (it only warned). Green = `RefreshConfig` declares the use case and `BackgroundRefresh`.
+
+Decisions taken here, for the reviewer and the user:
+
+1. **`replaceThrough` takes no `now`,** unlike the plan's signature. The repository has nothing to do with it: `published_at` stays the run's, the partitions stay the slot's, and the service builds with its own `now`. An unused parameter would have been dead.
+2. **A refresh waits 5 s for the publication row,** the store's lock timeout, not the run's 60 s: Q9 names the 60 s for a run waiting for a refresh only. A refresh that meets a run, or a refresh held longer than 5 s, fails with a lock timeout. That is one ERROR line; the origin stays unmarked and is asked again once its claim expires (2 min). See the concerns.
+3. **`NOTHING_FRESH` reports generation 0 and itineraries 0,** since the plan's record has `long`s; documented on the record and in the architecture doc.
+4. **A refresh's own conflicting offers are reported** as a run's are; stored ones are not reported again.
+5. **An `Error` thrown by a refresh is logged at ERROR and not rethrown:** its virtual thread ends there, and rethrowing would only print it again, outside the JSON log.
+6. **A refresh before the first publication fails plainly.** Search never asks for one then (Task 6), so this only guards the repository's contract.
+
+Gates: `./gradlew build` green (exit 0, Spotless and the coverage gate included):
+- `application` 90 (8 new cases);
+- `adapters/persistence` 116 (7 new);
+- `bootstrap` 142 (7 new, 2 removed);
+- `adapters/providers` 197, `domain` 91, architecture 39, `mock-gds` 201;
+- none failed.
+
+Thermo-nuclear self-review of the task's diff:
+- The run's checks are lifted into `ProviderDownloads`, not copied, and the run shrinks. The repository's rewrite reuses the load's lock, `copy()`, `ItineraryRow`, `Slot` and the partition read. The background refresh reuses the run's correlation id, now one constant.
+- No new branch in an existing flow: the load gains one `SET LOCAL`. The refresh's rewrite is one transaction, so a failure leaves the slot as it was. The origin is marked only after the commit, and every failure reaches a log line.
+- No file near 1,000 lines: `JdbcItineraryRepository` 303, `RefreshStaleRouteService` 129, `ProviderDownloads` 187, `IngestInventoryService` 174; the tests at most 387.
+
+Concerns (not changed):
+
+- **Refreshes serialize on the publication row.** Each rewrite holds the row for its `DELETE`, which scans the whole active slot (no index on `legs`), and its `COPY`. All origins published by a run go stale together 10 min later, so refreshes come in bursts. A refresh that waits more than 5 s behind another fails, and its origin waits 2 min for its claim to expire. Task 13 should time the hold; options for the user then: the refresh waits like a run (60 s), the GIN index Q2-B names, or one refresh at a time.
+- **Memory:** each refresh reads every provider's stored offers and builds the whole inventory, filtered (Q2-B's accepted cost). Concurrent refreshes are bounded only by the providers' concurrency limit: a fifth one finds every download rejected and ends `NOTHING_FRESH` without building. Not measured under `-Xmx512m` at volume (Task 13).
+- During a refresh, a re-price's store answers `BUSY` (by construction: the refresh holds the row `FOR UPDATE`, and its generation update too). After it, a re-price of an itinerary the refresh no longer built answers `GONE`.
+
+### Extras for the user to decide
+
+- **A `NOTHING_FRESH` refresh as a WARN line,** as a run that publishes nothing is. Value: an origin left stale stands out in the log. Cost: one branch and a test. Left out unless you approve.
+- **Each kept provider's failure in a refresh's log,** with its reason and cause, as a run's "Kept the last good offers" line has them. Today the report has only each provider's status; the reasons are in `provider.calls{operation=origin-download}`. Cost: the reason and cause in `RefreshReport`, a log line, tests in two modules. Left out unless you approve.
+- **Refresh meters** (count by outcome, duration). Value: the refresh's behaviour on the dashboard of plan 7. Cost: a bootstrap decorator and a test. Left out unless you approve.
+- **A refresh that finds a run holding the inventory skips at once** (`NOWAIT`, as a re-price does), instead of waiting 5 s and logging an ERROR. Value: no ERROR line and no held connection during every run. Cost: an outcome in the port and the report, and tests. Left out unless you approve.

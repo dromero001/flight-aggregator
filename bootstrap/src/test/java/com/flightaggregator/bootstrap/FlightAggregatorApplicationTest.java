@@ -16,6 +16,7 @@ import com.flightaggregator.application.port.out.OfferStore;
 import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.application.port.out.RefreshScheduler;
 import com.flightaggregator.bootstrap.ingestion.IngestionJob;
+import com.flightaggregator.bootstrap.refresh.BackgroundRefresh;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Carrier;
 import com.flightaggregator.domain.Leg;
@@ -120,14 +121,13 @@ class FlightAggregatorApplicationTest {
   }
 
   /**
-   * The application holds one refresh scheduler: until plan 5 Task 7, RefreshConfig's provisional
-   * one. Task 7's replaces it; the two side by side stop startup, and if either were marked {@code
-   * Primary} to out-vote the other, startup would go on, so this counts them (the user's decision
-   * of 2026-11-15: the provisional scheduler cannot linger).
+   * The application holds one refresh scheduler, the background refresh, which replaced plan 5 Task
+   * 6's provisional one. A second one marked {@code Primary} would let startup go on, so this
+   * counts them (the user's decision of 2026-11-15: the provisional scheduler cannot linger).
    */
   @Test
   void holdsOneRefreshScheduler() {
-    assertThat(refreshSchedulers).hasSize(1);
+    assertThat(refreshSchedulers).singleElement().isInstanceOf(BackgroundRefresh.class);
   }
 
   /**

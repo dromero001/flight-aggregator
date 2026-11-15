@@ -214,11 +214,18 @@ class RepriceConfigTest {
     }
   }
 
-  /** A repository whose updates in place answer {@code storeAnswers}; it loads nothing. */
+  /**
+   * A repository whose updates in place answer {@code storeAnswers}; it loads and rewrites nothing.
+   */
   private final class Stores implements ItineraryRepository {
 
     @Override
     public Publication replaceInventory(Instant at, ItineraryWriter writer) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Publication replaceThrough(Airport origin, ItineraryWriter writer) {
       throw new UnsupportedOperationException();
     }
 

@@ -3,6 +3,7 @@ package com.flightaggregator.adapter.persistence;
 import static com.flightaggregator.adapter.persistence.support.ItinerarySlots.partitions;
 import static com.flightaggregator.adapter.persistence.support.ItinerarySlots.published;
 import static com.flightaggregator.adapter.persistence.support.ItinerarySlots.rows;
+import static com.flightaggregator.adapter.persistence.support.LockWaits.awaitAStatementBlockedBy;
 import static com.flightaggregator.adapter.persistence.support.Trips.direct;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -17,12 +18,15 @@ import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.domain.Itinerary;
 import java.math.BigDecimal;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
@@ -124,27 +128,37 @@ class JdbcItineraryRepositoryLoadTest {
 
   /**
    * Two runs at once (§6.5): while one holds the publication row, the other waits for it before it
-   * reads the active slot or touches either slot, and gives up at the lock timeout. Without that
+   * reads the active slot or touches either slot, and loads once the first has ended. Without that
    * wait it would read the slot the first run is about to publish and truncate it after the switch.
+   * It waits up to 60 s, as for a refresh (Q9), so the test ends the first run rather than waiting
+   * for the second to give up.
    */
   @Test
-  void aSecondLoadTouchesNoSlotWhileAnotherHoldsThePublication() throws SQLException {
+  void aSecondLoadTouchesNoSlotWhileAnotherHoldsThePublication() throws Exception {
     publish(NOW, List.of(direct(1, "2026-11-25T07:15:00Z")));
+    AtomicBoolean written = new AtomicBoolean();
+    CompletableFuture<Publication> secondRun;
     try (Connection firstRun = dataSource.getConnection()) {
       firstRun.setAutoCommit(false);
+      int firstBackend;
       try (Statement statement = firstRun.createStatement()) {
         statement.execute("SELECT active_slot FROM inventory_publication FOR UPDATE");
+        try (ResultSet backend = statement.executeQuery("SELECT pg_backend_pid()")) {
+          backend.next();
+          firstBackend = backend.getInt(1);
+        }
       }
-      AtomicBoolean written = new AtomicBoolean();
+      secondRun =
+          CompletableFuture.supplyAsync(
+              () -> repository.replaceInventory(NOW, sink -> written.set(true)));
 
-      Throwable failure =
-          catchThrowable(() -> repository.replaceInventory(NOW, sink -> written.set(true)));
+      awaitAStatementBlockedBy(jdbc, firstBackend);
 
-      firstRun.rollback();
-      assertThat(failure).hasStackTraceContaining("lock timeout");
       assertThat(written).isFalse();
+      assertThat(rows(jdbc, "itinerary_b")).isEqualTo(1);
+      firstRun.rollback();
     }
-    assertThat(rows(jdbc, "itinerary_b")).isEqualTo(1);
+    assertThat(secondRun.get(10, TimeUnit.SECONDS).generation()).isEqualTo(2);
   }
 
   /**
