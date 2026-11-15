@@ -1,5 +1,7 @@
 package com.flightaggregator.application.port.out;
 
+import static java.util.Objects.requireNonNull;
+
 import com.flightaggregator.domain.Provider;
 
 /** A provider's download did not complete: no page of it may be used. */
@@ -11,7 +13,9 @@ public class ProviderUnavailableException extends RuntimeException {
   private final FailureReason reason;
 
   public ProviderUnavailableException(Provider provider, FailureReason reason, Throwable cause) {
-    super(provider + " unavailable: " + reason, cause);
+    super(
+        requireNonNull(provider, "provider") + " unavailable: " + requireNonNull(reason, "reason"),
+        cause);
     this.provider = provider;
     this.reason = reason;
   }

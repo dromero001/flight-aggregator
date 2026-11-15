@@ -27,6 +27,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -56,6 +57,12 @@ public final class IngestInventoryService implements IngestInventory {
       ItineraryRepository repository,
       Clock clock,
       long maxItineraries) {
+    Set<Provider> seen = EnumSet.noneOf(Provider.class);
+    for (FlightProvider provider : providers) {
+      if (!seen.add(provider.provider())) {
+        throw new IllegalArgumentException("Two providers named " + provider.provider());
+      }
+    }
     this.providers =
         providers.stream().sorted(Comparator.comparing(FlightProvider::provider)).toList();
     this.store = store;
@@ -224,13 +231,6 @@ public final class IngestInventoryService implements IngestInventory {
         0);
   }
 
-  /** One provider's outcome: its download, or the reason it failed. */
-  private sealed interface Outcome {
-    record Downloaded(Provider provider, ProviderDownload download) implements Outcome {}
-
-    record Failed(Provider provider, FailureReason reason, Throwable cause) implements Outcome {}
-  }
-
   private static Outcome download(FlightProvider provider) {
     try {
       return new Outcome.Downloaded(provider.provider(), provider.download());
@@ -250,5 +250,12 @@ public final class IngestInventoryService implements IngestInventory {
     } catch (ExecutionException e) {
       throw new IllegalStateException("A provider download escaped its handler", e.getCause());
     }
+  }
+
+  /** One provider's outcome: its download, or the reason it failed. */
+  private sealed interface Outcome {
+    record Downloaded(Provider provider, ProviderDownload download) implements Outcome {}
+
+    record Failed(Provider provider, FailureReason reason, Throwable cause) implements Outcome {}
   }
 }

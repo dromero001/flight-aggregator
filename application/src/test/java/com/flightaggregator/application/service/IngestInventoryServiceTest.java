@@ -71,39 +71,36 @@ class IngestInventoryServiceTest {
   void storesACompleteDownload() {
     List<Leg> legs =
         List.of(
-            leg(Provider.ALPHA, 1, "MAD", "LHR"),
-            leg(Provider.ALPHA, 2, "MAD", "BCN"),
-            leg(Provider.ALPHA, 3, "BCN", "LHR"));
+            leg(ALPHA, 1, "MAD", "LHR"), leg(ALPHA, 2, "MAD", "BCN"), leg(ALPHA, 3, "BCN", "LHR"));
 
     IngestionReport report =
-        service(new FakeFlightProvider(Provider.ALPHA, () -> new ProviderDownload(legs, List.of())))
+        service(new FakeFlightProvider(ALPHA, () -> new ProviderDownload(legs, List.of())))
             .ingest();
 
-    assertThat(store.offers(Provider.ALPHA)).isEqualTo(legs);
+    assertThat(store.offers(ALPHA)).isEqualTo(legs);
     assertThat(report.providers()).hasSize(1);
     ProviderReport alpha = report.providers().getFirst();
-    assertThat(alpha.provider()).isEqualTo(Provider.ALPHA);
+    assertThat(alpha.provider()).isEqualTo(ALPHA);
     assertThat(alpha.status()).isEqualTo(ProviderReport.Status.FRESH);
     assertThat(alpha.offersFetched()).isEqualTo(3);
   }
 
   @Test
   void keepsAFailedProvidersOffersWhole() {
-    List<Leg> lastGood = List.of(leg(Provider.BETA, 7, "MAD", "LHR"));
-    store.with(Provider.BETA, lastGood);
+    List<Leg> lastGood = List.of(leg(BETA, 7, "MAD", "LHR"));
+    store.with(BETA, lastGood);
     IOException timedOut = new IOException("read timed out");
     FakeFlightProvider beta =
         new FakeFlightProvider(
-            Provider.BETA,
+            BETA,
             () -> {
-              throw new ProviderUnavailableException(
-                  Provider.BETA, FailureReason.TIMEOUT, timedOut);
+              throw new ProviderUnavailableException(BETA, FailureReason.TIMEOUT, timedOut);
             });
 
     IngestionReport report = service(beta).ingest();
 
-    assertThat(store.replacedProviders()).doesNotContain(Provider.BETA);
-    assertThat(store.offers(Provider.BETA)).isEqualTo(lastGood);
+    assertThat(store.replacedProviders()).doesNotContain(BETA);
+    assertThat(store.offers(BETA)).isEqualTo(lastGood);
     ProviderReport betaReport = report.providers().getFirst();
     assertThat(betaReport.status()).isEqualTo(ProviderReport.Status.KEPT);
     assertThat(betaReport.failure()).contains(FailureReason.TIMEOUT);
@@ -114,16 +111,15 @@ class IngestInventoryServiceTest {
 
   @Test
   void treatsAnUnexpectedExceptionAsAFailedProvider() {
-    List<Leg> gammaLegs = List.of(leg(Provider.GAMMA, 9, "BCN", "LHR"));
+    List<Leg> gammaLegs = List.of(leg(GAMMA, 9, "BCN", "LHR"));
     IllegalStateException boom = new IllegalStateException("boom");
     FakeFlightProvider alpha =
         new FakeFlightProvider(
-            Provider.ALPHA,
+            ALPHA,
             () -> {
               throw boom;
             });
-    FakeFlightProvider gamma =
-        new FakeFlightProvider(Provider.GAMMA, () -> download(gammaLegs.getFirst()));
+    FakeFlightProvider gamma = new FakeFlightProvider(GAMMA, () -> download(gammaLegs.getFirst()));
 
     IngestionReport report = service(alpha, gamma).ingest();
 
@@ -131,8 +127,8 @@ class IngestInventoryServiceTest {
     assertThat(alphaReport.status()).isEqualTo(ProviderReport.Status.KEPT);
     assertThat(alphaReport.failure()).contains(FailureReason.UNEXPECTED);
     assertThat(alphaReport.cause()).containsSame(boom);
-    assertThat(store.replacedProviders()).containsExactly(Provider.GAMMA);
-    assertThat(store.offers(Provider.GAMMA)).isEqualTo(gammaLegs);
+    assertThat(store.replacedProviders()).containsExactly(GAMMA);
+    assertThat(store.offers(GAMMA)).isEqualTo(gammaLegs);
   }
 
   @Test
@@ -347,6 +343,16 @@ class IngestInventoryServiceTest {
 
     assertThat(report.startedAt()).isEqualTo(NOW);
     assertThat(report.duration()).isEqualTo(Duration.ofSeconds(5));
+  }
+
+  @Test
+  void rejectsTwoProvidersWithTheSameName() {
+    FakeFlightProvider first = new FakeFlightProvider(BETA, IngestInventoryServiceTest::download);
+    FakeFlightProvider second = new FakeFlightProvider(BETA, IngestInventoryServiceTest::download);
+
+    assertThatThrownBy(() -> service(first, second))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("BETA");
   }
 
   private static boolean awaitAll(CountDownLatch latch) {

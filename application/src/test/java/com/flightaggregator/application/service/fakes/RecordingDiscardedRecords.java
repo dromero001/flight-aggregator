@@ -6,7 +6,7 @@ import com.flightaggregator.domain.Provider;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Keeps what it receives, as {@code PROVIDER:record}. */
+/** Keeps every discarded record it receives, with the provider it came from. */
 public final class RecordingDiscardedRecords implements DiscardedRecords {
 
   public record Entry(Provider provider, DiscardedRecord record) {}
