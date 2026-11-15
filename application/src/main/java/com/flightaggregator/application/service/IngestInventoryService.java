@@ -169,7 +169,10 @@ public final class IngestInventoryService implements IngestInventory {
     };
   }
 
-  /** Stores the download's legs that the catalogue knows, and discards the others. */
+  /**
+   * Stores the download's legs that the catalogue knows, and discards the others. A download left
+   * with no leg is a failed one: the provider's last good offers are kept (§6.5).
+   */
   private ProviderRun store(Provider provider, ProviderDownload download, Set<Airport> airports) {
     Map<DiscardReason, Integer> discardedByReason = new EnumMap<>(DiscardReason.class);
     for (DiscardedRecord record : download.discarded()) {
@@ -186,9 +189,18 @@ public final class IngestInventoryService implements IngestInventory {
             discardedByReason);
       }
     }
+    int fetched = download.legs().size();
+    if (inCatalogue.isEmpty()) {
+      return new ProviderRun(
+          provider,
+          Optional.of(FailureReason.EMPTY_DOWNLOAD),
+          Optional.empty(),
+          fetched,
+          discardedByReason);
+    }
     store.replace(provider, inCatalogue);
     return new ProviderRun(
-        provider, Optional.empty(), Optional.empty(), download.legs().size(), discardedByReason);
+        provider, Optional.empty(), Optional.empty(), fetched, discardedByReason);
   }
 
   private void discard(

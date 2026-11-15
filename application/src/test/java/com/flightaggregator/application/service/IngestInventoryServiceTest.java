@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.entry;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import com.flightaggregator.application.port.in.IngestionReport;
 import com.flightaggregator.application.port.in.ProviderReport;
@@ -42,7 +43,11 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class IngestInventoryServiceTest {
 
@@ -112,6 +117,39 @@ class IngestInventoryServiceTest {
     assertThat(betaReport.cause()).containsSame(timedOut);
     assertThat(betaReport.offersFetched()).isZero();
     assertThat(betaReport.offersUsed()).isEqualTo(1);
+  }
+
+  /**
+   * A download that arrived whole but leaves no leg once parsed and checked against the catalogue
+   * is a failed download (§6.5): the provider's stored offers are not replaced by nothing.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("downloadsWithNoUsableLeg")
+  void keepsAProvidersOffersWhenItsDownloadHasNoUsableLeg(
+      String download, ProviderDownload noUsableLeg) {
+    List<Leg> lastGood = List.of(leg(ALPHA, 1, "MAD", "LHR"));
+    store.with(ALPHA, lastGood);
+
+    IngestionReport report = service(new FakeFlightProvider(ALPHA, () -> noUsableLeg)).ingest();
+
+    assertThat(store.replacedProviders()).doesNotContain(ALPHA);
+    assertThat(store.offers(ALPHA)).isEqualTo(lastGood);
+    ProviderReport alpha = report.providers().getFirst();
+    assertThat(alpha.status()).isEqualTo(ProviderReport.Status.KEPT);
+    assertThat(alpha.failure()).contains(FailureReason.EMPTY_DOWNLOAD);
+    assertThat(alpha.offersFetched()).isEqualTo(noUsableLeg.legs().size());
+    assertThat(alpha.offersUsed()).isEqualTo(1);
+    assertThat(report.outcome()).isEqualTo(IngestionReport.Outcome.PUBLISHED);
+  }
+
+  static Stream<Arguments> downloadsWithNoUsableLeg() {
+    return Stream.of(
+        arguments("an empty list", new ProviderDownload(List.of(), List.of())),
+        arguments(
+            "every record discarded",
+            new ProviderDownload(
+                List.of(leg(ALPHA, 2, "MAD", "ZZZ")),
+                List.of(new DiscardedRecord(DiscardReason.PRICE, "{\"price\":\"-1\"}")))));
   }
 
   /** The offers a run keeps are read from the store once, for the build and the report alike. */
