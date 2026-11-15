@@ -1,12 +1,29 @@
-import { render, screen, within } from '@testing-library/react';
-import { expect, test } from 'vitest';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
+import { beforeEach, expect, test } from 'vitest';
+import type { RepriceResponse } from '../api/types';
 import { axe } from '../test/axe';
 import { connecting, direct } from '../test/fixtures';
+import { renderWithClient } from '../test/renderWithClient';
+import { server } from '../test/server';
 import { ItineraryCard } from './ItineraryCard';
 import styles from './ItineraryCard.module.css';
 
+const REPRICE = '*/api/itineraries/:id/reprice';
+
+/** The API's answer when the chosen itinerary is confirmed at its price. */
+function confirmed(itinerary = connecting()): RepriceResponse {
+  return { outcome: 'CONFIRMED', itinerary };
+}
+
+beforeEach(() => {
+  // Opening a card re-prices it; a test that cares about the answer overrides this one.
+  server.use(http.post(REPRICE, () => HttpResponse.json(confirmed())));
+});
+
 test('has no accessibility violations', async () => {
-  const { container } = render(
+  const { container } = renderWithClient(
     <ItineraryCard itinerary={connecting()} now={new Date('2026-11-15T09:05:00Z')} />,
   );
 
@@ -15,7 +32,7 @@ test('has no accessibility violations', async () => {
 
 test('shows a direct flight', () => {
   // Five minutes after the fixture's quote.
-  render(<ItineraryCard itinerary={direct()} now={new Date('2026-11-15T09:05:00Z')} />);
+  renderWithClient(<ItineraryCard itinerary={direct()} now={new Date('2026-11-15T09:05:00Z')} />);
 
   const card = within(screen.getByRole('article'));
   expect(card.getByText('08:15')).toHaveAttribute('datetime', '2026-11-20T08:15:00+01:00');
@@ -33,7 +50,7 @@ test('shows a direct flight', () => {
 
 test('shows each stop with its airport and layover', () => {
   const now = new Date('2026-11-15T09:05:00Z');
-  const oneStop = render(<ItineraryCard itinerary={connecting()} now={now} />);
+  const oneStop = renderWithClient(<ItineraryCard itinerary={connecting()} now={now} />);
 
   expect(screen.getByText('1 stop: LHR, 1h 10m')).toBeInTheDocument();
   // The route line holds one dot per stop (Q6).
@@ -57,16 +74,86 @@ test('shows each stop with its airport and layover', () => {
       },
     ],
   });
-  const twoStops = render(<ItineraryCard itinerary={toBoston} now={now} />);
+  const twoStops = renderWithClient(<ItineraryCard itinerary={toBoston} now={now} />);
 
   expect(screen.getByText('2 stops: LHR, 1h 10m; JFK, 1h 20m')).toBeInTheDocument();
   expect(twoStops.container.getElementsByClassName(styles.stop)).toHaveLength(2);
 });
 
 test('marks a multi-airline itinerary', () => {
-  render(<ItineraryCard itinerary={connecting()} now={new Date('2026-11-15T09:05:00Z')} />);
+  renderWithClient(
+    <ItineraryCard itinerary={connecting()} now={new Date('2026-11-15T09:05:00Z')} />,
+  );
 
   const card = within(screen.getByRole('article'));
   expect(card.getByText('IB 3166, BA 117')).toBeInTheDocument();
   expect(card.getByText('Multiple airlines')).toBeInTheDocument();
+});
+
+test('re-prices when a card is opened, once per opening', async () => {
+  const user = userEvent.setup();
+  const repriced: string[] = [];
+  server.use(
+    http.post(REPRICE, ({ params }) => {
+      repriced.push(String(params.id));
+      return HttpResponse.json(confirmed());
+    }),
+  );
+  renderWithClient(
+    <ItineraryCard itinerary={connecting()} now={new Date('2026-11-15T09:05:00Z')} />,
+  );
+
+  const summary = screen.getByRole('button', { expanded: false });
+  await user.click(summary);
+  await waitFor(() => {
+    expect(repriced).toEqual([connecting().id]);
+  });
+
+  await user.click(summary);
+  expect(summary).toHaveAttribute('aria-expanded', 'false');
+  expect(repriced).toHaveLength(1);
+
+  await user.click(summary);
+  await waitFor(() => {
+    expect(repriced).toEqual([connecting().id, connecting().id]);
+  });
+});
+
+test('shows each leg when opened', async () => {
+  const user = userEvent.setup();
+  renderWithClient(
+    <ItineraryCard itinerary={connecting()} now={new Date('2026-11-15T09:05:00Z')} />,
+  );
+  const summary = screen.getByRole('button', { expanded: false });
+  expect(screen.queryByRole('list', { name: 'Legs' })).not.toBeInTheDocument();
+
+  await user.click(summary);
+
+  const legs = screen.getByRole('list', { name: 'Legs' });
+  expect(summary).toHaveAttribute('aria-controls', legs.parentElement?.id);
+  const [first, second] = within(legs).getAllByRole('listitem');
+  expect(first).toHaveTextContent('IB 3166 MAD 08:15 to LHR 09:40');
+  expect(second).toHaveTextContent('BA 117 LHR 10:50 to JFK 13:40');
+
+  await user.click(summary);
+  expect(screen.queryByRole('list', { name: 'Legs' })).not.toBeInTheDocument();
+});
+
+test('opens and closes a card with the keyboard', async () => {
+  const user = userEvent.setup();
+  renderWithClient(
+    <ItineraryCard itinerary={connecting()} now={new Date('2026-11-15T09:05:00Z')} />,
+  );
+
+  await user.tab();
+  const summary = screen.getByRole('button', { expanded: false });
+  expect(summary).toHaveFocus();
+
+  await user.keyboard('{Enter}');
+  expect(summary).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('list', { name: 'Legs' })).toBeVisible();
+
+  await user.keyboard(' ');
+  expect(summary).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByRole('list', { name: 'Legs' })).not.toBeInTheDocument();
 });

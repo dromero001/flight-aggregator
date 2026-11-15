@@ -88,6 +88,11 @@ export function layovers(legs: Leg[]): Layover[] {
   });
 }
 
+/** "IB 3166": a leg's carrier and flight number. */
+export function flight(leg: Leg): string {
+  return `${leg.carrier} ${String(leg.flightNumber)}`;
+}
+
 /** True when the legs are flown by more than one carrier ("Multiple airlines", spec 6.8). */
 export function isMultiAirline(legs: Leg[]): boolean {
   return new Set(legs.map((each) => each.carrier)).size > 1;

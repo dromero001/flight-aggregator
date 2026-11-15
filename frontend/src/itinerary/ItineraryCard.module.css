@@ -1,11 +1,42 @@
 /* A boarding pass (plan 6, Q6): flat, a 1 px border, the stub torn off along a perforation. */
 .card {
-  position: relative;
-  display: flex;
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
+}
+
+/* The pass and the stub are one disclosure button (plan 6, Task 6), drawn as the card itself. */
+.summary {
+  position: relative;
+  display: flex;
+  width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Inside the card, which clips anything drawn beyond its border. */
+.summary:focus-visible {
+  outline-offset: -3px;
+}
+
+/* The legs and the re-price, under a perforation like the stub's. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 2px dashed var(--color-border);
+}
+
+.panel[hidden] {
+  display: none;
 }
 
 .pass {
@@ -133,12 +164,13 @@
 
 /* On a phone the stub sits under the pass, torn along a horizontal perforation. */
 @media (max-width: 640px) {
-  .card {
+  .summary {
     flex-direction: column;
   }
 
   .pass,
-  .stub {
+  .stub,
+  .panel {
     padding: var(--space-3);
   }
 
