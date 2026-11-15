@@ -7,7 +7,7 @@
 **Architecture:**
 - `application` gains the use cases `SearchItineraries`, `RefreshStaleRoute`, `RepriceItinerary`, `AdmitRequest`, `TriggerIngestion` and `InventoryStatus`, with their outbound ports. Search reads only PostgreSQL and Valkey, never a provider.
 - `adapters/persistence` reads the active slot with keyset queries, one index per sort order, and holds the Valkey adapters (result cache, refresh coordination, rate-limit counters), where §6's module table puts Redis.
-- `adapters/providers` adds a download by origin and a one-flight quote per provider, behind a per-provider concurrency limit; `mock-gds` serves both.
+- `adapters/providers` (one package, `PagedProvider` over three page formats) adds a download by origin and a one-flight quote, behind a per-provider concurrency limit; `mock-gds` serves both (built).
 - `adapters/web` holds the controllers, the cursor codec, parameter parsing, problem responses and the rate-limit interceptor. `bootstrap` adds the resource server, the background refresh, the health indicator, the wiring, and Valkey and Keycloak in compose.
 
 **Tech Stack:** Java 25, Spring Boot 4.1.2 (Spring Framework 7.0.10: `@ConcurrencyLimit`, with `ThrottlePolicy.BLOCK | REJECT` since 7.0.3; Spring Security 7.1.2 resource server; Spring Data Redis on Lettuce 7.5.2), PostgreSQL 18, Valkey 9, Keycloak, springdoc-openapi, Testcontainers 2.0.5 with the BOM's `com.redis:testcontainers-redis` 2.2.4, WireMock 3.13.2. Versions read from the Boot 4.1.2 BOM on 2026-11-15.
@@ -23,7 +23,7 @@
 - §6.8: what each result card shows; the provider-status screen and "Run ingestion now".
 - §6.10: metrics of what this plan builds. §6.11: OpenAPI contract drift.
 
-Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progress/2026-11-14.md), "Pending for later plans" (R5, R11; the `LegKey` null checks were closed by plan 4 Task 1), and plan 4's ledger notes (bulkhead, `ANALYZE`, one provider-time helper, the refresh); each task names what it closes. Plan 4 must be closed first: this plan builds on its `IngestionJob`, ShedLock lock `ingestion`, `V4__shedlock.sql` and the compose `app` service.
+Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progress/2026-11-14.md), "Pending for later plans" (R5, R11; the `LegKey` null checks were closed by plan 4 Task 1), and plan 4's ledger notes (bulkhead, `ANALYZE`, one provider-time helper, the refresh); each task names what it closes. Plan 4 is closed: this plan builds on its `IngestionJob` (ShedLock lock `ingestion` through `LockingTaskExecutor`, run id in the MDC), `V4__shedlock.sql`, the compose `app` service, `PagedProvider` and the `CircuitBreakerRegistry` bean. Task 1 is done; the rest is rebased on the code at HEAD (after plan 4's final fix wave).
 
 **Status:** approved by the user on 2026-11-15 (session 09), with every open question answered as recommended. Extras: E1 replaced by a confidential **client-credentials** client with a service account holding `ADMIN` (not the deprecated password grant), documented in the README's "Admin access" section and in `SOLUTION.md` so that reviewers can reproduce the admin calls without the author; E2 (Swagger UI) approved; E3 and E4 rejected. Before execution, Task 2 is rewritten on plan 4's final provider structure (one `PagedProvider`, a `CircuitBreakerRegistry`, no `WiredProvider`), and the out-of-scope note on plan 4's extras is updated.
 
@@ -36,6 +36,7 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - **Values from the spec:** freshness threshold 10 min, result TTL 5 min (§6.4), Valkey `allkeys-lru` with `maxmemory` (§6.2), all configurable (`search.freshness-threshold`, `search.cache-ttl`). Values the spec leaves open: Q9.
 - **Copy fixed by §6.5:** *"We couldn't confirm this flight. This is the best alternative we found."* and *"We can't confirm the price right now. Please try again in a few minutes."*
 - **Errors:** RFC 9457 problem details, English `detail` naming the parameter. A domain `IllegalArgumentException` is caught where the parameter is parsed, never mapped to 400 globally.
+- **Stores (E6):** every new store (the itinerary reader, the provider-status writer, the re-price update, the refresh's slot rewrite) is built from Boot's one transaction manager, as `PersistenceConfig` builds `JdbcOfferStore` and `JdbcItineraryRepository` (a `DataSourceTransactionManager`, which is a `PlatformTransactionManager`): connections and `TransactionTemplate` come from it, a store never takes a `DataSource` or a `JdbcClient` of its own, and `PersistenceConfig` is where each is declared.
 - **Metrics (§6.10 minimum, low cardinality):** `search.cache{result=hit|miss|error}` (hit ratio, §6.2) and `provider.calls{provider,operation,outcome}` for every provider call. Never an airport, carrier or client tag. Tokens and keys are never logged.
 - **Gates:** as plan 4: `./gradlew build` green before every commit, TDD one test at a time, red → green evidence in `docs/planning/progress/<date>.md`, section "Search API run (plan 5)". Scope by `brief-scope`; extras found mid-task go to the progress report. English everywhere; no AI attribution; push only after `direnv exec . gh api user --jq .login` prints `dromero001`.
 
@@ -116,7 +117,7 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 | **User:** a per-provider concurrency limit with Spring 7's `@ConcurrencyLimit`, shared by ingestion, the refresh and re-price | They call one provider at once | (user, session 09; §6.1) |
 | `ANALYZE` the loaded slot before the switch | Autovacuum never analyzes the partitioned parent, and a fresh slot has no statistics | (plan 4 Task 4 note) |
 | One provider-time encoding (instant + offset seconds) for the offer store, the row writer and the readers | It exists twice today | (plan 4 Task 4 note) |
-| The mock's quote is its listing filtered to one flight, in each provider's own format; the listing also takes `origin` | The parsers and adapters are reused; the schemas are ours | (§6.7; §6.3; §4.1) |
+| The mock's quote is its listing filtered to one flight, in each provider's own format; the listing also takes `origin` (built, Task 1) | The page formats are reused; the schemas are ours | (§6.7; §6.3; §4.1) |
 | The rate limit is an inbound port over a Valkey counter | Driving adapters use only inbound ports; counters live in Valkey | (§6 ports; §6.6) |
 | The client IP is the address Tomcat's `RemoteIpValve` resolves (`server.forward-headers-strategy: native`): `X-Forwarded-For` counts only from a private-range proxy | Otherwise any client picks its own counter | (§6.6 per client IP; §6.8 nginx) |
 | Valkey fails open: an error is a cache miss, an unclaimed refresh and an admitted request, logged on the first failure after a success and on recovery | The system keeps working, only slower, without Valkey | (§6.2) |
@@ -124,7 +125,7 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 | JWT signatures checked against Keycloak's internal JWKS URL, the issuer against the public one (`KC_HOSTNAME`) | A browser token names `localhost` while the app reaches `keycloak` | (implied by Keycloak in compose, §6.6) |
 | OpenAPI code-first with springdoc; the served contract is committed and a test fails on drift | The contract is generated, and CI fails on drift | (§6.8; §6.11) |
 | Re-price refuses a departed trip through `Itinerary.isSellable(now)` and matches re-quoted offers by `LegKey` | R5 | (progress 2026-11-14, R5) |
-| Provider call outcomes counted by a bootstrap decorator around each `FlightProvider` | The application cannot use Micrometer (ArchUnit rule 2) | (§6.10 minimum) |
+| Provider call outcomes counted by a bootstrap decorator around each `FlightProvider` (outside its concurrency proxy, so a rejection is counted) | The application cannot use Micrometer (ArchUnit rule 2) | (§6.10 minimum) |
 
 ## ⚠ Extras — your call
 
@@ -147,39 +148,40 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 ---
 
-### Task 1: The mock providers: an origin filter and a one-flight quote
+### Task 1: The mock providers: an origin filter and a one-flight quote — DONE
+
+**Done:** `eb2c1eb` (*Let the mock providers filter by origin and quote one flight*) and `e8b6b87` (*Validate the mock providers' origin and quote parameters, bound by name*). Built: `serving/ListingParams.java` (the parameters, validated), `RecordFilter.java`, `ProviderInventory.page(Provider, RecordFilter, offset, limit)`; the three controllers; tests in `ProviderInventoryTest`, the three controller tests and `EndpointAccessTest`. **Depends on:** nothing. **Parallel:** n/a.
+
+**Decided details that later tasks rely on (Task 2's formats and WireMock stubs follow them):**
+- Every listing takes `origin=<IATA>`, filtered before paging.
+- A quote is the listing with five parameters, all present: `carrier`, `flightNumber`, `origin`, `destination` and `departure`, a UTC instant ending in `Z` (`2026-12-01T08:00:00Z`). It returns at most one record, in the listing's own format, ending its pagination (Alpha `"nextCursor":null`, Beta `totalPages` 1, Gamma a short page). Prices drift as on the listing (§6.3).
+- An unknown flight answers the listing's own empty page with `200`, never `404`.
+- A partial flight key or a `departure` that is not a UTC instant → `400`. The quote needs the API key like the listing (no key → `401`).
+
+### Task 2: The provider adapter: download by origin, quote, concurrency limit, call counter
+
+**Depends on:** Task 1 (done). **Parallel:** yes, with 3 and 11 (its own worktree). It changes `FlightProvider` and `PagedProvider`, which 7, 8 and 12 build on, so they wait for it.
 
 **Files:**
-- Create: `mock-gds/src/main/java/com/flightaggregator/mockgds/serving/RecordFilter.java`
-- Modify: `serving/ProviderInventory.java`, `alpha/AlphaController.java`, `beta/BetaController.java`, `gamma/GammaController.java`
-- Test: `serving/ProviderInventoryTest.java`, the three controller tests, `EndpointAccessTest.java`
+- Modify: `application/.../port/out/FlightProvider.java`, `application/src/test/.../fakes/FakeFlightProvider.java`; in `adapters/providers/.../adapter/provider/` (one package): `PageFormat.java`, `PageRequest.java`, `AlphaPage.java`, `BetaPage.java`, `GammaPage.java`, `PagedProvider.java`; `bootstrap/.../config/ProvidersConfig.java`, `ProvidersProperties.java`, `application.yaml`
+- Create: `bootstrap/.../observability/CountedFlightProvider.java`, and the post-processor that wraps each `FlightProvider` bean with it (`CountedProviders.java`, same package)
+- Test: `AlphaPageTest.java`, `BetaPageTest.java`, `GammaPageTest.java`, `AlphaProviderTest.java`, `BetaProviderTest.java`, `GammaProviderTest.java` (each drives `PagedProvider` with that provider's endpoint), `ProvidersConfigTest.java`, `ProvidersPropertiesTest.java`, `CountedFlightProviderTest.java`
 
 **Interfaces:**
-- `record RecordFilter(Optional<String> origin, Optional<LegKey> flight)` with `all()`, `fromOrigin(String)`, `flight(LegKey)`; `ProviderInventory.page(Provider, RecordFilter, int offset, int limit)`, filtering before paging; malformed records are filtered like valid ones and keep their defect.
-- Every listing takes `origin=<IATA>`. A quote is the listing with `carrier`, `flightNumber`, `origin`, `destination` and `departure` (a UTC instant, `…Z`) all present: at most one record, in the listing's own format, ending its pagination (Alpha `"nextCursor":null`, Beta `totalPages` 1, Gamma a short page). A partial flight key or a `departure` that is not an instant → 400 through `InvalidRequestAdvice`. Prices drift as on the listing (§6.3).
+- `FlightProvider` gains `ProviderDownload downloadFrom(Airport origin)` (whole or `ProviderUnavailableException`, as `download()`) and `Optional<Leg> quote(LegKey flight)`: empty when the flight is no longer sold; a record of another flight, more than one record, or a discarded (malformed) one throws `ProviderUnavailableException(provider, MALFORMED_PAGE, …)`.
+- `PageFormat` stops being a lambda: `PageRequest at(Optional<Airport> origin, Optional<String> position, int pageSize)` (the origin joins the listing's query; `Optional.empty()` is today's whole download) and `PageRequest quoting(LegKey flight)` (the five-parameter listing of Task 1, `departure` as a UTC instant). `AlphaPage`, `BetaPage` and `GammaPage` implement both; `PagedProvider.formatOf` returns the provider's format as today. Escaping of anything provider-controlled in a message is `ProviderText` (`application.port.out`).
+- `PagedProvider.download()` and `downloadFrom(origin)` both go through the same `PagedDownload.download(PageSource)` (its own `TimeLimiter`, page bounds, `PageMalformed` → `MALFORMED_PAGE`), so the origin download has the same bounds as the whole one. `quote(flight)` is one request through `ProviderHttp.get` (its breaker, retries and request timeout, so about 8 s at worst, Q9's budget) and `PageRequest.parse`; a `PageMalformed` becomes `MALFORMED_PAGE` as in `PagedDownload`; `quotedAt` comes from the response's arrival (`FetchedPage.receivedAt`).
+- The concurrency limit sits on `PagedProvider`, one class and one limit per provider: `@ConcurrencyLimit(limitString = "${providers.concurrency-limit}", policy = <Q9>)` on its three operations (not on `provider()`, which a rejection must never fail), shared by them. `ProvidersConfig` is `@EnableResilientMethods`; each `PagedProvider` bean built there is proxied on its own, so each provider has its own limit; the breakers stay the registry's, one per provider. `ProvidersProperties` gains `@DefaultValue("4") int concurrencyLimit` (it has `ignoreUnknownFields = false`, so the property must be declared there). A rejected call surfaces as `InvocationRejectedException`, a `RejectedExecutionException`. If Spring 7.0.10 counts the limit per method rather than per instance, the test of Step 2 shows it and the task stops and asks before choosing another seam.
+- `CountedFlightProvider implements FlightProvider` wraps each limited provider (applied after the proxy, so a rejected call is counted; `ProvidersConfigTest` pins the order) and counts `provider.calls{provider, operation=download|origin-download|quote, outcome=OK|NOT_SOLD|<FailureReason>|REJECTED}`.
 
-- [ ] **Step 1: `ProviderInventoryTest`, one test at a time:** `filtersByOrigin` (every record departs MAD, a malformed MAD record included, offsets over the filtered list); `findsOneFlightByItsKey`; `findsNothingForAFlightItDoesNotSell`.
-- [ ] **Step 2: controller tests, one at a time, per provider:** `servesOnlyTheOriginsLegs`, `quotesOneFlightInItsFormat`, `quotesNothingInItsFormat`, `refusesAPartialFlightKey`; then `EndpointAccessTest.guardsTheQuoteLikeTheListing` (no key → 401).
-- [ ] **Step 3: `./gradlew build` green, review, commit:** `git commit -m "Let the mock providers filter by origin and quote one flight"`.
-
-### Task 2: The provider adapters: download by origin, quote, concurrency limit
-
-**Files:**
-- Modify: `application/.../port/out/FlightProvider.java`, `application/src/test/.../fakes/FakeFlightProvider.java`; `adapters/providers/.../alpha/AlphaProvider.java`, `beta/BetaProvider.java`, `gamma/GammaProvider.java`; `bootstrap/.../config/ProvidersConfig.java`, `ProvidersProperties.java`, `application.yaml`
-- Create: `bootstrap/.../observability/CountedFlightProvider.java`
-- Test: `AlphaProviderTest.java`, `BetaProviderTest.java`, `GammaProviderTest.java`, `ProvidersConfigTest.java`, `CountedFlightProviderTest.java`
-
-**Interfaces:**
-- `FlightProvider` gains `ProviderDownload downloadFrom(Airport origin)` (whole or `ProviderUnavailableException`, as `download()`) and `Optional<Leg> quote(LegKey flight)`: empty when the flight is no longer sold; a record of another flight, or a malformed one, throws `ProviderUnavailableException(provider, MALFORMED_PAGE, …)`.
-- `@ConcurrencyLimit(limitString = "${providers.concurrency-limit}", policy = <Q9>)` on the three methods of each adapter. `ProvidersConfig` declares each adapter as a bean under `@EnableResilientMethods`, so each provider's proxy holds its own limit; `WiredProvider` keeps the proxy. A rejected call surfaces as `InvocationRejectedException`, a `java.util.concurrent.RejectedExecutionException`.
-- `CountedFlightProvider implements FlightProvider` wraps each proxy and counts `provider.calls{provider, operation=download|origin-download|quote, outcome=OK|NOT_SOLD|<FailureReason>|REJECTED}`.
-
-- [ ] **Step 1: one test at a time, against WireMock:** `AlphaProviderTest.downloadsOnlyTheOriginsLegs` (every page carries `origin=MAD`), `quotesOneFlight` (`quotedAt` from the response's arrival), `quotesNothingForAFlightNoLongerSold`, `failsAQuoteThatAnswersAnotherFlight`; the same four for Beta and Gamma.
-- [ ] **Step 2: `ProvidersConfigTest.limitsConcurrentCallsPerProvider`:** limit 2, Alpha delayed 500 ms, three concurrent Alpha quotes → at most 2 requests in flight in WireMock's journal and the third handled per Q9; a Beta quote meanwhile is not held back.
-- [ ] **Step 3: `CountedFlightProviderTest.countsEachOutcome`** (OK, not sold, `TIMEOUT`, rejected).
+- [ ] **Step 1: page formats, one test at a time, per provider:** `AlphaPageTest.requestsOnlyAnOriginsLegs` (the path carries `origin=MAD`, the cursor still encoded), `buildsTheQuotePath` (the five parameters, `departure` ending in `Z`); the same two for Beta and Gamma.
+- [ ] **Step 2: `PagedProvider`, against WireMock, one test at a time, per provider:** `downloadsOnlyTheOriginsLegs` (every page carries `origin=MAD`), `quotesOneFlight` (`quotedAt` from the response's arrival), `quotesNothingForAFlightNoLongerSold` (the empty `200` page of Task 1), `failsAQuoteThatAnswersAnotherFlight`, `failsAQuoteWithAMalformedRecord`. Then `ProvidersConfigTest.limitsConcurrentCallsPerProvider`: limit 2, Alpha delayed 500 ms, a download, an origin download and a quote at once → at most 2 requests in flight in WireMock's journal and the third handled per Q9; a Beta quote meanwhile is not held back; `provider()` answers meanwhile. `ProvidersPropertiesTest.readsTheConcurrencyLimit`.
+- [ ] **Step 3: `CountedFlightProviderTest.countsEachOutcome`** (OK, not sold, `TIMEOUT`, rejected); `ProvidersConfigTest.countsARejectedCall`.
 - [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Download one origin and quote one flight from each provider, under a per-provider limit"`.
 
 ### Task 3: Persistence groundwork: one time encoding, legs read back, ANALYZE, sort indexes
+
+**Depends on:** nothing (plan 4's repository). **Parallel:** yes, with 2 and 11. It edits `JdbcOfferStore`, `ItineraryRow` and `JdbcItineraryRepository`, which 7 and 8 extend, so they wait for it.
 
 **Files:**
 - Create: `adapters/persistence/.../ProviderTime.java`, `LegsJson.java`; `db/migration/V5__itinerary_sort_indexes.sql`
@@ -189,7 +191,7 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 **Interfaces:**
 - `final class ProviderTime`: `static String instantCell(OffsetDateTime)`, `static String offsetCell(OffsetDateTime)`, `static OffsetDateTime read(ResultSet, String instantColumn, String offsetColumn)`.
 - `final class LegsJson`: `static String write(List<Leg>, JsonFactory)` (the format `ItineraryRowTest` pins, unchanged) and `static List<Leg> read(String, JsonFactory)`; a document of another shape throws `IllegalStateException`.
-- V5 creates Q6's indexes on `itinerary_a` and `itinerary_b` (the parents, so present and future partitions inherit them). `replaceInventory` runs `ANALYZE <slot>` after the `COPY`, before the switch.
+- V5 creates Q6's indexes on `itinerary_a` and `itinerary_b` (the parents, so present and future partitions inherit them). `JdbcItineraryRepository.load` runs `ANALYZE <slot>` after the `COPY` and the default-partition count, before `switchTo`; `Publication` (with its `partitionedUntil`), the publication-row lock and the constructor taking Boot's one transaction manager stay as they are.
 
 - [ ] **Step 1: `LegsJsonTest`, one test at a time:** `roundTripsLegsExactly` (a `-05:00` offset, a microsecond quote, `0.01` → equal legs and an equal `Itinerary.id()`); `failsOnADocumentOfAnotherShape`.
 - [ ] **Step 2: `ProviderTimeTest.roundTripsAnInstantAndItsOffset`** through a temporary table; then move `JdbcOfferStore` and `ItineraryRow` onto both helpers with their tests unchanged and green.
@@ -198,14 +200,18 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 ### Task 4: The itinerary reader: keyset pages over the active slot
 
+**Depends on:** 3 (`LegsJson`, V5's indexes). **Parallel:** not with 3; after it, 2 and 11 may still be running. Its `port/in` types are what 5, 6, 8 and 9 compile against, so they start from its commit.
+
 **Files:**
 - Create in `application/.../port/in/`: `SortOrder.java`, `SearchCriteria.java`, `SeekPosition.java`, `PageCursor.java`, `SearchPage.java`; in `port/out/`: `ItineraryReader.java`, `InventoryState.java`, `StoredPage.java`; `adapters/persistence/.../JdbcItineraryReader.java`, `KeysetQuery.java`
+- Modify: `bootstrap/.../config/PersistenceConfig.java` (declares the reader)
 - Test: `KeysetQueryTest.java`, `JdbcItineraryReaderTest.java`
 
 **Interfaces:**
 - `enum SortOrder { PRICE, DEPARTURE, DURATION }`; `record SearchCriteria(Optional<Airport> origin, Optional<Airport> destination, Optional<Money> maxPrice, Optional<Carrier> carrier, SortOrder sort)`.
 - `record SeekPosition(Money price, Instant departure, Duration duration, ItineraryId id)` with `static SeekPosition of(Itinerary)`; `record PageCursor(long generation, SortOrder sort, SeekPosition position)`; `record SearchPage(List<Itinerary> itineraries, Optional<PageCursor> next, boolean inventoryChanged)`.
 - `interface ItineraryReader { InventoryState state(); StoredPage page(SearchCriteria criteria, Optional<SeekPosition> after, int limit, Instant now); Optional<Itinerary> byId(ItineraryId id); }`; `byId` reads the active slot whatever the departure, so re-price can still find a departed choice and offer its alternative (Q4); `record InventoryState(long generation, Optional<Instant> publishedAt)`; `record StoredPage(long generation, List<Itinerary> itineraries)`, generation and rows read in one read-only transaction.
+- `JdbcItineraryReader(DataSourceTransactionManager transactions, JsonFactory json)`, built in `PersistenceConfig` like the other stores (E6): its reads use a read-only `TransactionTemplate` of that manager, so the generation and the rows of a page are one snapshot.
 - SQL from fixed fragments: `… FROM <active slot> WHERE departure > ? [AND origin = ?] [AND destination = ?] [AND price <= ?] [AND single_carrier = ?] [AND (<key>, id) > (?, ?)] ORDER BY <key>, id LIMIT ?`, `<key>` one of `price`, `departure`, `duration_seconds`; the table from `Slot`, every value a parameter. Max Price is inclusive; Carrier matches `single_carrier` (§4). A row becomes `new Itinerary(LegsJson.read(legs))`.
 
 - [ ] **Step 1: `KeysetQueryTest.buildsTheQueryOfEachSortWithEveryFilter`** (text and parameters).
@@ -213,6 +219,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - [ ] **Step 3: `./gradlew build` green, review, commit:** `git commit -m "Read keyset pages of the active slot with every filter and sort order"`.
 
 ### Task 5: Valkey: result cache, refresh coordination, request counters
+
+**Depends on:** 4 (`SearchPage`, `SearchCriteria`, `LegsJson` from 3). **Parallel:** with 8 (after 4) and 11; it edits `libs.versions.toml`, `bootstrap/build.gradle.kts` and `application.yaml`, shared with 11 and 13, so those merges are by hand.
 
 **Files:**
 - Modify: `gradle/libs.versions.toml`, `adapters/persistence/build.gradle.kts` (`spring-data-redis`, `micrometer-core`; tests `com.redis:testcontainers-redis`), `bootstrap/build.gradle.kts` (`spring-boot-starter-data-redis`), `application.yaml`
@@ -232,6 +240,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 ### Task 6: The search use case
 
+**Depends on:** 4, 5. **Parallel:** with 8; 7 and 9 start from its commit.
+
 **Files:**
 - Create: `port/in/SearchItineraries.java`, `SearchQuery.java`, `InvalidCursorException.java`; `port/out/RefreshScheduler.java`; `service/SearchItinerariesService.java`; `bootstrap/.../config/SearchConfig.java`
 - Test: `SearchItinerariesServiceTest.java` with fakes
@@ -245,16 +255,18 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 ### Task 7: The stale-route refresh (as Q2-B; with Q2-A, the service publishes through `replaceInventory` and the repository is unchanged)
 
+**Depends on:** 2 (`downloadFrom`), 3, 5 (`RefreshCoordination`), 6 (`RefreshScheduler`). **Parallel:** with 9. With 8 only in a second worktree whose merge is by hand: both add a method to `ItineraryRepository`, `JdbcItineraryRepository` and its test.
+
 **Files:**
 - Create: `port/in/RefreshStaleRoute.java`, `RefreshReport.java`; `service/RefreshStaleRouteService.java`; `bootstrap/.../refresh/BackgroundRefresh.java`
-- Modify: `port/out/ItineraryRepository.java`, `JdbcItineraryRepository.java`
+- Modify: `port/out/ItineraryRepository.java`, `JdbcItineraryRepository.java` (the rewrite is a method of the repository, so it is built from the same one transaction manager and reuses its `Slot`, `CopyRows` and `ItineraryRow`); `bootstrap/.../config/IngestionConfig.java` or a new `RefreshConfig.java` for the wiring
 - Test: `RefreshStaleRouteServiceTest.java`, `JdbcItineraryRepositoryTest.java`, `BackgroundRefreshTest.java`
 
 **Interfaces:**
 - `interface RefreshStaleRoute { RefreshReport refresh(Airport origin); }`; `record RefreshReport(Airport origin, Outcome outcome, long generation, long itineraries, Map<Provider, ProviderReport.Status> providers)`, `enum Outcome { REFRESHED, NOTHING_FRESH }`.
-- `ItineraryRepository.replaceThrough(Airport origin, Instant now, ItineraryWriter writer) → Publication`, one transaction: `SELECT … FROM inventory_publication FOR UPDATE`; delete from the active slot the rows with `legs @> jsonb_build_array(jsonb_build_object('origin', ?))`; `COPY` the writer's itineraries in; `generation + 1`, `published_at` unchanged (it stays the last full run's). `replaceInventory` lets its final switch statement wait for that row as long as Q9 says, instead of the 5 s of the rest of the load.
-- `RefreshStaleRouteService(List<FlightProvider>, OfferStore, AirportCatalogue, DiscardedRecords, ItineraryRepository, RefreshCoordination, Clock)`: `downloadFrom(origin)` from every provider in parallel; each fresh provider's stored offers departing from the origin are replaced in memory (catalogue and discarded records as in ingestion); deduplicate, build with `now`, push only the itineraries with a leg departing from the origin; then `refreshed(origin, now)`. `provider_offer` is not written. Every provider failing → `NOTHING_FRESH`, nothing written, origin not marked.
-- `BackgroundRefresh implements RefreshScheduler`: runs `refresh` on a virtual thread, logs the report (INFO) or the exception (ERROR), never throws to the caller.
+- `ItineraryRepository.replaceThrough(Airport origin, Instant now, ItineraryWriter writer) → Publication`, one transaction: `SELECT … FROM inventory_publication FOR UPDATE`; delete from the active slot the rows with `legs @> jsonb_build_array(jsonb_build_object('origin', ?))`; `COPY` the writer's itineraries in; `generation + 1`, `published_at` unchanged (it stays the last full run's). `Publication` returned carries the active slot's `partitionedUntil`, unchanged. `replaceInventory`'s `switchTo` (its `activeSlotLocked` already takes the row with `FOR UPDATE`) waits for that row as long as Q9 says, instead of the 5 s `LOCK_TIMEOUT` of the rest of the load.
+- `RefreshStaleRouteService(List<FlightProvider>, OfferStore, AirportCatalogue, DiscardedRecords, ItineraryRepository, RefreshCoordination, Clock)`: `downloadFrom(origin)` from every provider in parallel (a rejected call, `InvocationRejectedException`, is that provider failing, so its stored offers stay); each fresh provider's stored offers departing from the origin are replaced in memory (catalogue and discarded records as in ingestion; a download with no usable leg is `EMPTY_DOWNLOAD`, the provider kept as in `IngestInventoryService`, which owns that rule: the build and the checks it shares with the run are lifted out of it, not copied); deduplicate, build with `now`, push only the itineraries with a leg departing from the origin; then `refreshed(origin, now)`. `provider_offer` is not written. Every provider failing → `NOTHING_FRESH`, nothing written, origin not marked.
+- `BackgroundRefresh implements RefreshScheduler`: runs `refresh` on a virtual thread with its own correlation id in the MDC (`correlation.id`, as `IngestionJob` does, removed in the `finally`), logs the report (INFO) or the exception (ERROR), never throws to the caller.
 
 - [ ] **Step 1: service, one test at a time:** `replacesTheItinerariesThroughTheOrigin` (fresh Alpha MAD→LHR → the writer pushes MAD→LHR, MAD→LHR→JFK and BCN→MAD→LHR, not BCN→MAD); `keepsAFailedProvidersStoredOffersOfTheOrigin`; `writesNothingWhenEveryProviderFails`; `marksTheOriginRefreshedOnlyAfterTheWrite`.
 - [ ] **Step 2: repository, one test at a time:** `replacesOnlyTheItinerariesThroughTheOrigin` (other rows untouched, generation + 1, `published_at` unchanged); `aFailedRefreshLeavesTheActiveSlotWhole`; `aRunSwitchesAfterARefreshReleasesThePublicationRow` (two threads).
@@ -262,6 +274,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Refresh a stale origin in the background and rewrite the itineraries through it"`.
 
 ### Task 8: Re-price on selection, with the alternative flow
+
+**Depends on:** 2 (`quote`), 3, 4 (`ItineraryReader`). **Parallel:** with 5 and 6 (it needs neither), and with 7 only by hand-merging the repository files (see Task 7). `V6` is reserved for it (3 takes V5, 12 takes V7), so the numbers never collide.
 
 **Files:**
 - Modify: `domain/.../Itinerary.java`; `port/out/OfferStore.java`, `ItineraryRepository.java`; `JdbcOfferStore.java`, `JdbcItineraryRepository.java`
@@ -272,8 +286,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - Domain (R5): `public boolean isSellable(Instant now)` on `Itinerary`, delegating to `ConnectionRules.isSellable` for the first leg.
 - `interface RepriceItinerary { RepriceResult reprice(ItineraryId id); }`; `sealed interface RepriceResult` of `Confirmed(Itinerary itinerary)`, `PriceChanged(Itinerary itinerary, Money previousPrice)`, `Alternative(Itinerary itinerary)`, `Unconfirmable()`, `NotFound()`.
 - `OfferStore.offersOf(LegKey flight) → List<Leg>`: every provider's stored offer of the flight, cheapest first; V6 indexes `provider_offer (carrier, flight_number, origin, departure)`.
-- `ItineraryRepository.updateInPlace(Itinerary repriced) → boolean` (Q5): price, legs and `quoted_at` of that id in the active slot, generation unchanged, `lock_timeout` 5 s; false when the row is gone.
-- `RepriceItineraryService(ItineraryReader, OfferStore, List<FlightProvider>, ItineraryRepository, Clock, RepriceSettings)`, `record RepriceSettings(int maxAlternatives, Duration budget)` (Q9). To confirm an itinerary: it must be `isSellable(now)`; every leg is quoted from its provider in parallel; a leg not sold, or whose provider fails or rejects the call, is quoted from the other providers' stored offers of the flight, cheapest first; offers match by `LegKey`; `new Itinerary(quoted)` throwing means not confirmable (R5). Same price → `Confirmed`, else `PriceChanged`; both `updateInPlace`. If the choice cannot be confirmed, up to `maxAlternatives` itineraries of the same origin and destination by price (`ItineraryReader.page`, the choice excluded) are tried in turn: the first confirmed → `Alternative`, also updated; none → `Unconfirmable`. No quote starts after `budget`; one in flight is bounded by its own timeouts.
+- `ItineraryRepository.updateInPlace(Itinerary repriced) → boolean` (Q5): a method of `JdbcItineraryRepository`, so in its `TransactionTemplate` of the one transaction manager (E6): `SET LOCAL lock_timeout` as `load` does, and the active slot read under the publication row's lock (`activeSlotLocked`) so a run's switch cannot move it mid-update; price, legs and `quoted_at` of that id in that slot, generation unchanged (the key is `(id, departure)`, and the id fixes the departure); false when the row is gone.
+- `RepriceItineraryService(ItineraryReader, OfferStore, List<FlightProvider>, ItineraryRepository, Clock, RepriceSettings)`, `record RepriceSettings(int maxAlternatives, Duration budget)` (Q9). To confirm an itinerary: it must be `isSellable(now)`; every leg is quoted from its provider (`FlightProvider.quote`, found by `provider()`) in parallel; a leg not sold, or whose provider fails or rejects the call, is quoted from the other providers' stored offers of the flight, cheapest first; offers match by `LegKey`; `new Itinerary(quoted)` throwing means not confirmable (R5). Same price → `Confirmed`, else `PriceChanged`; both `updateInPlace`. If the choice cannot be confirmed, up to `maxAlternatives` itineraries of the same origin and destination by price (`ItineraryReader.page`, the choice excluded) are tried in turn: the first confirmed → `Alternative`, also updated; none → `Unconfirmable`. No quote starts after `budget`; one in flight is bounded by its own timeouts.
 
 - [ ] **Step 1: `ItineraryTest.isSellableUntilItsFirstLegDeparts`** (at the departure instant it is not).
 - [ ] **Step 2: service, one test at a time:** `answersNotFoundForAnUnknownId`; `confirmsAnUnchangedPrice`; `reportsAChangedPriceAndStoresIt`; `confirmsALegWithAnotherProvidersOfferOfTheSameFlight` (Beta down, Gamma sells it); `treatsRequotedLegsThatNoLongerConnectAsUnconfirmed` (a re-quoted arrival leaves 30 min to connect); `offersTheNextCheapestConfirmableItinerary`; `aDepartedChoiceGoesToTheAlternative` (Q4); `answersUnconfirmableWithAllProvidersDown` (Review Focus 4: nothing updated, at most `1 + maxAlternatives` itineraries tried); `startsNoQuoteAfterItsBudget` (quotes of 300 ms, budget 500 ms).
@@ -281,6 +295,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Re-price a chosen itinerary live, falling back to another offer or the next confirmable itinerary"`.
 
 ### Task 9: The search endpoint
+
+**Depends on:** 6 (`SearchItineraries`, `InvalidCursorException`, with 4's types). **Parallel:** yes, with 7, 8, 11; 10 and 12 build on its `ProblemResponses` and response records.
 
 **Files:**
 - Modify: `adapters/web/build.gradle.kts` (`spring-webmvc`, `jackson-databind`; tests `spring-boot-starter-webmvc-test`)
@@ -299,6 +315,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 ### Task 10: The re-price endpoint and the rate limit
 
+**Depends on:** 5 (`RequestCounter`), 8 (`RepriceItinerary`), 9 (`ItineraryResponse`, `ProblemResponses`, the web module). **Parallel:** with 12 and 13's compose step (not the same files: 10 and 12 each add a controller and a bean config; `application.yaml` is shared, merged by hand), not with 9.
+
 **Files:**
 - Create: `port/in/AdmitRequest.java`, `Admission.java`, `RateLimitedAction.java`, `RateLimit.java`; `service/RateLimitService.java`; in `adapters/web`: `RepriceController.java`, `RepriceResponse.java`, `RateLimitInterceptor.java`; `bootstrap/.../config/WebConfig.java`
 - Modify: `application.yaml` (`server.forward-headers-strategy: native`)
@@ -315,6 +333,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Serve re-price over HTTP and limit search and re-price per client address"`.
 
 ### Task 11: OAuth2 for the admin side, and Keycloak in compose
+
+**Depends on:** nothing (it secures paths by name, and its `SecurityTest` uses Actuator's `metrics`). **Parallel:** yes, from the start, with 2, 3 and everything else; it shares `libs.versions.toml`, `bootstrap/build.gradle.kts`, `application.yaml` and `compose.yaml` with 5, 10, 12 and 13, merged by hand. 12 needs it merged first for its admin tests.
 
 **Files:**
 - Modify: `gradle/libs.versions.toml`, `bootstrap/build.gradle.kts` (`spring-boot-starter-security`, `spring-boot-starter-oauth2-resource-server`; tests `spring-security-test`), `application.yaml`, `compose.yaml` (service `keycloak`), `README.md` (the demo admin user)
@@ -334,26 +354,30 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 ### Task 12: Admin status, manual ingestion and the DEGRADED health (as Q7-B and Q8-A)
 
+**Depends on:** 2 (the `CircuitBreakerRegistry` bean and `FlightProvider` as built there), 5 (Valkey's ping), 9 (the web module), 11 (the admin role); V7 is reserved for it. **Parallel:** with 10 (see its note) and with 7 once 2 is merged; not before 11.
+
 **Files:**
-- Create: `port/in/InventoryStatus.java`, `StatusReport.java`, `ProviderStatus.java`, `TriggerIngestion.java`; `port/out/IngestionStatusStore.java`, `ProviderRun.java`, `ProviderBreakers.java`, `IngestionLauncher.java`; `service/InventoryStatusService.java`, `TriggerIngestionService.java`; `JdbcIngestionStatusStore.java`, `db/migration/V7__ingestion_status.sql`; `adapters/web/.../AdminController.java`; `bootstrap/.../observability/InventoryHealthIndicator.java`, `config/AdminConfig.java`
-- Modify: `IngestInventoryService.java`, `bootstrap/.../ingestion/IngestionJob.java` (implements `IngestionLauncher`), `application.yaml`, `compose.yaml` (the `app` health check accepts `UP` or `DEGRADED`)
-- Test: `IngestInventoryServiceTest.java`, `JdbcIngestionStatusStoreTest.java`, `InventoryStatusServiceTest.java`, `AdminControllerTest.java`, `SecurityTest.java`, `InventoryHealthIndicatorTest.java`, `bootstrap/src/test/.../SearchWithoutValkeyTest.java`
+- Create: `port/in/InventoryStatus.java`, `StatusReport.java`, `ProviderStatus.java`, `TriggerIngestion.java`; `port/out/IngestionStatusStore.java`, `ProviderRun.java`, `ProviderBreakers.java`, `IngestionLauncher.java`; `service/InventoryStatusService.java`, `TriggerIngestionService.java`; `adapters/persistence/.../JdbcIngestionStatusStore.java`, `db/migration/V7__ingestion_status.sql`; `adapters/web/.../AdminController.java`; `bootstrap/.../observability/InventoryHealthIndicator.java`, `RegistryProviderBreakers.java`, `config/AdminConfig.java`
+- Modify: `IngestInventoryService.java`, `bootstrap/.../ingestion/IngestionJob.java` (implements `IngestionLauncher`), `bootstrap/.../config/PersistenceConfig.java` (declares the status store), `application.yaml`, `compose.yaml` (the `app` health check accepts `UP` or `DEGRADED`)
+- Test: `IngestInventoryServiceTest.java`, `JdbcIngestionStatusStoreTest.java`, `InventoryStatusServiceTest.java`, `IngestionJobTest.java`, `AdminControllerTest.java`, `SecurityTest.java`, `InventoryHealthIndicatorTest.java`, `bootstrap/src/test/.../SearchWithoutValkeyTest.java`
 
 **Interfaces:**
-- `interface IngestionStatusStore { void record(List<ProviderRun> runs, Instant finishedAt); List<ProviderRun> latest(); Optional<Instant> lastFinishedAt(); }`; `record ProviderRun(Provider provider, ProviderReport.Status status, Optional<FailureReason> failure, int offersUsed, Map<DiscardReason, Integer> discarded, Optional<Instant> lastFresh)`. `IngestInventoryService` records every run, whatever its outcome.
-- `interface ProviderBreakers { BreakerState state(Provider provider); }`, `enum BreakerState { CLOSED, OPEN, HALF_OPEN }` (bootstrap, from each provider's breaker).
-- `interface InventoryStatus { StatusReport status(); }`; `record StatusReport(long generation, Optional<Instant> publishedAt, Optional<Instant> nextIngestionAt, List<ProviderStatus> providers)`; `record ProviderStatus(Provider provider, Health health, BreakerState breaker, Optional<Instant> lastFresh, int legs, Map<DiscardReason, Integer> discarded, boolean stale)`, `enum Health { UP, DEGRADED, DOWN }` per Q8; `stale` when the last run kept its offers; `nextIngestionAt` = last run's end + `ingestion.interval`.
-- `interface TriggerIngestion { TriggerOutcome trigger(); }`, `enum TriggerOutcome { STARTED, ALREADY_RUNNING }`; `IngestionLauncher.launch() → boolean`: `IngestionJob` takes ShedLock's `ingestion` lock through its `LockProvider` and, when it gets it, runs the scheduled run's body on a virtual thread and releases it at the end.
+- `interface IngestionStatusStore { void record(List<ProviderRun> runs, Instant finishedAt); List<ProviderRun> latest(); Optional<Instant> lastFinishedAt(); }`; `record ProviderRun(Provider provider, ProviderReport.Status status, Optional<FailureReason> failure, int offersUsed, Map<DiscardReason, Integer> discarded, Optional<Instant> newestQuotedAt)`, built from a `ProviderReport` (its status follows from `failure`, so the two never disagree; `newestQuotedAt` is the report's, which survives a restart). `JdbcIngestionStatusStore(DataSourceTransactionManager)`, built in `PersistenceConfig` (E6), writes the rows in one transaction. `IngestInventoryService` records each `PUBLISHED` or `NOTHING_TO_PUBLISH` run's providers from its `IngestionReport` (a `CEILING_EXCEEDED` run too: its providers' statuses are still the last known), through the port; a failure to record is logged and never fails the run.
+- `interface ProviderBreakers { BreakerState state(Provider provider); }`, `enum BreakerState { CLOSED, OPEN, HALF_OPEN }`; bootstrap's `RegistryProviderBreakers` reads `CircuitBreakerRegistry.circuitBreaker(provider.name())` (the registry plan 4 declared; there is no `ProviderBreakers` class in the adapters any more).
+- `interface InventoryStatus { StatusReport status(); }`; `record StatusReport(long generation, Optional<Instant> publishedAt, Optional<Instant> nextIngestionAt, List<ProviderStatus> providers)`; `record ProviderStatus(Provider provider, Health health, BreakerState breaker, Optional<Instant> newestQuotedAt, int legs, Map<DiscardReason, Integer> discarded, boolean stale)`, `enum Health { UP, DEGRADED, DOWN }` per Q8; `stale` when the last run kept its offers; `nextIngestionAt` = last run's end + `ingestion.interval`.
+- `interface TriggerIngestion { TriggerOutcome trigger(); }`, `enum TriggerOutcome { STARTED, ALREADY_RUNNING }`; `IngestionLauncher.launch() → boolean`. `IngestionJob` gets one entry for the scheduled run and the manual one so both take ShedLock's `ingestion` lock through the same `LockingTaskExecutor` (`executeWithLock` with the same `LockConfiguration`, inside the same `try`, with a run id in the MDC): `launch` starts the run on a virtual thread, returns `false` at once when the lock is held (the executor's `TaskResult` says it was not executed), and the thread releases the lock at the end. The run's body (`ingestOnce`, logging, metrics, a failed run counted and logged at `ERROR`) is not duplicated.
 - `GET /api/admin/status` → `StatusReport`; `POST /api/admin/ingestions` → 202, or 409 *"An ingestion is already running."*.
 - `InventoryHealthIndicator` → custom `DEGRADED` (HTTP 200; order `DOWN, OUT_OF_SERVICE, DEGRADED, UP, UNKNOWN`), Valkey checked with a ping; PostgreSQL down stays Boot's `DOWN`.
 
-- [ ] **Step 1: one test at a time:** `IngestInventoryServiceTest.recordsEveryRunsStatus`; `JdbcIngestionStatusStoreTest.keepsTheLatestRunPerProvider`.
+- [ ] **Step 1: one test at a time:** `IngestInventoryServiceTest.recordsEveryRunsProviderStatus` (a `KEPT` provider with its failure and `newestQuotedAt`; `NOTHING_TO_PUBLISH` included); `JdbcIngestionStatusStoreTest.keepsTheLatestRunPerProvider`.
 - [ ] **Step 2: `InventoryStatusServiceTest`, one test at a time:** `reportsEachProvidersHealthAndStaleness`; `computesTheNextIngestion`; `reportsNothingBeforeTheFirstRun`.
-- [ ] **Step 3: one test at a time:** `AdminControllerTest.startsAnIngestion`, `refusesASecondRunWhileOneHoldsTheLock`; `SecurityTest.adminEndpointsNeedTheAdminRole` (401, 403).
+- [ ] **Step 3: one test at a time:** `IngestionJobTest.launchesARunUnderTheLock` and `refusesToLaunchWhileTheLockIsHeld`; `AdminControllerTest.startsAnIngestion`, `refusesASecondRunWhileOneHoldsTheLock`; `SecurityTest.adminEndpointsNeedTheAdminRole` (401, 403).
 - [ ] **Step 4: `InventoryHealthIndicatorTest`, one test at a time:** `isUpWithEveryProviderFresh`; `isDegradedWith200WhenAProviderIsKept`; `isDegradedWhenValkeyIsDown`; then `SearchWithoutValkeyTest.searchesAndRepricesWhileValkeyIsDown` (§6.2's integration test: PostgreSQL and Valkey containers, Valkey paused → search answers 200 from PostgreSQL, a request past the rate limit is admitted, health is `DEGRADED` with 200).
 - [ ] **Step 5: `./gradlew build` green, review, commit:** `git commit -m "Report each provider's status, run an ingestion on demand and degrade health without failing"`.
 
 ### Task 13: The OpenAPI contract, compose, and the search measured on the real volume
+
+**Depends on:** every other task (the contract documents all endpoints; the measures need the whole stack). **Parallel:** no; it runs last, alone. Its compose step (`valkey`) may start earlier, after 5.
 
 **Files:**
 - Modify: `gradle/libs.versions.toml`, `adapters/web/build.gradle.kts` (`springdoc-openapi-starter-webmvc-api`, by §6.1), `application.yaml` (`springdoc.writer-with-order-by-keys: true`), `compose.yaml` (`valkey`; `app` with the Valkey host, Task 11's JWT settings, depending on `valkey` and `keycloak` healthy), `README.md`, `docs/architecture/README.md`, `docs/planning/roadmap.md`
