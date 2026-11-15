@@ -33,7 +33,6 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.core.json.JsonFactory;
 
 class JdbcItineraryRepositoryTest {
@@ -44,10 +43,7 @@ class JdbcItineraryRepositoryTest {
   private final JdbcClient jdbc = JdbcClient.create(dataSource);
   private final JdbcItineraryRepository repository =
       new JdbcItineraryRepository(
-          dataSource,
-          new TransactionTemplate(new DataSourceTransactionManager(dataSource)),
-          new JsonFactory(),
-          37);
+          new DataSourceTransactionManager(dataSource), new JsonFactory(), 37);
 
   @BeforeEach
   void startFromAFreshDatabase() {
@@ -115,11 +111,9 @@ class JdbcItineraryRepositoryTest {
   /** A negative horizon would create no day partition, and every itinerary would go to DEFAULT. */
   @Test
   void refusesANegativePartitionHorizon() {
-    TransactionTemplate transaction =
-        new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+    DataSourceTransactionManager transactions = new DataSourceTransactionManager(dataSource);
 
-    assertThatThrownBy(
-            () -> new JdbcItineraryRepository(dataSource, transaction, new JsonFactory(), -1))
+    assertThatThrownBy(() -> new JdbcItineraryRepository(transactions, new JsonFactory(), -1))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("partitionDaysAhead must not be negative: -1");
   }

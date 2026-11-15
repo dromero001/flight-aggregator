@@ -1,5 +1,7 @@
 package com.flightaggregator.adapter.persistence;
 
+import static java.util.Objects.requireNonNull;
+
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.ItineraryWriter;
 import com.flightaggregator.application.port.out.Publication;
@@ -9,6 +11,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.core.json.JsonFactory;
 
@@ -36,17 +39,18 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
   private final int partitionDaysAhead;
   private final JdbcClient jdbc;
 
+  /**
+   * Its connections and its transaction come from the one manager, so the load and its {@code COPY}
+   * always run in that manager's transaction: it cannot be given a second data source.
+   */
   public JdbcItineraryRepository(
-      DataSource dataSource,
-      TransactionTemplate transaction,
-      JsonFactory json,
-      int partitionDaysAhead) {
+      DataSourceTransactionManager transactions, JsonFactory json, int partitionDaysAhead) {
     if (partitionDaysAhead < 0) {
       throw new IllegalArgumentException(
           "partitionDaysAhead must not be negative: " + partitionDaysAhead);
     }
-    this.dataSource = dataSource;
-    this.transaction = transaction;
+    this.dataSource = requireNonNull(transactions.getDataSource(), "the manager's DataSource");
+    this.transaction = new TransactionTemplate(transactions);
     this.json = json;
     this.partitionDaysAhead = partitionDaysAhead;
     this.jdbc = JdbcClient.create(dataSource);

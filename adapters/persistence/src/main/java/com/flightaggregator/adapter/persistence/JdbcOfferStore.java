@@ -1,5 +1,7 @@
 package com.flightaggregator.adapter.persistence;
 
+import static java.util.Objects.requireNonNull;
+
 import com.flightaggregator.application.port.out.OfferStore;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Carrier;
@@ -13,6 +15,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -36,9 +39,13 @@ public final class JdbcOfferStore implements OfferStore {
   private final TransactionTemplate transaction;
   private final JdbcClient jdbc;
 
-  public JdbcOfferStore(DataSource dataSource, TransactionTemplate transaction) {
-    this.dataSource = dataSource;
-    this.transaction = transaction;
+  /**
+   * Its connections and its transactions come from the one manager, so its statements and its
+   * {@code COPY} always run in that manager's transaction: it cannot be given a second data source.
+   */
+  public JdbcOfferStore(DataSourceTransactionManager transactions) {
+    this.dataSource = requireNonNull(transactions.getDataSource(), "the manager's DataSource");
+    this.transaction = new TransactionTemplate(transactions);
     this.jdbc = JdbcClient.create(dataSource);
   }
 

@@ -116,9 +116,8 @@ class FlightAggregatorApplicationTest {
   }
 
   /**
-   * The stores write in the {@code TransactionTemplate}'s transaction, which holds only when the
-   * template and every store use Boot's one {@code DataSource}. A store given another one would
-   * write on connections of its own that commit each statement, so a rollback would leave its
+   * The stores write in Boot's {@code TransactionTemplate}'s transaction: each is built from Boot's
+   * one transaction manager and takes its connections from it, so a rollback leaves none of their
    * writes behind.
    */
   @Test

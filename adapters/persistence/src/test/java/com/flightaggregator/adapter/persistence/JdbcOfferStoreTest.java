@@ -29,8 +29,7 @@ class JdbcOfferStoreTest {
 
   private final DataSource dataSource = PostgresTestDatabase.dataSource();
   private final JdbcOfferStore store =
-      new JdbcOfferStore(
-          dataSource, new TransactionTemplate(new DataSourceTransactionManager(dataSource)));
+      new JdbcOfferStore(new DataSourceTransactionManager(dataSource));
 
   @BeforeEach
   void emptyTheTable() {
@@ -124,6 +123,25 @@ class JdbcOfferStoreTest {
 
     assertThat(statementTimeout).hasValue("5min");
     assertThat(store.offers(ALPHA)).containsExactly(offer);
+  }
+
+  /**
+   * The store writes in the transaction of the manager it was built from, so a caller's transaction
+   * on that manager rolls its writes back: no second data source can be given to it.
+   */
+  @Test
+  void writesInTheTransactionOfItsManager() {
+    DataSourceTransactionManager transactions = new DataSourceTransactionManager(dataSource);
+    JdbcOfferStore joined = new JdbcOfferStore(transactions);
+
+    new TransactionTemplate(transactions)
+        .executeWithoutResult(
+            status -> {
+              joined.replace(ALPHA, List.of(leg(ALPHA, 1, "2026-11-20T07:00:00Z", "50.00")));
+              status.setRollbackOnly();
+            });
+
+    assertThat(joined.offers(ALPHA)).isEmpty();
   }
 
   @Test

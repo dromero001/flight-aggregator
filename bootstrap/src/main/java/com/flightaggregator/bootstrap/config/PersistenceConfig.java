@@ -6,21 +6,19 @@ import com.flightaggregator.adapter.persistence.JdbcOfferStore;
 import com.flightaggregator.application.port.out.AirportCatalogue;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.OfferStore;
-import javax.sql.DataSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The PostgreSQL stores. Every store and the {@code TransactionTemplate} use Boot's one {@code
- * DataSource}: the template is Boot's, over that data source's transaction manager, so each store's
- * statements and {@code COPY} run in the template's transaction. This wiring and {@code
- * FlightAggregatorApplicationTest.writesEveryStoreInTheTransactionOfBootsDataSource} hold the rule.
- * {@code CopyRows} refuses a copy with no transaction at all, but not a copy on a second data
- * source while the first has one: Spring then gives the second a connection of its own, which
- * commits each statement.
+ * The PostgreSQL stores. Each store that writes is built from Boot's one transaction manager (a
+ * {@code JdbcTransactionManager} over Boot's one {@code DataSource}) and takes its connections and
+ * its transactions from it, so its statements and {@code COPY} always run in that manager's
+ * transaction: no store can be wired to a second data source. {@code
+ * FlightAggregatorApplicationTest.writesEveryStoreInTheTransactionOfBootsDataSource} proves it in
+ * the application.
  */
 @Configuration(proxyBeanMethods = false)
 class PersistenceConfig {
@@ -29,8 +27,8 @@ class PersistenceConfig {
   private static final int PARTITION_DAYS_AHEAD = 37;
 
   @Bean
-  OfferStore offerStore(DataSource dataSource, TransactionTemplate transaction) {
-    return new JdbcOfferStore(dataSource, transaction);
+  OfferStore offerStore(DataSourceTransactionManager transactions) {
+    return new JdbcOfferStore(transactions);
   }
 
   @Bean
@@ -40,8 +38,8 @@ class PersistenceConfig {
 
   @Bean
   ItineraryRepository itineraryRepository(
-      DataSource dataSource, TransactionTemplate transaction, JsonMapper json) {
+      DataSourceTransactionManager transactions, JsonMapper json) {
     return new JdbcItineraryRepository(
-        dataSource, transaction, json.tokenStreamFactory(), PARTITION_DAYS_AHEAD);
+        transactions, json.tokenStreamFactory(), PARTITION_DAYS_AHEAD);
   }
 }
