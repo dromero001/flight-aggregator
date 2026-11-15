@@ -98,8 +98,6 @@ services:
       # The issuer of every token: the address a browser reaches Keycloak by, not the one the app uses.
       KC_HOSTNAME: http://localhost:8180
       KC_HEALTH_ENABLED: "true"
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-demo-keycloak-admin-password}
       # Read by the realm file's ${ADMIN_SERVICE_CLIENT_SECRET:...} placeholder at import.
       ADMIN_SERVICE_CLIENT_SECRET: ${ADMIN_SERVICE_CLIENT_SECRET:-demo-admin-service-secret}
     ports:

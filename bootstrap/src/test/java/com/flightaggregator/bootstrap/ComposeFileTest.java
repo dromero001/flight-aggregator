@@ -35,4 +35,19 @@ class ComposeFileTest {
 
     assertThat(compose.get("services").get("keycloak").get("image")).isEqualTo(KeycloakImage.NAME);
   }
+
+  /**
+   * The user's decision of 2026-11-15: the admin token comes from a client, not a console login.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void givesKeycloakNoAdministratorAccount() throws IOException {
+    Map<String, Map<String, Map<String, Object>>> compose =
+        new Yaml().load(Files.readString(COMPOSE));
+
+    Map<String, Object> environment =
+        (Map<String, Object>) compose.get("services").get("keycloak").get("environment");
+
+    assertThat(environment.keySet()).noneMatch(name -> name.startsWith("KC_BOOTSTRAP_ADMIN"));
+  }
 }

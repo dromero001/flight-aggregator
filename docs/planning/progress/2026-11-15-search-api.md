@@ -256,3 +256,15 @@ Gates: `./gradlew build` green. Thermo-nuclear checklist on the diff: no file ne
 - **Defensive copies in `StoredPage` and `SearchPage`.** The codebase's records copy their lists (`IngestionReport`, pinned by `copiesTheProviderReports`); the brief's two records have no constructor, and `StoredPage` holds `JdbcClient`'s mutable list. Value: an immutable page, as elsewhere. Cost: two compact constructors and two tests. Left out unless you approve.
 - **A statement timeout on search reads.** The reader's statements have no bound of their own (the 5-minute `StatementTimeout` is for the stores' writes); a slow search holds `ACCESS SHARE` on its slot until it ends. Value: a stuck search fails instead of holding a connection. Cost: one `SET LOCAL` per read and a value to choose. Left out unless you approve.
 - **A guard on `limit`.** The reader passes `limit` straight to `LIMIT ?`: 0 returns an empty page, a negative value fails in PostgreSQL. The page size is validated at the endpoint (Q9: 20, at most 100). Value: the port refuses a bad limit itself. Cost: one check and a test. Left out unless you approve.
+
+### Keycloak's administrator account removed (user decision)
+
+The user's decision of 2026-11-15 (see "User decisions (2026-11-15, after Tasks 2 and 11)"). Changed:
+- `compose.yaml`: `KC_BOOTSTRAP_ADMIN_USERNAME` and `KC_BOOTSTRAP_ADMIN_PASSWORD` removed from `keycloak` (they had no comment of their own). `KEYCLOAK_ADMIN_PASSWORD` and `demo-keycloak-admin-password` no longer appear anywhere.
+- `README.md`, "Admin access": the console sentence is replaced by "Keycloak has no administrator console account"; the client-credentials steps are untouched. The realm reset (change `ADMIN_SERVICE_CLIENT_SECRET`, `docker compose up -d keycloak`) still holds: the realm is imported from the file each time the container is created, with no account involved.
+- Plan 5, Task 11, Keycloak line: says there is no administrator account.
+- The F5 entry above (the console user `admin`) is history and stays as written.
+
+Test first: `ComposeFileTest.givesKeycloakNoAdministratorAccount` (no `KC_BOOTSTRAP_ADMIN*` key in the `keycloak` environment). Red against the old `compose.yaml`: the assertion failed because both keys were present. Green after removing them.
+
+Check: `docker compose -p kcadmin up -d keycloak`; the README's readiness poll returned; the README's token command, as written, gave a token of 947 characters (value not recorded); `docker compose -p kcadmin down`.
