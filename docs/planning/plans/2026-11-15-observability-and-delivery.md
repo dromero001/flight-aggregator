@@ -173,6 +173,8 @@ Alertmanager, SLO burn-rate alerts and a trace id in error responses (rejected, 
 
 ### Task 3: The alert rules, tested with promtool (as Q3-A and Q4)
 
+**Decided by the user on 2026-11-15, after the implementation:** each alert's stale-gauge rule (missing or NaN, `for: 15m`) carries the label `gauge: unknown`, so it differs from the value rule of the same name, promtool's duplicate-rules lint passes, and the rule tests run with `--lint-fatal`.
+
 **Files:**
 - Create: `deploy/prometheus/rules/ingestion.rules.yaml`, `deploy/prometheus/rules/ingestion.rules.test.yaml`, `bootstrap/src/test/.../deploy/AlertRulesTest.java`
 
