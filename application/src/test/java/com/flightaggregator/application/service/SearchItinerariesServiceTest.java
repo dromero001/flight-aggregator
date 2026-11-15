@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -232,16 +233,29 @@ class SearchItinerariesServiceTest {
   }
 
   /**
-   * §4.1, the user's decision: a cached page keeps only what can still be sold now. A first page by
-   * departure cached a few minutes ago starts with a flight that has left since: it is served
-   * without it, one row short, and with its cursor as cached, which still seeks after its last row.
+   * §4.1, the user's decision (fix round 2): a cached page that has lost any row to departure since
+   * it was cached is a miss, so a page is never served shorter or empty. The mock departs on
+   * 5-minute slots, so a first page by departure often loses every row at once; here it lost one or
+   * all three. It is read again from the reader, served as read, and cached again under the same
+   * key and generation.
    */
-  @Test
-  void dropsFromACachedPageWhatHasDepartedSince() {
-    Instant cachedAt = NOW.minus(Duration.ofMinutes(3));
-    Itinerary departed = departingAt(11, "2026-11-20T07:59:00Z", cachedAt);
-    Itinerary next = departingAt(12, "2026-11-20T08:30:00Z", cachedAt);
-    Itinerary later = departingAt(13, "2026-11-20T09:00:00Z", cachedAt);
+  @ParameterizedTest(name = "{0} of 3 cached rows departed")
+  @ValueSource(ints = {1, 3})
+  void readsAgainACachedPageThatHasLostARowToDeparture(int departed) {
+    Instant cachedAt = NOW.minus(Duration.ofMinutes(4));
+    List<Itinerary> cachedRows =
+        IntStream.rangeClosed(1, 3)
+            .mapToObj(
+                n ->
+                    departingAt(
+                        10 + n,
+                        n <= departed ? "2026-11-20T07:55:00Z" : "2026-11-20T08:30:00Z",
+                        cachedAt))
+            .toList();
+    Itinerary first = departingAt(21, "2026-11-20T08:05:00Z", NOW);
+    Itinerary second = departingAt(22, "2026-11-20T08:10:00Z", NOW);
+    Itinerary third = departingAt(23, "2026-11-20T08:15:00Z", NOW);
+    reader.holding(first, second, third, departingAt(24, "2026-11-20T08:20:00Z", NOW));
     SearchCriteria byDeparture =
         new SearchCriteria(
             Optional.of(MADRID),
@@ -249,15 +263,25 @@ class SearchItinerariesServiceTest {
             Optional.empty(),
             Optional.empty(),
             SortOrder.DEPARTURE);
-    Optional<PageCursor> afterLater =
-        Optional.of(new PageCursor(GENERATION, SortOrder.DEPARTURE, SeekPosition.of(later)));
+    SearchKey key = new SearchKey(GENERATION, byDeparture, 3);
     cache.put(
-        new SearchKey(GENERATION, byDeparture, 3),
-        new SearchPage(List.of(departed, next, later), afterLater, false));
+        key,
+        new SearchPage(
+            cachedRows,
+            Optional.of(
+                new PageCursor(
+                    GENERATION, SortOrder.DEPARTURE, SeekPosition.of(cachedRows.getLast()))),
+            false));
 
     SearchPage page = service().search(firstPage(byDeparture, 3));
 
-    assertThat(page).isEqualTo(new SearchPage(List.of(next, later), afterLater, false));
+    SearchPage fresh =
+        new SearchPage(
+            List.of(first, second, third),
+            Optional.of(new PageCursor(GENERATION, SortOrder.DEPARTURE, SeekPosition.of(third))),
+            false);
+    assertThat(page).isEqualTo(fresh);
+    assertThat(cache.pages()).containsOnly(entry(key, fresh));
   }
 
   /**
