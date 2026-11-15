@@ -4,7 +4,7 @@ The single place that says what is in flight, where it lives and what comes next
 
 **Rule:** the controller rewrites this file and pushes it at every checkpoint: a subagent dispatched or returned, a review verdict, a user decision, a task integrated (`CLAUDE.md`, "Continuity"). If something here contradicts `git log`, `git log` wins: say so and fix this file first.
 
-**Last updated:** 2026-11-15 19:05 CET, on the Mac, `main` at `373ccc5` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
+**Last updated:** 2026-11-15 19:13 CET, on the Mac, `main` at `373ccc5` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
 
 ## Resume in five minutes
 
@@ -42,7 +42,7 @@ Every implementer below writes its report in its own worktree, at `.superpowers/
 
 | Task | State | Worktree (Mac) and branch | Pushed as |
 |---|---|---|---|
-| Plan 5 Task 6, the search use case | Service built (`6506e5c`, green). Wiring decided by the user (A: provisional `RefreshScheduler`, replaced by Task 7; no refresh before the first publication); implementer resumed 19:05 to wire it; then its double review | `.claude/worktrees/agent-abf03d55db7511dc3`, `worktree-agent-abf03d55db7511dc3`, from `6db5049` | `wip/plan5-task-6` (at `6506e5c`) |
+| Plan 5 Task 6, the search use case | Done (`6506e5c` use case, `ff23fd5` wiring with the provisional scheduler; full build green, 17 full-application tests included). Its double review dispatched 19:13. Task 7 must replace the provisional `RefreshScheduler` (both beans stop startup) and keep its contract: return at once, never throw | `.claude/worktrees/agent-abf03d55db7511dc3`, `worktree-agent-abf03d55db7511dc3`, from `6db5049` | `wip/plan5-task-6` (at `ff23fd5`) |
 | Plan 5 Task 5, round 2 | Done (`9d8a2ba`, six commits, full build green): C-R1 to C-R3, the breaker's seven meters (the user kept all seven), `EpisodeWarning` for fewer WARN lines. Its double review dispatched 19:05 | `.claude/worktrees/agent-a3652a06ed07d9591`, `worktree-agent-a3652a06ed07d9591`, from `6db5049` | `wip/plan5-task-5-r2` (at `9d8a2ba`) |
 | Approved extras (plan 5 Tasks 4 and 8, git guard) | Cut off by the usage limit after three commits (2 s read timeout, defensive copies, the race test; the git guard in progress); resumed 18:52 | `.claude/worktrees/agent-a47126e03777a95e1`, `worktree-agent-a47126e03777a95e1`, from `6db5049` | `wip/plan5-extras` (at `b5866bd`) |
 | Plan 7 Task 1, telemetry backends in compose | Review: functional CHANGES REQUESTED (F1: no test that no Grafana password is committed), code APPROVED. Round 3 sent 19:05: F1; the user's F2 (query history off), F3 (Prometheus on `tmpfs`), F4 (update checks off); C1 (`rule_files` glob that skips Task 3's promtool test file), C2, C6. Then its re-review | `.claude/worktrees/agent-a380b01c59520a201`, `worktree-agent-a380b01c59520a201`, from `04586b6` | `wip/plan7-task-1` (at `42bc27f`) |
