@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.Locale;
 import net.javacrumbs.shedlock.core.LockConfiguration;
 import net.javacrumbs.shedlock.core.LockingTaskExecutor;
+import net.javacrumbs.shedlock.core.LockingTaskExecutor.TaskResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.spi.LoggingEventBuilder;
@@ -49,28 +50,38 @@ public final class IngestionJob {
   }
 
   /**
-   * Runs once, if this instance gets the ingestion's lock, and returns at once otherwise. The first
-   * run starts with the application, and each next one {@code ingestion.interval} after the last
-   * ended (§6.4). The lock is taken inside the run's {@code try}, so a database that cannot be
-   * reached fails the run like any other failure.
+   * Runs once, if this instance gets the ingestion's lock, and otherwise logs at {@code INFO} that
+   * it skipped the run and returns at once (ShedLock's {@code TaskResult}). The first run starts
+   * with the application, and each next one {@code ingestion.interval} after the last ended (§6.4).
+   * The lock is taken inside the run's {@code try}, so a database that cannot be reached fails the
+   * run like any other failure.
    */
   @Scheduled(initialDelay = 0, fixedDelayString = "${ingestion.interval}")
   public void run() {
     try {
-      // The Runnable overload: the one that throws no checked exception.
-      locks.executeWithLock(
-          (Runnable) this::ingestOnce,
-          new LockConfiguration(clock.now(), LOCK, LOCK_AT_MOST_FOR, LOCK_AT_LEAST_FOR));
-    } catch (RuntimeException e) {
+      TaskResult<IngestionReport> run =
+          locks.executeWithLock(
+              this::ingestOnce,
+              new LockConfiguration(clock.now(), LOCK, LOCK_AT_MOST_FOR, LOCK_AT_LEAST_FOR));
+      if (!run.wasExecuted()) {
+        LOG.info("Skipped an ingestion run: another instance holds its lock");
+      }
+    } catch (Throwable e) {
+      if (e instanceof Error error) {
+        throw error;
+      }
+      // A runtime exception: the run throws no checked one, though ShedLock's signature declares
+      // it.
       LOG.atError().setCause(e).log("An ingestion run failed");
       metrics.recordFailedRun();
     }
   }
 
-  private void ingestOnce() {
+  private IngestionReport ingestOnce() {
     IngestionReport report = ingestion.ingest();
     log(report);
     metrics.record(report);
+    return report;
   }
 
   private static void log(IngestionReport report) {

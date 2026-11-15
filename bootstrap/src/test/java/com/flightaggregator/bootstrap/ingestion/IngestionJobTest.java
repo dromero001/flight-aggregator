@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import net.javacrumbs.shedlock.core.DefaultLockingTaskExecutor;
 import net.javacrumbs.shedlock.core.LockConfiguration;
@@ -131,6 +132,37 @@ class IngestionJobTest {
                 assertThat(((ThrowableProxy) event.getThrowableProxy()).getThrowable())
                     .isSameAs(unreachable));
     assertThat(runs("FAILED")).isEqualTo(1);
+  }
+
+  /**
+   * Another instance holds the lock: this one skips its run, and says so, so that an instance that
+   * skips does not look idle. A skipped run is neither a success nor a failure.
+   */
+  @Test
+  void logsARunSkippedBecauseAnotherInstanceHoldsTheLock() {
+    AtomicBoolean ingested = new AtomicBoolean();
+    IngestionJob job =
+        new IngestionJob(
+            () -> {
+              ingested.set(true);
+              return published(new Publication(1, 10, 0, Instant.parse("2026-12-28T00:00:00Z")));
+            },
+            metrics,
+            new DefaultLockingTaskExecutor(configuration -> Optional.empty()),
+            () -> STARTED_AT);
+
+    job.run();
+
+    assertThat(ingested).isFalse();
+    assertThat(log.list)
+        .singleElement()
+        .satisfies(
+            event -> {
+              assertThat(event.getLevel()).isEqualTo(Level.INFO);
+              assertThat(event.getFormattedMessage())
+                  .isEqualTo("Skipped an ingestion run: another instance holds its lock");
+            });
+    assertThat(meters.find("ingestion.runs").counters()).isEmpty();
   }
 
   /**
