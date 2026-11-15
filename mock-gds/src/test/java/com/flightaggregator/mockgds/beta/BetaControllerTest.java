@@ -7,9 +7,11 @@ import com.flightaggregator.mockgds.model.Provider;
 import com.flightaggregator.mockgds.support.MockGdsTest;
 import com.flightaggregator.mockgds.support.ProviderKeys;
 import com.flightaggregator.mockgds.support.Xml;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -80,5 +82,19 @@ class BetaControllerTest {
     assertThat(get("/beta/segments?pageSize=1001").getStatusCode())
         .isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(get("/beta/segments?pageSize=").getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+  }
+
+  @Nested
+  @Import(EmptyInventory.class)
+  class WhenTheInventoryIsEmpty {
+
+    /** A client reading pages 1 to totalPages still reads page 1, and learns it is the last. */
+    @Test
+    void reportsOnePage() throws Exception {
+      var root = Xml.parse(get("/beta/segments").getBody());
+
+      assertThat(root.getAttribute("totalPages")).isEqualTo("1");
+      assertThat(root.getElementsByTagName("Segment").getLength()).isZero();
+    }
   }
 }

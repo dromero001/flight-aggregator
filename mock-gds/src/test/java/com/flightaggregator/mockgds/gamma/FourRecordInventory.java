@@ -1,16 +1,12 @@
 package com.flightaggregator.mockgds.gamma;
 
-import com.flightaggregator.mockgds.dataset.Dataset;
 import com.flightaggregator.mockgds.dataset.ProviderRecord;
 import com.flightaggregator.mockgds.dataset.ValidLeg;
 import com.flightaggregator.mockgds.model.Leg;
 import com.flightaggregator.mockgds.model.Provider;
-import com.flightaggregator.mockgds.pricing.PriceModel;
-import com.flightaggregator.mockgds.reference.ReferenceData;
 import com.flightaggregator.mockgds.serving.ProviderInventory;
+import com.flightaggregator.mockgds.support.Fixtures;
 import java.math.BigDecimal;
-import java.time.Clock;
-import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.stream.IntStream;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -43,9 +39,6 @@ class FourRecordInventory {
                             new BigDecimal("129.90"),
                             Provider.GAMMA)))
             .toList();
-    return new ProviderInventory(
-        new Dataset(records),
-        new PriceModel(42, Duration.ofMinutes(15), ReferenceData.standard()),
-        Clock.systemUTC());
+    return Fixtures.inventoryOf(records);
   }
 }
