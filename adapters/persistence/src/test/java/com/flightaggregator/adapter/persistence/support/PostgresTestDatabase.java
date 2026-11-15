@@ -12,13 +12,10 @@ import org.testcontainers.utility.DockerImageName;
  */
 public final class PostgresTestDatabase {
 
-  /** Same image as the compose file: tag and digest of the multi-arch index. */
-  private static final String IMAGE =
-      "postgres:18.4-trixie@sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636";
-
   @SuppressWarnings("resource") // Stopped by Testcontainers' Ryuk when the JVM ends.
   private static final PostgreSQLContainer CONTAINER =
-      new PostgreSQLContainer(DockerImageName.parse(IMAGE).asCompatibleSubstituteFor("postgres"));
+      new PostgreSQLContainer(
+          DockerImageName.parse(PostgresImage.NAME).asCompatibleSubstituteFor("postgres"));
 
   private static final DataSource DATA_SOURCE = start();
 

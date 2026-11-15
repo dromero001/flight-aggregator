@@ -1,5 +1,7 @@
 plugins {
     id("flightaggregator.java-conventions")
+    // The pinned PostgreSQL image, shared with the bootstrap tests.
+    `java-test-fixtures`
 }
 
 dependencies {
