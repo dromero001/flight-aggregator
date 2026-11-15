@@ -132,6 +132,8 @@ Alertmanager, SLO burn-rate alerts and a trace id in error responses (rejected, 
 
 ### Task 1: The telemetry backends in compose
 
+**Decided by the user on 2026-11-15, after the implementation:** the OpenTelemetry Collector runs without a health check, the one exception to the Global Constraints' rule, with a comment in `compose.yaml` saying why (its core image is `/otelcol` on `scratch`, with no shell or probe; nothing waits on it, and an exporter drops what it cannot send). Extras approved: the usage reports of Tempo, Loki and Grafana to Grafana Labs are turned off, and `ComposeFileTest` checks the published ports (none for the Collector, Tempo and Loki; loopback only for Grafana and Prometheus). Controller's ruling: the approved E8 (every compose image pinned by tag and digest) is built in this task, which owns `ComposeFileTest` and `ObservabilityImages`.
+
 **Files:**
 - Create: `deploy/otel-collector/config.yaml`, `deploy/prometheus/prometheus.yaml`, `deploy/tempo/tempo.yaml`, `deploy/loki/loki.yaml`, `deploy/grafana/provisioning/datasources/datasources.yaml`; in `bootstrap/src/test/java/com/flightaggregator/bootstrap/deploy/`: `ObservabilityImages.java`, `CollectorConfigTest.java`, `PrometheusConfigTest.java`, `TempoConfigTest.java`, `LokiConfigTest.java`, `GrafanaProvisioningTest.java`
 - Modify: `compose.yaml` (services `otel-collector`, `prometheus`, `tempo`, `loki`, `grafana`), `bootstrap/build.gradle.kts` (test inputs `deploy/**`), `bootstrap/src/test/.../ComposeFileTest.java`

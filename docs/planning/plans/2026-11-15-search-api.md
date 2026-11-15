@@ -200,6 +200,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 ### Task 4: The itinerary reader: keyset pages over the active slot
 
+**Extras approved by the user on 2026-11-15, after the task reached `main`:** a statement timeout of **2 s** on every search read (`SET LOCAL`, so a stuck read fails instead of holding a connection and its lock on the slot), and defensive copies of the lists in `StoredPage` and `SearchPage`. The guard on `limit` in the port stays out (the endpoint validates it).
+
 **Depends on:** 3 (`LegsJson`, V5's indexes). **Parallel:** not with 3; after it, 2 and 11 may still be running. Its `port/in` types are what 5, 6, 8 and 9 compile against, so they start from its commit.
 
 **Files:**
@@ -219,6 +221,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - [ ] **Step 3: `./gradlew build` green, review, commit:** `git commit -m "Read keyset pages of the active slot with every filter and sort order"`.
 
 ### Task 5: Valkey: result cache, refresh coordination, request counters
+
+**Extras approved by the user on 2026-11-15, after fix round 1:** the state of Valkey's circuit breaker as a meter, and fewer WARN lines when many cached values fail to parse at once (as after a format change). Recovery after a JVM `Error` in a probe and a meter for unreadable refresh marks stay out.
 
 **Depends on:** 4 (`SearchPage`, `SearchCriteria`, `LegsJson` from 3). **Parallel:** with 8 (after 4) and 11; it edits `libs.versions.toml`, `bootstrap/build.gradle.kts` and `application.yaml`, shared with 11 and 13, so those merges are by hand.
 
@@ -275,6 +279,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Refresh a stale origin in the background and rewrite the itineraries through it"`.
 
 ### Task 8: Re-price on selection, with the alternative flow
+
+**Extra approved by the user on 2026-11-15, after fix round 1:** a test that pins two re-prices of the same itinerary at once (the second answers `GONE`, the store keeps the first's quote).
 
 **Depends on:** 2 (`quote`), 3, 4 (`ItineraryReader`). **Parallel:** with 5 and 6 (it needs neither), and with 7 only by hand-merging the repository files (see Task 7). `V6` is reserved for it (3 takes V5, 12 takes V7), so the numbers never collide.
 
