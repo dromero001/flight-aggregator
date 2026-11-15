@@ -27,14 +27,12 @@ class HexagonalArchitectureTest {
 
   private static final List<ArchRule> ALL_RULES = HexagonalRules.forRoot(ROOT);
 
-  // Rules 2, 3 and 4 still match no class: plan 4 moves them out of this list with the first
-  // application and adapter classes. They are picked by identity, so reordering forRoot changes
-  // nothing and a new rule is strict by default.
+  // Rules 3 and 4 still match no class: plan 4 moves them out of this list with the first adapter
+  // classes. They are picked by identity, so reordering forRoot changes nothing and a new rule is
+  // strict by default.
   private static final List<ArchRule> LENIENT_RULES =
       List.of(
-          HexagonalRules.applicationDependsOnlyOnTheDomainAndSpring(ROOT),
-          HexagonalRules.adaptersUseOnlyPorts(ROOT),
-          HexagonalRules.adaptersAreIndependent(ROOT));
+          HexagonalRules.adaptersUseOnlyPorts(ROOT), HexagonalRules.adaptersAreIndependent(ROOT));
 
   private static final List<ArchRule> STRICT_RULES =
       ALL_RULES.stream()

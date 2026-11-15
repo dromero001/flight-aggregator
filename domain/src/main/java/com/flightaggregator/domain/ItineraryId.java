@@ -12,7 +12,7 @@ import java.util.stream.Collectors;
  */
 public record ItineraryId(UUID value) {
 
-  public static ItineraryId of(List<LegKey> keys) {
+  static ItineraryId of(List<LegKey> keys) {
     String canonical = keys.stream().map(LegKey::toString).collect(Collectors.joining("|"));
     return new ItineraryId(UUID.nameUUIDFromBytes(canonical.getBytes(UTF_8)));
   }

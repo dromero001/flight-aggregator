@@ -58,6 +58,7 @@ The documentation is split by what each part shows.
 
 ### 1. Architecture — what is built
 - [Architecture overview](docs/architecture/README.md): hexagonal modules, flows and the domain glossary
+- [Domain visibility rule](docs/architecture/domain-visibility.md): which domain members are public
 
 ### 2. Planning — how the work was planned
 - [Design spec](docs/planning/design-spec.md): goals, domain rules, every design decision and its reasoning
