@@ -14,5 +14,4 @@ dependencies {
     testImplementation(libs.flyway.core)
     testImplementation(libs.flyway.database.postgresql)
     testImplementation(libs.testcontainers.postgresql)
-    testImplementation(libs.testcontainers.junit.jupiter)
 }

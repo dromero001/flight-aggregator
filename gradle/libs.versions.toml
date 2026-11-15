@@ -43,7 +43,6 @@ jackson-core = { module = "tools.jackson.core:jackson-core" }
 flyway-core = { module = "org.flywaydb:flyway-core" }
 flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
-testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
