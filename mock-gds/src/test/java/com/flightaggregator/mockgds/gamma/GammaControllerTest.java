@@ -130,6 +130,23 @@ class GammaControllerTest {
   }
 
   @Test
+  void refusesADepartureThatIsNotAnInstant() {
+    var key = dataset.recordsFor(Provider.GAMMA).get(7).leg().key();
+    var query = Fixtures.quoteQuery(key).replace("departure=" + key.departure(), "departure=");
+
+    for (var departure : List.of("x", "2026-11-20T08:15:00%2B01:00", "2026-11-20")) {
+      assertThat(get("/gamma/legs.csv?" + query + departure).getStatusCode())
+          .as(departure)
+          .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @Test
+  void refusesAnOriginThatIsNotAnIataCode() {
+    assertThat(get("/gamma/legs.csv?origin=mad").getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+  }
+
+  @Test
   void refusesAPartialFlightKey() {
     assertThat(get("/gamma/legs.csv?carrier=IB&flightNumber=3170").getStatusCode())
         .isEqualTo(HttpStatus.BAD_REQUEST);

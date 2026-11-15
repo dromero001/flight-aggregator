@@ -35,3 +35,14 @@ Gates: `./gradlew :mock-gds:build` and `./gradlew build` green (195 tests in `mo
 ### Extras for the user to decide
 
 None.
+
+## Task 1 — fix round 1
+
+Review: functional CHANGES REQUIRED, code APPROVED with follow-ups.
+
+- Architecture doc: `docs/architecture/README.md`, "Mock providers" gained "Origin filter and quote" (the `origin` parameter, the five-parameter quote, the empty-page answer per format, the 400 rules, the `Z` of the request's `departure`).
+- `AlphaControllerTest.refusesAnOriginThatIsNotAnIataCode`: red = `[origin=] expected: 400 BAD_REQUEST but was: 200 OK`; `refusesAFlightKeyWithMalformedParts` (lowercase destination and carrier, a three-letter carrier, a non-numeric `flightNumber`): red = `destination=lhr expected: 400 ...` (written together with the previous one, both red for the same missing validation; the `flightNumber=abc` case was already refused by `Paging.integer` and is only proven by that test being green as a whole). Green = `ListingParams.toFilter` validates the shapes: origin and destination `[A-Z]{3}`, carrier `[A-Z0-9]{2}`; a repeated `origin` reaches it joined with a comma and fails the shape.
+- Beta and Gamma `refusesADepartureThatIsNotAnInstant` and `refusesAnOriginThatIsNotAnIataCode`: passed on first run (shared code); red under the mutations "the shape check disabled" (Alpha, Beta and Gamma origin tests fail) and "an unparsable departure answers `Instant.EPOCH`" (the three departure tests fail).
+- Finding: `Instant.parse` already refuses an offset such as `+01:00`, so the explicit `endsWith("Z")` check added in the first round was redundant, and removing it kept every test green (it was dead code); it is gone.
+- Request parsing moved out of `RecordFilter` (now the pure filter value: `all`, `fromOrigin`, `flight`, `matches`) into the record `serving/ListingParams`, bound by name with `@ModelAttribute` in the three controllers, with `toFilter()`; the five positional `@RequestParam` lines are gone. Behaviour unchanged, so this is a refactor under the green suite.
+- Gates: `./gradlew :mock-gds:build` and `./gradlew build` green, 201 tests in `mock-gds`. Thermo-nuclear checklist on the diff: one canonical place for request parsing (next to `Paging`, reusing `Paging.integer` and `InvalidRequestException`), no repeated parameter lists, no silent failures (every malformed part is a 400), no shared mutable state.

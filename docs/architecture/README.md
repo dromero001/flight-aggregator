@@ -113,6 +113,14 @@ Glossary:
 
 `limit` and `pageSize` default to 500 and go from 1 to 1000; anything else, or a parameter that is not a plain integer, answers `400`. Times are ISO-8601 with a numeric offset (`2026-11-20T08:15:00+01:00`, never `Z`). Prices are in euros: Alpha writes a decimal string, Beta an integer number of cents, Gamma a decimal.
 
+### Origin filter and quote
+
+Every listing also takes `origin=<IATA>`: only the legs departing from that airport, filtered before paging, so cursors, pages and offsets run over the filtered list. Without it the listing is unchanged.
+
+A quote re-prices one flight in the provider's own format: the same listing with all five of `carrier`, `flightNumber`, `origin`, `destination` and `departure` present. It answers at most one record, priced like the listing (same drift model), and ends its own pagination (Alpha `"nextCursor": null`, Beta `totalPages="1"`, Gamma a short page). A flight the provider does not sell is not an error: the answer is the listing's own empty page, with status `200` (Alpha `{"legs":[],"nextCursor":null}`, Beta an empty `<Segments/>` with `totalPages="1"`, Gamma the header row only).
+
+These answer `400`: a flight key with a missing part, an `origin` or `destination` that is not three uppercase letters (an empty, lowercase or repeated `origin` included), a `carrier` that is not two uppercase letters or digits, a `flightNumber` that is not a plain integer, and a `departure` that is not an ISO-8601 UTC instant ending in `Z` (`2026-11-20T07:15:00Z`; an offset is refused). That `Z` belongs to the request only: the times a provider writes never use it.
+
 The examples below are trimmed to one record. Prices differ per provider and per request: each is the drifted price at the request instant.
 
 Alpha:

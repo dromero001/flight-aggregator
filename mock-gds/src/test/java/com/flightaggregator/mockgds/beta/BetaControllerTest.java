@@ -159,6 +159,23 @@ class BetaControllerTest {
   }
 
   @Test
+  void refusesADepartureThatIsNotAnInstant() {
+    var key = dataset.recordsFor(Provider.BETA).get(7).leg().key();
+    var query = Fixtures.quoteQuery(key).replace("departure=" + key.departure(), "departure=");
+
+    for (var departure : List.of("x", "2026-11-20T08:15:00%2B01:00", "2026-11-20")) {
+      assertThat(get("/beta/segments?" + query + departure).getStatusCode())
+          .as(departure)
+          .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @Test
+  void refusesAnOriginThatIsNotAnIataCode() {
+    assertThat(get("/beta/segments?origin=mad").getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+  }
+
+  @Test
   void refusesAPartialFlightKey() {
     assertThat(get("/beta/segments?carrier=IB&flightNumber=3170").getStatusCode())
         .isEqualTo(HttpStatus.BAD_REQUEST);

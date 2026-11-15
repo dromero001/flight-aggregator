@@ -139,6 +139,33 @@ class AlphaControllerTest {
   }
 
   @Test
+  void refusesAnOriginThatIsNotAnIataCode() {
+    for (var query :
+        List.of("origin=", "origin=mad", "origin=MA", "origin=MADX", "origin=MAD&origin=BCN")) {
+      assertThat(get("/alpha/legs?" + query).getStatusCode())
+          .as(query)
+          .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @Test
+  void refusesAFlightKeyWithMalformedParts() {
+    var key = dataset.recordsFor(Provider.ALPHA).get(7).leg().key();
+    var query = Fixtures.quoteQuery(key);
+
+    for (var bad :
+        List.of(
+            query.replace("destination=" + key.destination(), "destination=lhr"),
+            query.replace("carrier=" + key.airline(), "carrier=ib"),
+            query.replace("carrier=" + key.airline(), "carrier=IBE"),
+            query.replace("flightNumber=" + key.flightNumber(), "flightNumber=abc"))) {
+      assertThat(get("/alpha/legs?" + bad).getStatusCode())
+          .as(bad)
+          .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @Test
   void refusesADepartureThatIsNotAnInstant() {
     var key = dataset.recordsFor(Provider.ALPHA).get(7).leg().key();
     var query = Fixtures.quoteQuery(key).replace("departure=" + key.departure(), "departure=");
