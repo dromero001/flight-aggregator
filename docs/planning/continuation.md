@@ -4,7 +4,7 @@ The single place that says what is in flight, where it lives and what comes next
 
 **Rule:** the controller rewrites this file and pushes it at every checkpoint: a subagent dispatched or returned, a review verdict, a user decision, a task integrated (`CLAUDE.md`, "Continuity"). If something here contradicts `git log`, `git log` wins: say so and fix this file first.
 
-**Last updated:** 2026-11-15 18:10 CET, on the Mac, `main` at `3a5399d` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
+**Last updated:** 2026-11-15 18:23 CET, on the Mac, `main` at `3a5399d` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
 
 ## Resume in five minutes
 
@@ -44,7 +44,7 @@ Every implementer below writes its report in its own worktree, at `.superpowers/
 | Plan 5 Task 5, round 2 | Dispatched 17:53 (the brief is below); then its double review | `.claude/worktrees/agent-a3652a06ed07d9591`, `worktree-agent-a3652a06ed07d9591`, from `6db5049` | `wip/plan5-task-5-r2` after its first commit |
 | Approved extras (plan 5 Tasks 4 and 8, git guard) | Dispatched 17:53 (the brief is below); then its double review | `.claude/worktrees/agent-a47126e03777a95e1`, `worktree-agent-a47126e03777a95e1`, from `6db5049` | `wip/plan5-extras` after its first commit |
 | Plan 7 Task 1, telemetry backends in compose | Round 2 done (`42bc27f`, 729 tests green): the user's decisions and E8. Its first double review dispatched 18:10 | `.claude/worktrees/agent-a380b01c59520a201`, `worktree-agent-a380b01c59520a201`, from `04586b6` | `wip/plan7-task-1` (at `42bc27f`) |
-| Plan 7 Task 9, draft of `SOLUTION.md` | Steps 1–2 (draft and check), dispatched 18:10; figures that later tasks produce are left as visible `TODO(plan N Task M)` placeholders. Step 3 is the user's review | `.claude/worktrees/agent-ad45d58ed7874f3b3`, `worktree-agent-ad45d58ed7874f3b3` from `72bce35` | `wip/plan7-task-9` after its first commit |
+| Plan 7 Task 9, draft of `SOLUTION.md` | Draft done (`59f8727`, checked: 114 links, figures match their reports; 12 `TODO(plan N Task M)` placeholders). Waiting for the user's review (Step 3); points to look at first: the 30-minute cadence's reason (spec 6.4 says a run takes minutes, plan 4 measured 12 to 14 s), the cache hit ratio (no task measures it under real traffic), three inferred 'Rejected' lines. Merging with Task 1: add/add conflict on the plan 7 progress report, keep both, Task 1's first | `.claude/worktrees/agent-ad45d58ed7874f3b3`, `worktree-agent-ad45d58ed7874f3b3` | `wip/plan7-task-9` (at `59f8727`) |
 
 **Plan 5 Task 6:** the plan's Task 6 text, its Global Constraints, Q1–Q9 as decided, and the tests in the order its Step 1 lists. The refresh request must never delay or fail a search.
 
