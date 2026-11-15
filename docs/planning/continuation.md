@@ -4,7 +4,7 @@ The single place that says what is in flight, where it lives and what comes next
 
 **Rule:** the controller rewrites this file and pushes it at every checkpoint: a subagent dispatched or returned, a review verdict, a user decision, a task integrated (`CLAUDE.md`, "Continuity"). If something here contradicts `git log`, `git log` wins: say so and fix this file first.
 
-**Last updated:** 2026-11-15 19:13 CET, on the Mac, `main` at `373ccc5` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
+**Last updated:** 2026-11-15 19:20 CET, on the Mac, `main` at `afa79f5` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
 
 ## Resume in five minutes
 
@@ -32,7 +32,7 @@ A usage limit cuts every subagent at once, like a dropped connection, but within
 | Plan | State |
 |---|---|
 | 0–4 | Closed, on `main` |
-| 5 · Search API | Tasks 1, 2, 3, 4, 5, 8 and 11 on `main`. Task 6, Task 5's round 2 and the approved extras in flight (below). Order: 2+3+11 → 4 → 5+8 → **6** → 7+9 → 10+12 → 13. One double reviewer (functional, then code) per task; three reviewers at the end of the plan |
+| 5 · Search API | Tasks 1, 2, 3, 4, 5 (with its round 2), 8 and 11 on `main`. Task 6 in review and the approved extras in flight (below). Order: 2+3+11 → 4 → 5+8 → **6** → 7+9 → 10+12 → 13. One double reviewer (functional, then code) per task; three reviewers at the end of the plan |
 | 6 · Dashboard | Tasks 1, 3 and 9 on `main`. Tasks 2 and 4–8 wait for the OpenAPI contract of plan 5 Task 9; Tasks 10–11 after them |
 | 7 · Observability and delivery | Approved 2026-11-15 (Q1–Q4 A; extras E1–E5, E7–E10; E6 out). Task 1 in round 2; Task 9 (draft) may start now; 2 and 4 once plan 5 is closed. E9 (clean clone on the Windows PC) confirmed for Monday by the user |
 
@@ -43,7 +43,7 @@ Every implementer below writes its report in its own worktree, at `.superpowers/
 | Task | State | Worktree (Mac) and branch | Pushed as |
 |---|---|---|---|
 | Plan 5 Task 6, the search use case | Done (`6506e5c` use case, `ff23fd5` wiring with the provisional scheduler; full build green, 17 full-application tests included). Its double review dispatched 19:13. Task 7 must replace the provisional `RefreshScheduler` (both beans stop startup) and keep its contract: return at once, never throw | `.claude/worktrees/agent-abf03d55db7511dc3`, `worktree-agent-abf03d55db7511dc3`, from `6db5049` | `wip/plan5-task-6` (at `ff23fd5`) |
-| Plan 5 Task 5, round 2 | Done (`9d8a2ba`, six commits, full build green): C-R1 to C-R3, the breaker's seven meters (the user kept all seven), `EpisodeWarning` for fewer WARN lines. Its double review dispatched 19:05 | `.claude/worktrees/agent-a3652a06ed07d9591`, `worktree-agent-a3652a06ed07d9591`, from `6db5049` | `wip/plan5-task-5-r2` (at `9d8a2ba`) |
+| Plan 5 Task 5, round 2 | **On `main`** (`afa79f5`, approved twice, CI running). Minors for the end-of-plan review: M1 `ValkeyFailures.java:57`, the dead `recordExceptions(DataAccessException.class)` line (a trap: delete it, or `ignoreException` with one catch); M2 `EpisodeWarning.java:46-47`, the unlogged count appears only with the next episode's WARN, with no start time. Notes: Task 12's health must not read the startup `half_open` as Valkey unavailable; Task 13's `search-api.md` lists the `valkey.circuitbreaker.*` meters | — | `wip/plan5-task-5-r2` (obsolete) |
 | Approved extras (plan 5 Tasks 4 and 8, git guard) | Cut off by the usage limit after three commits (2 s read timeout, defensive copies, the race test; the git guard in progress); resumed 18:52 | `.claude/worktrees/agent-a47126e03777a95e1`, `worktree-agent-a47126e03777a95e1`, from `6db5049` | `wip/plan5-extras` (at `b5866bd`) |
 | Plan 7 Task 1, telemetry backends in compose | Review: functional CHANGES REQUESTED (F1: no test that no Grafana password is committed), code APPROVED. Round 3 sent 19:05: F1; the user's F2 (query history off), F3 (Prometheus on `tmpfs`), F4 (update checks off); C1 (`rule_files` glob that skips Task 3's promtool test file), C2, C6. Then its re-review | `.claude/worktrees/agent-a380b01c59520a201`, `worktree-agent-a380b01c59520a201`, from `04586b6` | `wip/plan7-task-1` (at `42bc27f`) |
 | Plan 7 Task 9, draft of `SOLUTION.md` | Draft done (`59f8727`, checked: 114 links, figures match their reports; 12 `TODO(plan N Task M)` placeholders). Waiting for the user's review (Step 3); points to look at first: the 30-minute cadence's reason (spec 6.4 says a run takes minutes, plan 4 measured 12 to 14 s), the cache hit ratio (no task measures it under real traffic), three inferred 'Rejected' lines. Merging with Task 1: add/add conflict on the plan 7 progress report, keep both, Task 1's first | `.claude/worktrees/agent-ad45d58ed7874f3b3`, `worktree-agent-ad45d58ed7874f3b3` | `wip/plan7-task-9` (at `59f8727`) |
