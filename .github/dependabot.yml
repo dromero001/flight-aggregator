@@ -6,6 +6,10 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 14
+    # A formatter's major version can reformat every file: a decision, not a routine update.
+    ignore:
+      - dependency-name: "com.google.googlejavaformat:google-java-format"
+        update-types: ["version-update:semver-major"]
     groups:
       gradle:
         patterns:
@@ -26,6 +30,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 14
+    # The images stay on Java 25, the current LTS (spec 6.1): a major bump (26 is not an LTS) is a
+    # decision, not a routine update.
+    ignore:
+      - dependency-name: "eclipse-temurin"
+        update-types: ["version-update:semver-major"]
     groups:
       docker:
         patterns:
