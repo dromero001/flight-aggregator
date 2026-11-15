@@ -3,6 +3,7 @@ package com.flightaggregator.adapter.provider.beta;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import com.flightaggregator.adapter.provider.ParsedPage;
 import com.flightaggregator.application.port.out.DiscardReason;
@@ -19,9 +20,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class BetaPageParserTest {
@@ -176,6 +180,37 @@ class BetaPageParserTest {
 
     assertThat(page.legs()).extracting(Leg::flightNumber).containsExactly(3170);
     assertThat(page.discarded()).isEmpty();
+  }
+
+  @ParameterizedTest
+  @MethodSource("segmentsOfTheWrongShape")
+  void discardsASegmentOfTheWrongShapeAndKeepsItsNeighbours(String segment, String excerpt) {
+    ParsedPage page =
+        BetaPageParser.parse(pageOf(1, 1, VALID_SEGMENT, segment, VALID_SEGMENT), QUOTED_AT);
+
+    assertThat(page.legs()).hasSize(2);
+    assertThat(page.discarded()).containsExactly(new DiscardedRecord(DiscardReason.SHAPE, excerpt));
+  }
+
+  static Stream<Arguments> segmentsOfTheWrongShape() {
+    return Stream.of(
+        arguments(
+            VALID_SEGMENT.replace("</Segment>", "<PriceCents>1</PriceCents></Segment>"),
+            "carrier=IB flightNumber=3170 origin=MAD departureTime=2026-11-20T08:15:00+01:00 "
+                + "destination=LHR arrivalTime=2026-11-20T09:30:00+00:00 price=12990"),
+        arguments(
+            VALID_SEGMENT.replace("3170", "<x>3170</x>"),
+            "carrier=IB origin=MAD departureTime=2026-11-20T08:15:00+01:00 "
+                + "destination=LHR arrivalTime=2026-11-20T09:30:00+00:00 price=12990"),
+        arguments(
+            VALID_SEGMENT.replace(
+                "<Carrier code=\"IB\"/>", "<Carrier code=\"IB\"/><Carrier code=\"BA\"/>"),
+            "carrier=IB flightNumber=3170 origin=MAD departureTime=2026-11-20T08:15:00+01:00 "
+                + "destination=LHR arrivalTime=2026-11-20T09:30:00+00:00 price=12990"),
+        arguments(
+            VALID_SEGMENT.replace("<Carrier code=\"IB\"/>", "<Carrier code=\"IB\"><x/></Carrier>"),
+            "carrier=IB flightNumber=3170 origin=MAD departureTime=2026-11-20T08:15:00+01:00 "
+                + "destination=LHR arrivalTime=2026-11-20T09:30:00+00:00 price=12990"));
   }
 
   private static String pageOf(int page, int totalPages, String... segments) {

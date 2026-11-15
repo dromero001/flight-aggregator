@@ -3,6 +3,7 @@ package com.flightaggregator.adapter.provider.beta;
 import com.flightaggregator.adapter.provider.ParsedPage;
 import com.flightaggregator.adapter.provider.RecordFields;
 import com.flightaggregator.adapter.provider.RecordRejected;
+import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
@@ -66,11 +67,11 @@ final class BetaPageParser {
     List<DiscardedRecord> discarded = new ArrayList<>();
     while (xml.nextTag() == XMLStreamConstants.START_ELEMENT) {
       expectName(xml, "Segment");
-      Map<String, String> fields = readSegment(xml);
+      SegmentFields segment = readSegment(xml);
       try {
-        legs.add(leg(fields, quotedAt));
+        legs.add(leg(segment, quotedAt));
       } catch (RecordRejected rejected) {
-        discarded.add(new DiscardedRecord(rejected.reason(), excerpt(fields)));
+        discarded.add(new DiscardedRecord(rejected.reason(), segment.excerpt()));
       }
     }
     expectEnd(xml, "SegmentsResponse");
@@ -114,50 +115,90 @@ final class BetaPageParser {
     return new ProviderUnavailableException(Provider.BETA, FailureReason.MALFORMED_PAGE, cause);
   }
 
-  /** The segment's values by field name, in document order; a field that is absent is absent. */
-  private static Map<String, String> readSegment(XMLStreamReader xml) throws XMLStreamException {
-    Map<String, String> fields = new LinkedHashMap<>();
+  /**
+   * A segment's values by field name, in document order, and whether it is of Beta's shape: no
+   * field repeated, and no known field holding elements.
+   */
+  private static final class SegmentFields {
+
+    private final Map<String, String> values = new LinkedHashMap<>();
+    private boolean wellShaped = true;
+
+    /** Keeps the first value of a field; a second one, or a field's value that is null, is not. */
+    void add(String name, String value) {
+      if (value != null && values.putIfAbsent(name, value) != null) {
+        wellShaped = false;
+      }
+    }
+
+    /** The element's text. An element that holds elements has none: it is ill shaped. */
+    String leafText(XMLStreamReader xml) throws XMLStreamException {
+      StringBuilder text = new StringBuilder();
+      if (!consume(xml, text)) {
+        wellShaped = false;
+        return null;
+      }
+      return text.toString();
+    }
+
+    String excerpt() {
+      return values.entrySet().stream()
+          .map(field -> field.getKey() + "=" + field.getValue())
+          .collect(Collectors.joining(" "));
+    }
+  }
+
+  /** Reads the whole segment, so a segment that is discarded leaves its neighbours readable. */
+  private static SegmentFields readSegment(XMLStreamReader xml) throws XMLStreamException {
+    SegmentFields segment = new SegmentFields();
     while (xml.nextTag() == XMLStreamConstants.START_ELEMENT) {
       switch (xml.getLocalName()) {
         case "Carrier" -> {
-          fields.put("carrier", xml.getAttributeValue(null, "code"));
-          xml.getElementText();
+          segment.add("carrier", xml.getAttributeValue(null, "code"));
+          segment.leafText(xml);
         }
-        case "FlightNumber" -> fields.put("flightNumber", xml.getElementText());
+        case "FlightNumber" -> segment.add("flightNumber", segment.leafText(xml));
         case "Departure" -> {
-          fields.put("origin", xml.getAttributeValue(null, "airport"));
-          fields.put("departureTime", xml.getElementText());
+          segment.add("origin", xml.getAttributeValue(null, "airport"));
+          segment.add("departureTime", segment.leafText(xml));
         }
         case "Arrival" -> {
-          fields.put("destination", xml.getAttributeValue(null, "airport"));
-          fields.put("arrivalTime", xml.getElementText());
+          segment.add("destination", xml.getAttributeValue(null, "airport"));
+          segment.add("arrivalTime", segment.leafText(xml));
         }
-        case "PriceCents" -> fields.put("price", xml.getElementText());
-        default -> skip(xml);
+        case "PriceCents" -> segment.add("price", segment.leafText(xml));
+        default -> consume(xml, new StringBuilder());
       }
     }
-    return fields;
+    return segment;
   }
 
-  /** Leaves the reader on the end of the element it is on, whatever the element holds. */
-  private static void skip(XMLStreamReader xml) throws XMLStreamException {
+  /**
+   * Leaves the reader on the end of the element it is on, collecting the text directly inside it.
+   * Returns false when the element holds elements.
+   */
+  private static boolean consume(XMLStreamReader xml, StringBuilder text)
+      throws XMLStreamException {
+    boolean leaf = true;
     for (int depth = 1; depth > 0; ) {
       int event = xml.next();
       if (event == XMLStreamConstants.START_ELEMENT) {
         depth++;
+        leaf = false;
       } else if (event == XMLStreamConstants.END_ELEMENT) {
         depth--;
+      } else if (depth == 1 && event != XMLStreamConstants.COMMENT) {
+        text.append(xml.getText());
       }
     }
+    return leaf;
   }
 
-  private static String excerpt(Map<String, String> fields) {
-    return fields.entrySet().stream()
-        .map(field -> field.getKey() + "=" + field.getValue())
-        .collect(Collectors.joining(" "));
-  }
-
-  private static Leg leg(Map<String, String> fields, Instant quotedAt) {
+  private static Leg leg(SegmentFields segment, Instant quotedAt) {
+    if (!segment.wellShaped) {
+      throw new RecordRejected(DiscardReason.SHAPE);
+    }
+    Map<String, String> fields = segment.values;
     return RecordFields.leg(
         RecordFields.carrier(fields.get("carrier")),
         RecordFields.flightNumber(fields.get("flightNumber")),
