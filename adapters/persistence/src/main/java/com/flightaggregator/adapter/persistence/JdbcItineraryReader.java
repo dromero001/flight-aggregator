@@ -14,6 +14,7 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -27,7 +28,11 @@ import tools.jackson.core.json.JsonFactory;
  * generation and the rows of a page come from that one snapshot, even when a refresh that rewrites
  * the active slot and bumps the generation in one transaction (Q2-B) commits between the two
  * statements. {@code READ COMMITTED} takes a snapshot per statement and would label the refresh's
- * rows with the generation before it. Every table name comes from {@link Slot}.
+ * rows with the generation before it. Each read's statements are bounded by {@link
+ * StatementTimeout#SEARCH_READ}: a read that takes longer fails with Spring's {@code
+ * QueryTimeoutException} and rolls back, so it never holds its connection, or its lock on the slot
+ * that a run's {@code TRUNCATE} waits for, past the bound. Every table name comes from {@link
+ * Slot}.
  */
 public final class JdbcItineraryReader implements ItineraryReader {
 
@@ -50,14 +55,14 @@ public final class JdbcItineraryReader implements ItineraryReader {
 
   @Override
   public InventoryState state() {
-    return snapshot.execute(status -> active().state());
+    return read(() -> active().state());
   }
 
   @Override
   public StoredPage page(
       SearchCriteria criteria, Optional<SeekPosition> after, int limit, Instant now) {
-    return snapshot.execute(
-        status -> {
+    return read(
+        () -> {
           Active active = active();
           KeysetQuery query = KeysetQuery.of(active.slot(), criteria, after, limit, now);
           return new StoredPage(
@@ -68,12 +73,21 @@ public final class JdbcItineraryReader implements ItineraryReader {
 
   @Override
   public Optional<Itinerary> byId(ItineraryId id) {
-    return snapshot.execute(
-        status ->
+    return read(
+        () ->
             jdbc.sql("SELECT legs FROM " + active().slot().table() + " WHERE id = ?")
                 .param(id.value())
                 .query(this::itinerary)
                 .optional());
+  }
+
+  /** The statements of one read, in one bounded snapshot. */
+  private <T> T read(Supplier<T> statements) {
+    return snapshot.execute(
+        status -> {
+          StatementTimeout.SEARCH_READ.boundTheTransaction(jdbc);
+          return statements.get();
+        });
   }
 
   private Itinerary itinerary(ResultSet rs, int rowNum) throws SQLException {
