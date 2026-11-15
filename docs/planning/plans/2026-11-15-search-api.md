@@ -299,9 +299,10 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 **Depends on:** 6 (`SearchItineraries`, `InvalidCursorException`, with 4's types). **Parallel:** yes, with 7, 8, 11; 10 and 12 build on its `ProblemResponses` and response records.
 
 **Files:**
-- Modify: `adapters/web/build.gradle.kts` (`spring-webmvc`, `jackson-databind`; tests `spring-boot-starter-webmvc-test`)
-- Create in `adapters/web/.../adapter/web/`: `SearchController.java`, `SearchParameters.java`, `CursorCodec.java`, `ItineraryResponse.java`, `SearchResponse.java`, `ProblemResponses.java`; test `WebTestApplication.java`
-- Test: `CursorCodecTest.java`, `SearchParametersTest.java`, `SearchControllerTest.java`
+- Modify: `adapters/web/build.gradle.kts` (`spring-webmvc`, `jackson-databind`, `springdoc-openapi-starter-webmvc-api` by §6.1; tests `spring-boot-starter-webmvc-test`), `gradle/libs.versions.toml`, `application.yaml` (`springdoc.writer-with-order-by-keys: true`)
+- Create in `adapters/web/.../adapter/web/`: `SearchController.java`, `SearchParameters.java`, `CursorCodec.java`, `ItineraryResponse.java`, `SearchResponse.java`, `ProblemResponses.java`; test `WebTestApplication.java`; `docs/architecture/openapi.json`, `bootstrap/src/test/.../OpenApiContractTest.java`
+- Test: `CursorCodecTest.java`, `SearchParametersTest.java`, `SearchControllerTest.java`, `OpenApiContractTest.java`
+- **Moved here from Task 13 (the user's decision of 2026-11-15, to start plan 6 about two hours earlier):** the OpenAPI contract and its drift test. Every later task that adds or changes an endpoint (10, 12) regenerates the committed file with `-Dopenapi.write=true` in its own commit, and the drift test fails CI otherwise.
 
 **Interfaces:**
 - `GET /api/itineraries` with `origin`, `destination`, `maxPrice`, `carrier`, `sort` (`price` default, `departure`, `duration`), `limit` (Q9) and `cursor`, all optional. Codes are upper-cased; `maxPrice` matches `^[0-9]{1,9}(\.[0-9]{1,2})?$` and is above zero; each bad value → 400 naming it.
@@ -311,13 +312,15 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - [ ] **Step 1: `CursorCodecTest`, one test at a time:** `roundTrips`; `rejectsGarbageTamperedAndOverlongCursors` (Review Focus 2).
 - [ ] **Step 2: `SearchParametersTest`, one test at a time:** `normalisesCodesAndAmounts` (`mad` → `MAD`; `100` and `100.00` equal); `rejectsEachInvalidParameter` (parameterised: `MADR`, `1e3`, `-1`, `0`, `IBX`, `best`, `limit` 0 and above the maximum).
 - [ ] **Step 3: `SearchControllerTest` (`@WebMvcTest`, a fake `SearchItineraries`), one test at a time:** `searchesWithNoFilters` (price, 20); `writesLocalTimesAndThePriceButNeverTheProvider` (`+01:00` offsets; no `provider` and no leg price anywhere in the body); `flagsAChangedInventory`; `answersAProblemForABadCursor`.
-- [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Serve the search over HTTP with an opaque cursor and strict parameters"`.
+- [ ] **Step 4: `OpenApiContractTest.servedContractMatchesTheCommittedOne`** (red: no file yet); `-Dopenapi.write=true` writes it. CI's `./gradlew build` then fails on drift (§6.11 step 3, the backend half; plan 6 adds the types).
+- [ ] **Step 5: `./gradlew build` green, review, commit:** `git commit -m "Serve the search over HTTP with an opaque cursor and strict parameters"`.
 
 ### Task 10: The re-price endpoint and the rate limit
 
 **Depends on:** 5 (`RequestCounter`), 8 (`RepriceItinerary`), 9 (`ItineraryResponse`, `ProblemResponses`, the web module). **Parallel:** with 12 and 13's compose step (not the same files: 10 and 12 each add a controller and a bean config; `application.yaml` is shared, merged by hand), not with 9.
 
 **Files:**
+- Modify: `docs/architecture/openapi.json`, regenerated with `-Dopenapi.write=true` so that Task 9's `OpenApiContractTest` passes (the user's decision of 2026-11-15)
 - Create: `port/in/AdmitRequest.java`, `Admission.java`, `RateLimitedAction.java`, `RateLimit.java`; `service/RateLimitService.java`; in `adapters/web`: `RepriceController.java`, `RepriceResponse.java`, `RateLimitInterceptor.java`; `bootstrap/.../config/WebConfig.java`
 - Modify: `application.yaml` (`server.forward-headers-strategy: native`)
 - Test: `RateLimitServiceTest.java`, `RepriceControllerTest.java`, `RateLimitInterceptorTest.java`, `bootstrap/.../ClientAddressTest.java`
@@ -356,6 +359,7 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 **Depends on:** 2 (the `CircuitBreakerRegistry` bean and `FlightProvider` as built there), 5 (Valkey's ping), 9 (the web module), 11 (the admin role); V7 is reserved for it. **Parallel:** with 10 (see its note) and with 7 once 2 is merged; not before 11.
 
 **Files:**
+- Modify: `docs/architecture/openapi.json`, regenerated with `-Dopenapi.write=true` so that Task 9's `OpenApiContractTest` passes (the user's decision of 2026-11-15)
 - Create: `port/in/InventoryStatus.java`, `StatusReport.java`, `ProviderStatus.java`, `TriggerIngestion.java`; `port/out/IngestionStatusStore.java`, `ProviderRun.java`, `ProviderBreakers.java`, `IngestionLauncher.java`; `service/InventoryStatusService.java`, `TriggerIngestionService.java`; `adapters/persistence/.../JdbcIngestionStatusStore.java`, `db/migration/V7__ingestion_status.sql`; `adapters/web/.../AdminController.java`; `bootstrap/.../observability/InventoryHealthIndicator.java`, `RegistryProviderBreakers.java`, `config/AdminConfig.java`
 - Modify: `IngestInventoryService.java`, `bootstrap/.../ingestion/IngestionJob.java` (implements `IngestionLauncher`), `bootstrap/.../config/PersistenceConfig.java` (declares the status store), `application.yaml`, `compose.yaml` (the `app` health check accepts `UP` or `DEGRADED`), `README.md` ("Admin access": replace the temporary `/actuator/metrics` example with `/api/admin/*`, which Task 11 left for this task)
 - Test: `IngestInventoryServiceTest.java`, `JdbcIngestionStatusStoreTest.java`, `InventoryStatusServiceTest.java`, `IngestionJobTest.java`, `AdminControllerTest.java`, `SecurityTest.java`, `InventoryHealthIndicatorTest.java`, `bootstrap/src/test/.../SearchWithoutValkeyTest.java`
@@ -374,17 +378,17 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - [ ] **Step 4: `InventoryHealthIndicatorTest`, one test at a time:** `isUpWithEveryProviderFresh`; `isDegradedWith200WhenAProviderIsKept`; `isDegradedWhenValkeyIsDown`; then `SearchWithoutValkeyTest.searchesAndRepricesWhileValkeyIsDown` (§6.2's integration test: PostgreSQL and Valkey containers, Valkey paused → search answers 200 from PostgreSQL, a request past the rate limit is admitted, health is `DEGRADED` with 200).
 - [ ] **Step 5: `./gradlew build` green, review, commit:** `git commit -m "Report each provider's status, run an ingestion on demand and degrade health without failing"`.
 
-### Task 13: The OpenAPI contract, compose, and the search measured on the real volume
+### Task 13: Compose, the complete OpenAPI contract, and the search measured on the real volume
 
 **Depends on:** every other task (the contract documents all endpoints; the measures need the whole stack). **Parallel:** no; it runs last, alone. Its compose step (`valkey`) may start earlier, after 5.
 
 **Files:**
-- Modify: `gradle/libs.versions.toml`, `adapters/web/build.gradle.kts` (`springdoc-openapi-starter-webmvc-api`, by §6.1), `application.yaml` (`springdoc.writer-with-order-by-keys: true`), `compose.yaml` (`valkey`; `app` with the Valkey host, Task 11's resource-server settings (`SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_*`), depending on `valkey` and `keycloak` healthy), `README.md`, `docs/architecture/README.md`, `docs/planning/roadmap.md`
-- Create: `docs/architecture/openapi.json`, `docs/architecture/search-api.md`, `bootstrap/src/test/.../OpenApiContractTest.java`
+- Modify: `compose.yaml` (`valkey`; `app` with the Valkey host, Task 11's resource-server settings (`SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_*`), depending on `valkey` and `keycloak` healthy), `README.md`, `docs/architecture/README.md`, `docs/planning/roadmap.md`
+- Create: `docs/architecture/search-api.md`; modify `docs/architecture/openapi.json` and `OpenApiContractTest.java` (Task 9's) only if a check below needs it
 
 **Interfaces:** `/v3/api-docs` documents every endpoint, its parameters and bodies, the 400/404/409/429/503 problem responses with `Retry-After`, and the admin bearer scheme.
 
-- [ ] **Step 1: `OpenApiContractTest.servedContractMatchesTheCommittedOne`** (red: no file yet); `-Dopenapi.write=true` writes it. CI's `./gradlew build` then fails on drift (§6.11 step 3, the backend half; plan 6 adds the types).
+- [ ] **Step 1: the contract is complete:** a test in `OpenApiContractTest` that every endpoint of Tasks 9, 10 and 12 is documented with its parameters, bodies, the problem responses and the admin bearer scheme (red if any is missing); the committed file regenerated if needed.
 - [ ] **Step 2: compose:** `valkey` with Task 5's tag and digest, `--maxmemory 256mb --maxmemory-policy allkeys-lru` (§6.2) and a `valkey-cli ping` health check.
 - [ ] **Step 3: run and measure** (no production Java; recorded in the progress report): `docker compose up --build -d --wait`; after the first run, `EXPLAIN (ANALYZE, BUFFERS)` of the first and the fiftieth page of each sort × {no filter, origin, origin + destination, carrier} (Q6), and the load time against plan 4's; a stale-origin search triggering one refresh, and its duration (Q2); a re-price confirmed, then with Beta stopped and with all three stopped (503 within the budget); search with `valkey` stopped; 61 searches in a minute → 429.
 - [ ] **Step 4: docs:** `search-api.md` (endpoints, cursor and generation, cache, refresh, re-price, auth, rate limit); the README index (this plan, `search-api.md`, `openapi.json`); roadmap plan 5 done.

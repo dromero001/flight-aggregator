@@ -138,6 +138,8 @@ Booking (§6.8: "Select" goes no further); `SOLUTION.md`, Grafana and the final 
 
 ## Task map
 
+**Changed on 2026-11-15 (the user's decision):** plan 5 now commits `openapi.json` from its Task 9 (the search endpoint) instead of its last task, so the tasks marked "yes" below start once plan 5 Task 9 is on `main`. When plan 5 Tasks 10 (re-price) and 12 (admin) add their paths, the task that needs them runs `npm run api:generate` again, and `api:check` fails on a stale `schema.d.ts`.
+
 | Task | Depends on | May run in parallel with | Needs plan 5's final contract |
 |---|---|---|---|
 | 1. Scaffold, gates, CI job | — | — | no |
