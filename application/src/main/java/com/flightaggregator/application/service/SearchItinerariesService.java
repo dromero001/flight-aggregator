@@ -30,7 +30,8 @@ import java.util.Optional;
  * the active generation, with the page flagged as changed (Q1). Only first pages of searches
  * without Max Price are cached, under the active generation (Q3, §6.2); a page read from a newer
  * generation than that, when a run publishes between the two reads, is served but not cached. A
- * cached page is served without what has departed since it was cached (§4.1).
+ * cached page that has lost any row to departure since it was cached is a miss, read again and
+ * cached again, so no page is served with a departed flight, shorter or empty (§4.1).
  *
  * <p>A search from an origin in the airport catalogue then asks for that origin's background
  * refresh when its last publication or refresh, whichever is later, is more than the freshness
@@ -98,9 +99,9 @@ public final class SearchItinerariesService implements SearchItineraries {
 
   private SearchPage cachedOrRead(SearchQuery query, long generation, Instant now) {
     SearchKey key = new SearchKey(generation, query.criteria(), query.limit());
-    Optional<SearchPage> cached = cache.get(key);
+    Optional<SearchPage> cached = cache.get(key).filter(page -> isAllSellable(page, now));
     if (cached.isPresent()) {
-      return stillSellable(cached.get(), now);
+      return cached.get();
     }
     StoredPage stored = read(query, now);
     SearchPage page = pageOf(query, stored);
@@ -111,14 +112,11 @@ public final class SearchItinerariesService implements SearchItineraries {
   }
 
   /**
-   * §4.1: a cached page without what has departed since it was cached. It may hold fewer rows than
-   * the page size; its cursor stays as cached, since it seeks after the page's last row and the
-   * next page's read applies the departure cutoff again.
+   * §4.1, the user's decision: a cached page that has lost any row to departure since it was cached
+   * is a miss, read again and cached again, so a page is never served shorter or empty.
    */
-  private static SearchPage stillSellable(SearchPage cached, Instant now) {
-    List<Itinerary> sellable =
-        cached.itineraries().stream().filter(itinerary -> itinerary.isSellable(now)).toList();
-    return new SearchPage(sellable, cached.next(), cached.inventoryChanged());
+  private static boolean isAllSellable(SearchPage cached, Instant now) {
+    return cached.itineraries().stream().allMatch(itinerary -> itinerary.isSellable(now));
   }
 
   private StoredPage read(SearchQuery query, Instant now) {

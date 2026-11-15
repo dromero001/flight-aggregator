@@ -749,3 +749,36 @@ Thermo-nuclear review of the round's diff:
 - Existing mechanisms reused: `Itinerary.isSellable`, the `AirportCatalogue` port, Spring's `SingletonSupplier`.
 - No file near 1,000 lines: the service 158, its test 406.
 - Nothing is written half-way, and no new way to fail a search.
+
+## Task 6 — fix round 2
+
+Re-review (`task-6-rereview-1.md`): functional APPROVED, code CHANGES REQUESTED on one new finding, C5. The mock departs on 5-minute slots, so a cached first page by departure often loses every row at once, and round 1's filter then served it empty, with its cursor, for the rest of its TTL. **The user's decision of 2026-11-15** (recorded under Task 6 in the plan): a cached page that has lost any row to departure is a cache miss. It is read again from the reader and cached again, so a page is never served shorter or empty. This replaces round 1's C1 behaviour: a shortened page with the cached cursor, and nothing written back.
+
+Design notes:
+
+- On a cache hit, the page is served only if every row `isSellable(now)`. Otherwise it goes the way of a miss: read with `limit + 1` rows, served with the fresh cursor, and cached again under the same key and generation (when the page's generation is the key's, as on any miss). Writing it again resets its TTL. Round 1's `stillSellable` rewrite of the page is gone.
+- Cost: one read from PostgreSQL per departure-sorted key per departure slot, about one every 5 minutes, as the reviewer estimated. Other sorts lose a row more rarely.
+- Valkey's adapter counts that lookup as `search.cache{result=hit}`, since Valkey had the page, though the service reads PostgreSQL. The hit ratio (§6.2) is overstated by those lookups (see the extras).
+
+Cycles:
+
+- `SearchItinerariesServiceTest.readsAgainACachedPageThatHasLostARowToDeparture`, parameterised: one, or all three, of a cached first page's rows departed at 07:55, searched at 08:00 by departure from Madrid; the reader holds flights 21 to 24 from 08:05. It replaces round 1's `dropsFromACachedPageWhatHasDepartedSince`, whose expected page the user's decision supersedes. Red against round 1's code:
+  - one departed: `but was: SearchPage[itineraries=[... flightNumber=12 ..., ... flightNumber=13 ...], ...]`, the shortened cached page;
+  - all departed: `but was: SearchPage[itineraries=[], next=Optional[PageCursor[...]]`, the empty page of C5.
+
+  Green = a cached page is served only when every row is still sellable, otherwise read and cached again. Mutation "`anyMatch` instead of `allMatch`" (only an all-departed page is a miss, the reviewer's option b): the one-departed case served the cached page with departed flight 11.
+- F1 to C3's tests stay as they were, all green.
+
+Gates: `./gradlew build` green (exit 0, Spotless and the coverage gate included):
+- `application` 82, the replaced test now two cases;
+- `bootstrap` 118, `adapters/persistence` 103, `adapters/providers` 197, `domain` 91, architecture 39, `mock-gds` 201;
+- none failed.
+
+Thermo-nuclear review of the round's diff:
+- One rule replaces a page rewrite: a hit is a whole, still-sellable page, or it is a miss. The method that built a shortened page is deleted, and with it the asymmetry of a served page that the cache never held.
+- No file near 1,000 lines: the service 156, its test 430.
+- No new way to fail a search: the re-read is the miss path that already existed.
+
+### Extras for the user to decide
+
+- **Count a page re-read for a departed row as a miss in `search.cache`.** Today Valkey's adapter counts it as a hit. Value: the hit ratio §6.2 cites as evidence matches what PostgreSQL was spared. Cost: the cache port learns of the service's verdict (a method or a result type) and a test in each module. Left out unless you approve.
