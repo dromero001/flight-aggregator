@@ -1081,3 +1081,14 @@ Gates: `./gradlew build` green (exit 0, Spotless, ArchUnit and the coverage gate
 - **The contract's metadata.** `info` is springdoc's default ("OpenAPI definition", "v0"), and `servers` is `http://localhost`, "Generated server url", from the test's MockMvc. Value: a titled contract and a relative server URL. Cost: an `OpenAPI` bean or two settings, and a regeneration. Left out unless you approve.
 - **`currency` as the enum `["EUR"]` and a pattern on `Price.amount`.** Value: the TypeScript literal type `"EUR"`. Cost: two annotations and a regeneration. Left out unless you approve.
 - Not an extra but unassigned: **E2 (Swagger UI)** is approved by the user, but no task builds it. This task adds only the `-api` starter, as its plan says, and `/swagger-ui.html` stays behind `ADMIN` until a task opens it.
+
+## Task 9 — review
+
+The double review (`.superpowers/sdd/2026-11-15-search-api/task-9-review.md`) answered functional APPROVED and code APPROVED, with no Critical or Important finding. The reviewer rebuilt with `--rerun-tasks --no-build-cache` (68 of 68 tasks executed, green), showed the drift test failing on either side's drift, checked springdoc 3.2.0 against Maven Central, and probed bad requests (a repeated parameter, a 5,000-character cursor, `maxPrice=000.00`, `Accept: application/json`): each got a 400 problem naming the parameter. The implementer's departures are judged justified. Six Minors wait for the end-of-plan review (the user's rule of 2026-11-15: a Minor opens no round of its own):
+- F1: the plan's Task 10 still says "Create `WebConfig.java`" (Task 9 created it), and Task 13's README step is partly done; amend the plan before briefing Task 10.
+- F2: the "over 200 characters" cursor case does not pin the length bound itself (the 400 holds).
+- C1: springdoc as an `api` dependency puts Jackson 2 and springdoc on bootstrap's compile classpath; bootstrap should declare it itself.
+- C2: `maxPrice` "above 0" is outside the contract's pattern, so the contract lets `0` through.
+- C3: the sort values are written twice, in the parser and in the contract annotation.
+- C4: `CursorCodec`'s Javadoc claims more strictness than the code has (leading zeros are accepted).
+Approved extra E2 (Swagger UI) is built by no task: a plan gap for the user, not a finding.
