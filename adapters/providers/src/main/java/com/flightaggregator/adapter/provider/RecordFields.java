@@ -38,7 +38,7 @@ public final class RecordFields {
     return money(new BigDecimal(text));
   }
 
-  static Money centsPrice(String text) {
+  public static Money centsPrice(String text) {
     if (text == null || !CENTS_PRICE.matcher(text).matches()) {
       throw new RecordRejected(DiscardReason.PRICE);
     }
