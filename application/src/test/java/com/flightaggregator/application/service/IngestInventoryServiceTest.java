@@ -20,6 +20,7 @@ import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.ProviderDownload;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
+import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.application.service.fakes.FakeFlightProvider;
 import com.flightaggregator.application.service.fakes.FakeItineraryRepository;
 import com.flightaggregator.application.service.fakes.InMemoryOfferStore;
@@ -223,8 +224,13 @@ class IngestInventoryServiceTest {
         .extracting(Itinerary::quotedAt)
         .containsOnly(betaQuotedAt);
     assertThat(report.outcome()).isEqualTo(IngestionReport.Outcome.PUBLISHED);
-    assertThat(report.generation()).isEqualTo(FakeItineraryRepository.GENERATION);
-    assertThat(report.itineraries()).isEqualTo(3);
+    assertThat(report.publication())
+        .contains(
+            new Publication(
+                FakeItineraryRepository.GENERATION,
+                3,
+                FakeItineraryRepository.ROWS_IN_DEFAULT_PARTITION,
+                FakeItineraryRepository.LAST_PARTITION_DAY));
   }
 
   @Test
@@ -287,8 +293,7 @@ class IngestInventoryServiceTest {
 
     assertThat(repository.calls()).isZero();
     assertThat(report.outcome()).isEqualTo(IngestionReport.Outcome.NOTHING_TO_PUBLISH);
-    assertThat(report.generation()).isZero();
-    assertThat(report.itineraries()).isZero();
+    assertThat(report.publication()).isEmpty();
   }
 
   @Test
@@ -307,8 +312,7 @@ class IngestInventoryServiceTest {
     assertThat(repository.calls()).isEqualTo(1);
     assertThat(repository.published()).isEmpty();
     assertThat(report.outcome()).isEqualTo(IngestionReport.Outcome.CEILING_EXCEEDED);
-    assertThat(report.generation()).isZero();
-    assertThat(report.itineraries()).isZero();
+    assertThat(report.publication()).isEmpty();
   }
 
   @Test
@@ -319,8 +323,7 @@ class IngestInventoryServiceTest {
     IngestionReport report = service(alpha).ingest();
 
     assertThat(report.outcome()).isEqualTo(IngestionReport.Outcome.NOTHING_TO_PUBLISH);
-    assertThat(report.generation()).isZero();
-    assertThat(report.itineraries()).isZero();
+    assertThat(report.publication()).isEmpty();
     assertThat(repository.published()).isEmpty();
   }
 

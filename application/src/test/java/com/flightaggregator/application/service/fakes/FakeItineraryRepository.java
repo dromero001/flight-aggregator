@@ -16,6 +16,8 @@ import java.util.List;
 public final class FakeItineraryRepository implements ItineraryRepository {
 
   public static final long GENERATION = 7;
+  public static final long ROWS_IN_DEFAULT_PARTITION = 2;
+  public static final LocalDate LAST_PARTITION_DAY = LocalDate.parse("2026-12-27");
 
   private int calls;
   private List<Itinerary> published = List.of();
@@ -26,7 +28,8 @@ public final class FakeItineraryRepository implements ItineraryRepository {
     List<Itinerary> written = new ArrayList<>();
     writer.writeTo(written::add);
     published = List.copyOf(written);
-    return new Publication(GENERATION, published.size(), 0, LocalDate.EPOCH);
+    return new Publication(
+        GENERATION, published.size(), ROWS_IN_DEFAULT_PARTITION, LAST_PARTITION_DAY);
   }
 
   public int calls() {

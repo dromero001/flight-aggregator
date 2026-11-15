@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class IngestionReportTest {
@@ -18,8 +19,7 @@ class IngestionReportTest {
             Instant.parse("2026-11-20T08:00:00Z"),
             Duration.ZERO,
             IngestionReport.Outcome.NOTHING_TO_PUBLISH,
-            0,
-            0,
+            Optional.empty(),
             providers);
 
     providers.add(null);

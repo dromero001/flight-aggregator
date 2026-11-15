@@ -80,7 +80,8 @@ public final class IngestInventoryService implements IngestInventory {
     Map<Provider, List<Leg>> stored = storedOffers();
     List<Leg> offers = stored.values().stream().flatMap(List::stream).toList();
     if (offers.isEmpty()) {
-      return report(startedAt, IngestionReport.Outcome.NOTHING_TO_PUBLISH, 0, 0, reports);
+      return report(
+          startedAt, IngestionReport.Outcome.NOTHING_TO_PUBLISH, Optional.empty(), reports);
     }
     Deduplication deduplication = LegDeduplicator.deduplicate(offers);
     deduplication.conflicting().forEach(this::discardConflicting);
@@ -90,15 +91,13 @@ public final class IngestInventoryService implements IngestInventory {
       Publication publication =
           repository.replaceInventory(startedAt, writerOf(deduplication, startedAt));
       return report(
-          startedAt,
-          IngestionReport.Outcome.PUBLISHED,
-          publication.generation(),
-          publication.itineraries(),
-          finalReports);
+          startedAt, IngestionReport.Outcome.PUBLISHED, Optional.of(publication), finalReports);
     } catch (NoItineraryBuilt e) {
-      return report(startedAt, IngestionReport.Outcome.NOTHING_TO_PUBLISH, 0, 0, finalReports);
+      return report(
+          startedAt, IngestionReport.Outcome.NOTHING_TO_PUBLISH, Optional.empty(), finalReports);
     } catch (IngestionCeiling e) {
-      return report(startedAt, IngestionReport.Outcome.CEILING_EXCEEDED, 0, 0, finalReports);
+      return report(
+          startedAt, IngestionReport.Outcome.CEILING_EXCEEDED, Optional.empty(), finalReports);
     }
   }
 
@@ -142,16 +141,10 @@ public final class IngestInventoryService implements IngestInventory {
   private IngestionReport report(
       Instant startedAt,
       IngestionReport.Outcome outcome,
-      long generation,
-      long itineraries,
+      Optional<Publication> publication,
       List<ProviderReport> providerReports) {
     return new IngestionReport(
-        startedAt,
-        Duration.between(startedAt, clock.now()),
-        outcome,
-        generation,
-        itineraries,
-        providerReports);
+        startedAt, Duration.between(startedAt, clock.now()), outcome, publication, providerReports);
   }
 
   private ItineraryWriter writerOf(Deduplication deduplication, Instant now) {
