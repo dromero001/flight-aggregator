@@ -1,6 +1,6 @@
 // Shared setup for every Java module: Java 25 toolchain, strict compilation, JUnit Platform with
-// JUnit and AssertJ, google-java-format through Spotless, and the JaCoCo agent. Repositories are
-// declared once, in settings.gradle.kts.
+// JUnit and AssertJ at the Spring Boot BOM's versions, google-java-format through Spotless, and the
+// JaCoCo agent. Repositories are declared once, in settings.gradle.kts.
 plugins {
     java
     jacoco
@@ -37,8 +37,10 @@ tasks.withType<com.diffplug.gradle.spotless.SpotlessTask>().configureEach {
     mustRunAfter(cleanTaskPaths)
 }
 
+// One test platform for every module (spec 6.1): the Spring Boot BOM versions JUnit and AssertJ. It
+// is imported for the tests only, so no module's main code gains a dependency.
 dependencies {
-    testImplementation(platform(library("junit-bom")))
+    testImplementation(platform(library("spring-boot-dependencies")))
     testImplementation(library("junit-jupiter"))
     testImplementation(library("assertj-core"))
     testRuntimeOnly(library("junit-platform-launcher"))
