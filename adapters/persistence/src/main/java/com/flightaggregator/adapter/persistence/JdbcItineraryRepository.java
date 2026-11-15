@@ -5,12 +5,16 @@ import static java.util.Objects.requireNonNull;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.ItineraryWriter;
 import com.flightaggregator.application.port.out.Publication;
+import com.flightaggregator.application.port.out.StoreOutcome;
 import com.flightaggregator.domain.Itinerary;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Optional;
 import javax.sql.DataSource;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -25,15 +29,27 @@ import tools.jackson.core.json.JsonFactory;
  * anywhere rolls it all back, and the writer's exception propagates as it was thrown. The writer's
  * {@code writeTo} runs inside the load, on the load's connection, and must not use the storage
  * ports. All DDL touches only the inactive slot, and every table name comes from {@link Slot}. A
- * re-price's {@link #updateInPlace} rewrites one row of the active slot, under the same lock.
+ * re-price's {@link #updateInPlace} rewrites one row of the active slot under a share of the same
+ * lock, which it never waits for.
  */
 public final class JdbcItineraryRepository implements ItineraryRepository {
 
   /**
-   * How long a run waits for a lock before it fails, for example while a search still reads the
-   * inactive slot's previous generation, instead of waiting for ever.
+   * How long a run, or an update past the publication row, waits for a lock before it fails, for
+   * example while a search still reads the inactive slot's previous generation, instead of waiting
+   * for ever.
    */
   private static final String LOCK_TIMEOUT = "5s";
+
+  /**
+   * PostgreSQL's {@code lock_not_available}, which {@code NOWAIT} raises at once and {@code
+   * lock_timeout} at its end. Spring leaves it uncategorized, so it is read from the driver's
+   * exception.
+   */
+  private static final String LOCK_NOT_AVAILABLE = "55P03";
+
+  /** The publication row's read of the active slot; each caller adds the lock it takes. */
+  private static final String ACTIVE_SLOT = "SELECT active_slot FROM inventory_publication";
 
   private final DataSource dataSource;
   private final TransactionTemplate transaction;
@@ -64,7 +80,7 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
   }
 
   @Override
-  public boolean updateInPlace(Itinerary repriced) {
+  public StoreOutcome updateInPlace(Itinerary repriced) {
     return transaction.execute(status -> rewrite(repriced));
   }
 
@@ -73,23 +89,31 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
    * load uses, so every column derived from the legs follows them: a later arrival also moves the
    * duration a page by duration seeks on. The row is deleted by its key, {@code (id, departure)},
    * and copied back in the same transaction; the id names the legs' flights, their departures
-   * included, so a re-quote has the stored row's key. The active slot is read under the publication
-   * row's lock, held until the commit, so a run cannot switch slots between the read and the write;
-   * the wait for it is bounded as the load's is.
+   * included, so a re-quote has the stored row's key. The active slot is read under a share of the
+   * publication row's lock, held until the commit, so a run cannot switch slots between the read
+   * and the write. While a run holds the row, nothing is written: the update answers busy at once
+   * instead of holding a connection for the run's whole load. Its other lock waits and its
+   * statements are bounded as the load's are.
    */
-  private boolean rewrite(Itinerary repriced) {
+  private StoreOutcome rewrite(Itinerary repriced) {
     jdbc.sql("SET LOCAL lock_timeout = '" + LOCK_TIMEOUT + "'").update();
-    Slot slot = activeSlotLocked();
+    StatementTimeout.boundTheTransaction(jdbc);
+    Optional<Slot> active = activeSlotUnlessARunHoldsIt();
+    if (active.isEmpty()) {
+      // The refused lock aborted the transaction; its commit is a rollback.
+      return StoreOutcome.BUSY;
+    }
+    Slot slot = active.get();
     int deleted =
         jdbc.sql("DELETE FROM " + slot.table() + " WHERE id = ? AND departure = ?")
             .param(repriced.id().value())
             .param(ProviderTime.instantParameter(repriced.departure().toInstant()))
             .update();
     if (deleted == 0) {
-      return false;
+      return StoreOutcome.GONE;
     }
     copy(slot, sink -> sink.accept(repriced));
-    return true;
+    return StoreOutcome.STORED;
   }
 
   private Publication load(Instant now, ItineraryWriter writer) {
@@ -124,10 +148,26 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
    * new one once the first run switched to it.
    */
   private Slot activeSlotLocked() {
-    return Slot.of(
-        jdbc.sql("SELECT active_slot FROM inventory_publication FOR UPDATE")
-            .query(String.class)
-            .single());
+    return Slot.of(jdbc.sql(ACTIVE_SLOT + " FOR UPDATE").query(String.class).single());
+  }
+
+  /**
+   * The active slot, read under a share of the publication row's lock, held until the update
+   * commits; none, without waiting, while a run holds the row {@code FOR UPDATE}. Shares do not
+   * exclude each other, so re-prices store side by side, and a run that starts meanwhile waits for
+   * them before it touches either slot. Any other failure to read the row propagates.
+   */
+  private Optional<Slot> activeSlotUnlessARunHoldsIt() {
+    try {
+      return Optional.of(
+          Slot.of(jdbc.sql(ACTIVE_SLOT + " FOR SHARE NOWAIT").query(String.class).single()));
+    } catch (DataAccessException e) {
+      if (e.getMostSpecificCause() instanceof SQLException refused
+          && LOCK_NOT_AVAILABLE.equals(refused.getSQLState())) {
+        return Optional.empty();
+      }
+      throw e;
+    }
   }
 
   /** Makes the slot the one search reads, in the next generation, and returns that generation. */

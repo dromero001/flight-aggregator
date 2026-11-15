@@ -17,7 +17,7 @@ public interface ItineraryRepository {
   /**
    * Replaces the active generation's itinerary of the same id by this re-quote of it (Q5): its legs
    * and every value derived from them change, its id, its departure and the generation do not.
-   * Returns false, and changes nothing, when the active generation no longer holds that id.
+   * Answers what became of it; anything but {@link StoreOutcome#STORED} changed nothing.
    */
-  boolean updateInPlace(Itinerary repriced);
+  StoreOutcome updateInPlace(Itinerary repriced);
 }
