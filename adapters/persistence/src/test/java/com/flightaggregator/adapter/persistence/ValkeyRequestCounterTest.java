@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.flightaggregator.adapter.persistence.support.ValkeyTestServer;
 import com.flightaggregator.application.port.out.WindowCount;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,11 @@ class ValkeyRequestCounterTest {
   private static final Duration WINDOW = Duration.ofMillis(500);
 
   private final ValkeyRequestCounter counter =
-      new ValkeyRequestCounter(ValkeyTestServer.valkey(), new ValkeyFailures());
+      new ValkeyRequestCounter(
+          ValkeyTestServer.valkey(),
+          new ValkeyFailures(
+              CircuitBreaker.of(
+                  "valkey", ValkeyFailures.circuitBreakerConfig(Duration.ofSeconds(10)))));
 
   @BeforeEach
   void startFromAnEmptyValkey() {

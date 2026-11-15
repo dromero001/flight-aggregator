@@ -5,19 +5,22 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * Search's settings, bound from {@code search.*}: how long a page is cached and an origin counts as
- * fresh (§6.4), and how long a refresh claim holds (Q9). Each is required and above zero, so {@code
+ * fresh (§6.4), how long a refresh claim holds (Q9), and how long Valkey is skipped after it fails
+ * a command (plan 5, the user's decision of 2026-11-15). Each is required and above zero, so {@code
  * application.yaml} is their one source: startup stops otherwise, naming the setting, instead of
  * the application starting with a store that fails at its first use. A setting under {@code search}
  * that names none of these stops startup too, as under {@code providers}: a misspelt key would
  * otherwise leave the value it meant to change.
  */
 @ConfigurationProperties(prefix = "search", ignoreUnknownFields = false)
-record SearchProperties(Duration cacheTtl, Duration freshnessThreshold, Duration refreshClaimTtl) {
+record SearchProperties(
+    Duration cacheTtl, Duration freshnessThreshold, Duration refreshClaimTtl, Duration valkeySkip) {
 
   SearchProperties {
     require(cacheTtl, "cache-ttl");
     require(freshnessThreshold, "freshness-threshold");
     require(refreshClaimTtl, "refresh-claim-ttl");
+    require(valkeySkip, "valkey-skip");
   }
 
   /** A missing setting binds as null; zero or less would make Valkey refuse every write. */

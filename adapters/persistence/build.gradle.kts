@@ -13,6 +13,8 @@ dependencies {
     // The Valkey stores (§6.2) and the search cache's counter (§6.10).
     implementation(libs.spring.data.redis)
     implementation(libs.micrometer.core)
+    // Skips Valkey for a while after it fails a command, as the providers' breakers do (plan 5).
+    implementation(libs.resilience4j.circuitbreaker)
 
     testImplementation(libs.flyway.core)
     testImplementation(libs.flyway.database.postgresql)

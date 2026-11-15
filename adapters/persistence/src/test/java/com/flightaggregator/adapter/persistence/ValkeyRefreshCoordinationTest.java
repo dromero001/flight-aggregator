@@ -1,14 +1,22 @@
 package com.flightaggregator.adapter.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.flightaggregator.adapter.persistence.support.ValkeyTestServer;
 import com.flightaggregator.domain.Airport;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 class ValkeyRefreshCoordinationTest {
@@ -22,11 +30,26 @@ class ValkeyRefreshCoordinationTest {
   private final StringRedisTemplate valkey = ValkeyTestServer.valkey();
   private final ValkeyRefreshCoordination coordination =
       new ValkeyRefreshCoordination(
-          valkey, CLAIM_TTL, Duration.ofMinutes(10), new ValkeyFailures());
+          valkey,
+          CLAIM_TTL,
+          Duration.ofMinutes(10),
+          new ValkeyFailures(
+              CircuitBreaker.of(
+                  "valkey", ValkeyFailures.circuitBreakerConfig(Duration.ofSeconds(10)))));
+
+  private final Logger logger = (Logger) LoggerFactory.getLogger(ValkeyRefreshCoordination.class);
+  private final ListAppender<ILoggingEvent> log = new ListAppender<>();
 
   @BeforeEach
-  void startFromAnEmptyValkey() {
+  void startFromAnEmptyValkeyAndCaptureTheLog() {
     ValkeyTestServer.empty();
+    log.start();
+    logger.addAppender(log);
+  }
+
+  @AfterEach
+  void releaseTheLog() {
+    logger.detachAppender(log);
   }
 
   /** One caller per origin gets the claim, under {@code refresh:<origin>}, until it expires. */
@@ -56,6 +79,39 @@ class ValkeyRefreshCoordinationTest {
     assertThat(coordination.refreshedAt(MADRID)).contains(refreshedAt);
     assertThat(coordination.refreshedAt(BARCELONA)).isEmpty();
     assertThat(valkey.getExpire("fresh:MAD", TimeUnit.SECONDS)).isBetween(595L, 600L);
+  }
+
+  /**
+   * A mark this version cannot read, such as one another version wrote, is no refresh: the origin
+   * looks stale and is refreshed again, instead of the search failing (§6.2).
+   */
+  @Test
+  void knowsOfNoRefreshFromAMarkItCannotRead() {
+    valkey.opsForValue().set("fresh:MAD", "yesterday");
+
+    assertThat(coordination.refreshedAt(MADRID)).isEmpty();
+  }
+
+  /**
+   * A mark that cannot be read is one WARN that says what it is, and nothing of its content or of
+   * the parser's failure, which quotes the content.
+   */
+  @Test
+  void warnsOfAMarkItCannotReadWithoutItsContent() {
+    valkey.opsForValue().set("fresh:MAD", "yesterday");
+
+    coordination.refreshedAt(MADRID);
+
+    assertThat(log.list)
+        .extracting(
+            ILoggingEvent::getLevel,
+            ILoggingEvent::getFormattedMessage,
+            ILoggingEvent::getThrowableProxy)
+        .containsExactly(
+            tuple(
+                Level.WARN,
+                "An origin's refresh mark cannot be read, so the origin counts as not refreshed",
+                null));
   }
 
   /** Valkey down, no caller gets a claim, so no refresh starts until it is back (§6.2). */

@@ -4,15 +4,22 @@ import com.flightaggregator.application.port.out.RefreshCoordination;
 import com.flightaggregator.domain.Airport;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 /**
  * Refresh coordination in Valkey (§6.2): a claim is {@code SET refresh:<origin> NX} with the
  * claim's time to live, so one caller gets it until it expires; a refresh's time is kept under
- * {@code fresh:<origin>} for the freshness threshold.
+ * {@code fresh:<origin>} for the freshness threshold. A mark this version cannot read, such as one
+ * another version wrote, is no refresh and one {@code WARN}: Valkey is a cache, so nothing it holds
+ * may fail a search.
  */
 public final class ValkeyRefreshCoordination implements RefreshCoordination {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ValkeyRefreshCoordination.class);
 
   private final StringRedisTemplate valkey;
   private final Duration claimTtl;
@@ -30,13 +37,13 @@ public final class ValkeyRefreshCoordination implements RefreshCoordination {
     this.failures = failures;
   }
 
-  /** Nothing when Valkey fails the read. */
+  /** Nothing when Valkey fails the read, or when the mark cannot be read. */
   @Override
   public Optional<Instant> refreshedAt(Airport origin) {
     Optional<String> mark =
         failures.call(
             () -> Optional.ofNullable(valkey.opsForValue().get(freshKey(origin))), Optional::empty);
-    return mark.map(Instant::parse);
+    return mark.flatMap(ValkeyRefreshCoordination::instant);
   }
 
   /** False when Valkey fails the claim. */
@@ -54,6 +61,16 @@ public final class ValkeyRefreshCoordination implements RefreshCoordination {
   public void refreshed(Airport origin, Instant at) {
     failures.run(
         () -> valkey.opsForValue().set(freshKey(origin), at.toString(), freshnessThreshold));
+  }
+
+  private static Optional<Instant> instant(String mark) {
+    try {
+      return Optional.of(Instant.parse(mark));
+    } catch (DateTimeParseException unreadable) {
+      // Neither the mark nor the failure, which quotes it, is logged.
+      LOG.warn("An origin's refresh mark cannot be read, so the origin counts as not refreshed");
+      return Optional.empty();
+    }
   }
 
   private static String claimKey(Airport origin) {
