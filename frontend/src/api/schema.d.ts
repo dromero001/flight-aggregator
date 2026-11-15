@@ -20,6 +20,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/itineraries/{id}/reprice': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['reprice'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -69,6 +85,15 @@ export interface components {
       title?: string;
       /** Format: uri */
       type?: string;
+    };
+    RepriceResponse: {
+      itinerary: components['schemas']['ItineraryResponse'];
+      /** @description Why another itinerary is offered; only with ALTERNATIVE */
+      notice?: string;
+      /** @enum {string} */
+      outcome: 'CONFIRMED' | 'PRICE_CHANGED' | 'ALTERNATIVE';
+      /** @description The price shown before; only with PRICE_CHANGED */
+      previousPrice?: components['schemas']['Price'];
     };
     SearchResponse: {
       inventoryChanged: boolean;
@@ -120,6 +145,80 @@ export interface operations {
       /** @description A parameter or the cursor is not valid; the detail names it */
       400: {
         headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['ProblemDetail'];
+        };
+      };
+      /** @description Too many searches from this address; try again after Retry-After */
+      429: {
+        headers: {
+          /** @description How many seconds to wait before asking again */
+          'Retry-After': number;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['ProblemDetail'];
+        };
+      };
+    };
+  };
+  reprice: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description The id of the chosen itinerary, as the search gave it */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The choice confirmed, at its price or a new one, or the best alternative */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RepriceResponse'];
+        };
+      };
+      /** @description The id is not an itinerary id */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['ProblemDetail'];
+        };
+      };
+      /** @description No itinerary with this id is on sale; search again */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['ProblemDetail'];
+        };
+      };
+      /** @description Too many re-prices from this address; try again after Retry-After */
+      429: {
+        headers: {
+          /** @description How many seconds to wait before asking again */
+          'Retry-After': number;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['ProblemDetail'];
+        };
+      };
+      /** @description Nothing could be confirmed; try again after Retry-After */
+      503: {
+        headers: {
+          /** @description How many seconds to wait before asking again */
+          'Retry-After': number;
           [name: string]: unknown;
         };
         content: {
