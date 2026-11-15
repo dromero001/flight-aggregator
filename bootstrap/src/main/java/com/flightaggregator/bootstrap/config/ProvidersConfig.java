@@ -1,9 +1,11 @@
 package com.flightaggregator.bootstrap.config;
 
 import com.flightaggregator.adapter.provider.PagedProvider;
+import com.flightaggregator.adapter.provider.ProviderEndpoint;
 import com.flightaggregator.adapter.provider.ProviderHttp;
 import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.FlightProvider;
+import com.flightaggregator.bootstrap.observability.CountedRetries;
 import com.flightaggregator.bootstrap.observability.LoggedBreakerTransitions;
 import com.flightaggregator.domain.Provider;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -37,28 +39,44 @@ class ProvidersConfig {
 
   @Bean
   FlightProvider alpha(
-      ProvidersProperties properties, CircuitBreakerRegistry circuitBreakers, Clock clock) {
-    return provider(Provider.ALPHA, properties, circuitBreakers, clock);
+      ProvidersProperties properties,
+      CircuitBreakerRegistry circuitBreakers,
+      MeterRegistry meters,
+      Clock clock) {
+    return provider(Provider.ALPHA, properties, circuitBreakers, meters, clock);
   }
 
   @Bean
   FlightProvider beta(
-      ProvidersProperties properties, CircuitBreakerRegistry circuitBreakers, Clock clock) {
-    return provider(Provider.BETA, properties, circuitBreakers, clock);
+      ProvidersProperties properties,
+      CircuitBreakerRegistry circuitBreakers,
+      MeterRegistry meters,
+      Clock clock) {
+    return provider(Provider.BETA, properties, circuitBreakers, meters, clock);
   }
 
   @Bean
   FlightProvider gamma(
-      ProvidersProperties properties, CircuitBreakerRegistry circuitBreakers, Clock clock) {
-    return provider(Provider.GAMMA, properties, circuitBreakers, clock);
+      ProvidersProperties properties,
+      CircuitBreakerRegistry circuitBreakers,
+      MeterRegistry meters,
+      Clock clock) {
+    return provider(Provider.GAMMA, properties, circuitBreakers, meters, clock);
   }
 
+  /** Every part, its retries' counter included, is named after the endpoint's provider. */
   private static FlightProvider provider(
       Provider provider,
       ProvidersProperties properties,
       CircuitBreakerRegistry circuitBreakers,
+      MeterRegistry meters,
       Clock clock) {
+    ProviderEndpoint endpoint = properties.endpoint(provider);
     return new PagedProvider(
-        properties.endpoint(provider), properties.resilience(), circuitBreakers, clock);
+        endpoint,
+        properties.resilience(),
+        circuitBreakers,
+        new CountedRetries(meters, endpoint.provider()),
+        clock);
   }
 }

@@ -145,6 +145,18 @@ class IngestionEndToEndTest {
     assertThat(downloads(GAMMA, "FRESH")).isEqualTo(2);
   }
 
+  /** Beta's page fails its three attempts: two retries, counted under Beta alone (§6.10). */
+  @Test
+  void countsEachRetryUnderItsProvider() {
+    down(BETA_PAGE);
+
+    job.run();
+
+    assertThat(counted("ingestion.provider.retries", "provider", "BETA")).isEqualTo(2);
+    assertThat(counted("ingestion.provider.retries", "provider", "ALPHA")).isZero();
+    assertThat(counted("ingestion.provider.retries", "provider", "GAMMA")).isZero();
+  }
+
   @Test
   void ingestsWithTwoProvidersDown() {
     job.run();

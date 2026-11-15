@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.function.Predicate;
 import org.springframework.core.retry.RetryException;
+import org.springframework.core.retry.RetryListener;
 import org.springframework.core.retry.RetryPolicy;
 import org.springframework.core.retry.RetryTemplate;
 import org.springframework.http.HttpRequest;
@@ -52,11 +53,15 @@ public final class ProviderHttp {
   private final int maxBodyBytes;
   private final Clock clock;
 
-  /** Its breaker is the registry's one named after the endpoint's provider. */
+  /**
+   * Its breaker is the registry's one named after the endpoint's provider; {@code retries} hears of
+   * each retry, not of the first attempt.
+   */
   ProviderHttp(
       ProviderEndpoint endpoint,
       ResilienceSettings settings,
       CircuitBreakerRegistry circuitBreakers,
+      RetryListener retries,
       Clock clock) {
     JdkClientHttpRequestFactory requests = new JdkClientHttpRequestFactory();
     requests.setReadTimeout(settings.requestTimeout());
@@ -76,6 +81,7 @@ public final class ProviderHttp {
                 .multiplier(2)
                 .predicate(ProviderHttp::isTransient)
                 .build());
+    this.retry.setRetryListener(retries);
     this.requestTimeout = settings.requestTimeout();
     this.maxBodyBytes = settings.maxBodyBytes();
     this.clock = clock;

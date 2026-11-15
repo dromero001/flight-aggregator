@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.retry.RetryListener;
 
 class GammaProviderTest {
 
@@ -68,6 +69,7 @@ class GammaProviderTest {
         new ProviderEndpoint(Provider.GAMMA, URI.create(server.baseUrl()), "key"),
         settings,
         CircuitBreakerRegistry.of(ProviderHttp.circuitBreakerConfig()),
+        new RetryListener() {},
         clock);
   }
 

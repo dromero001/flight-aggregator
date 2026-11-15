@@ -61,6 +61,19 @@ class IngestionMetricsTest {
     assertThat(gauge("ingestion.partitions.default.rows")).isEqualTo(2);
   }
 
+  /** Why each kept download failed, without its log line: {@code none} for a fresh one. */
+  @Test
+  void tagsEachDownloadWithItsFailureReason() {
+    metrics.record(
+        published(
+            new Publication(7, 1234, 2, Instant.parse("2026-12-28T00:00:00Z")),
+            fresh(ALPHA),
+            kept(BETA, FailureReason.TIMEOUT, new IOException("read timed out"))));
+
+    assertThat(downloads(ALPHA, "FRESH", "none")).isEqualTo(1);
+    assertThat(downloads(BETA, "KEPT", "TIMEOUT")).isEqualTo(1);
+  }
+
   @Test
   void countsConsecutiveFailuresUntilAPublishedRun() {
     metrics.record(unpublished(IngestionReport.Outcome.CEILING_EXCEEDED, fresh(ALPHA)));
@@ -127,6 +140,16 @@ class IngestionMetricsTest {
         .get("ingestion.provider.downloads")
         .tag("provider", provider.name())
         .tag("status", status)
+        .counter()
+        .count();
+  }
+
+  private double downloads(Provider provider, String status, String reason) {
+    return meters
+        .get("ingestion.provider.downloads")
+        .tag("provider", provider.name())
+        .tag("status", status)
+        .tag("reason", reason)
         .counter()
         .count();
   }

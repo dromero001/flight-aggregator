@@ -37,6 +37,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.core.retry.RetryException;
+import org.springframework.core.retry.RetryListener;
+import org.springframework.core.retry.RetryPolicy;
+import org.springframework.core.retry.Retryable;
 
 class ProviderHttpTest {
 
@@ -124,6 +127,24 @@ class ProviderHttpTest {
     assertThat(failureOf("/flights")).isEqualTo(FailureReason.HTTP_ERROR);
 
     server.verify(3, getRequestedFor(urlEqualTo("/flights")));
+  }
+
+  /** Each retry, not the first attempt, reaches the listener, which production counts (§6.10). */
+  @Test
+  void tellsItsListenerOfEachRetry() {
+    server.stubFor(get(urlEqualTo("/flights")).willReturn(aResponse().withStatus(500)));
+    AtomicInteger retries = new AtomicInteger();
+    RetryListener listener =
+        new RetryListener() {
+          @Override
+          public void beforeRetry(RetryPolicy retryPolicy, Retryable<?> retryable) {
+            retries.incrementAndGet();
+          }
+        };
+
+    failure(http(Provider.ALPHA, productionBreakers(), listener), "/flights");
+
+    assertThat(retries).hasValue(2);
   }
 
   @Test
@@ -363,11 +384,25 @@ class ProviderHttpTest {
       CircuitBreakerRegistry breakers,
       Duration firstBackoff,
       Duration requestTimeout) {
+    return http(provider, breakers, firstBackoff, requestTimeout, new RetryListener() {});
+  }
+
+  private ProviderHttp http(
+      Provider provider, CircuitBreakerRegistry breakers, RetryListener retries) {
+    return http(provider, breakers, Duration.ofMillis(10), Duration.ofSeconds(5), retries);
+  }
+
+  private ProviderHttp http(
+      Provider provider,
+      CircuitBreakerRegistry breakers,
+      Duration firstBackoff,
+      Duration requestTimeout,
+      RetryListener retries) {
     ProviderEndpoint endpoint = new ProviderEndpoint(provider, URI.create(server.baseUrl()), KEY);
     ResilienceSettings settings =
         new ResilienceSettings(
             requestTimeout, Duration.ofSeconds(60), 3, firstBackoff, 1000, 200, 1024);
-    return new ProviderHttp(endpoint, settings, breakers, clock);
+    return new ProviderHttp(endpoint, settings, breakers, retries, clock);
   }
 
   private FailureReason failureOf(String pathAndQuery) {

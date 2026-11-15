@@ -5,6 +5,7 @@ import com.flightaggregator.application.port.out.FlightProvider;
 import com.flightaggregator.application.port.out.ProviderDownload;
 import com.flightaggregator.domain.Provider;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import org.springframework.core.retry.RetryListener;
 
 /**
  * A provider downloaded page by page (§6.1, §6.7): each page is requested in the provider's own
@@ -19,14 +20,18 @@ public final class PagedProvider implements FlightProvider {
   private final PageFormat format;
   private final int pageSize;
 
-  /** The endpoint's provider, its breaker the registry's one named after it. */
+  /**
+   * The endpoint's provider: its breaker is the registry's one named after it, and {@code retries}
+   * hears of each retry of its requests.
+   */
   public PagedProvider(
       ProviderEndpoint endpoint,
       ResilienceSettings settings,
       CircuitBreakerRegistry circuitBreakers,
+      RetryListener retries,
       Clock clock) {
     this.provider = endpoint.provider();
-    this.http = new ProviderHttp(endpoint, settings, circuitBreakers, clock);
+    this.http = new ProviderHttp(endpoint, settings, circuitBreakers, retries, clock);
     this.paging = new PagedDownload(provider, settings);
     this.format = formatOf(provider);
     this.pageSize = settings.pageSize();

@@ -28,6 +28,9 @@ public final class IngestionMetrics {
   /** The outcome of a run that ended with an exception, beside the report's own outcomes. */
   private static final String FAILED = "FAILED";
 
+  /** The {@code reason} of a download that did not fail. */
+  private static final String NO_FAILURE = "none";
+
   private final MeterRegistry meters;
   private final Clock clock;
   private final AtomicReference<Publication> lastPublication = new AtomicReference<>();
@@ -64,7 +67,9 @@ public final class IngestionMetrics {
               "provider",
               provider.provider().name(),
               "status",
-              provider.status().name())
+              provider.status().name(),
+              "reason",
+              provider.failure().map(Enum::name).orElse(NO_FAILURE))
           .increment();
       newestQuote.get(provider.provider()).set(provider.newestQuotedAt().orElse(null));
     }
