@@ -15,9 +15,12 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The PostgreSQL stores. Every store and the {@code TransactionTemplate} use Boot's one {@code
- * DataSource}: the template is Boot's, over the transaction manager of that data source, so a
- * store's {@code COPY} joins the template's transaction ({@code CopyRows} refuses a copy outside
- * one rather than let it commit on its own).
+ * DataSource}: the template is Boot's, over that data source's transaction manager, so each store's
+ * statements and {@code COPY} run in the template's transaction. This wiring and {@code
+ * FlightAggregatorApplicationTest.writesEveryStoreInTheTransactionOfBootsDataSource} hold the rule.
+ * {@code CopyRows} refuses a copy with no transaction at all, but not a copy on a second data
+ * source while the first has one: Spring then gives the second a connection of its own, which
+ * commits each statement.
  */
 @Configuration(proxyBeanMethods = false)
 class PersistenceConfig {
