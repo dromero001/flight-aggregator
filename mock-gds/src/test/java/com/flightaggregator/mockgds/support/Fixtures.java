@@ -7,6 +7,7 @@ import com.flightaggregator.mockgds.dataset.MalformedLeg;
 import com.flightaggregator.mockgds.dataset.ProviderRecord;
 import com.flightaggregator.mockgds.dataset.ValidLeg;
 import com.flightaggregator.mockgds.model.Leg;
+import com.flightaggregator.mockgds.model.LegKey;
 import com.flightaggregator.mockgds.model.Provider;
 import com.flightaggregator.mockgds.pricing.PriceModel;
 import com.flightaggregator.mockgds.reference.ReferenceData;
@@ -35,6 +36,13 @@ public final class Fixtures {
         OffsetDateTime.parse("2026-11-20T09:30:00Z"),
         new BigDecimal("129.90"),
         provider);
+  }
+
+  /** The query that asks a provider to quote the flight. */
+  public static String quoteQuery(LegKey key) {
+    return "carrier=%s&flightNumber=%d&origin=%s&destination=%s&departure=%s"
+        .formatted(
+            key.airline(), key.flightNumber(), key.origin(), key.destination(), key.departure());
   }
 
   /** The leg as a valid record at its own price. */

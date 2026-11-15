@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.flightaggregator.mockgds.model.Provider;
 import com.flightaggregator.mockgds.serving.ProviderInventory;
+import com.flightaggregator.mockgds.serving.RecordFilter;
 import com.flightaggregator.mockgds.support.MockGdsTest;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
@@ -25,7 +26,7 @@ class MockGdsApplicationTest {
     Arrays.stream(Provider.values())
         .forEach(
             provider ->
-                assertThat(inventory.page(provider, 0, 10).records())
+                assertThat(inventory.page(provider, RecordFilter.all(), 0, 10).records())
                     .as(provider.name())
                     .isNotEmpty());
   }

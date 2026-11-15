@@ -46,6 +46,16 @@ class EndpointAccessTest {
 
   @ParameterizedTest
   @MethodSource("endpoints")
+  void guardsTheQuoteLikeTheListing(Endpoint endpoint) {
+    var quote =
+        endpoint.path()
+            + "?carrier=IB&flightNumber=3170&origin=MAD&destination=LHR&departure=2026-11-20T07:15:00Z";
+
+    assertUnauthorizedWithoutAnyKeyInTheBody(http.getForEntity(quote, String.class));
+  }
+
+  @ParameterizedTest
+  @MethodSource("endpoints")
   void rejectsAnotherProvidersKey(Endpoint endpoint) {
     assertUnauthorizedWithoutAnyKeyInTheBody(
         ProviderKeys.get(http, endpoint.path(), endpoint.otherKey()));

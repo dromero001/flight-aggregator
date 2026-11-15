@@ -25,13 +25,17 @@ public final class ProviderInventory {
     this.clock = Objects.requireNonNull(clock);
   }
 
-  /** At most {@code limit} records of the provider, starting at {@code offset}. */
-  public InventoryPage page(Provider provider, int offset, int limit) {
+  /**
+   * At most {@code limit} records of the provider that the filter keeps, starting at {@code offset}
+   * of the filtered list.
+   */
+  public InventoryPage page(Provider provider, RecordFilter filter, int offset, int limit) {
     if (offset < 0 || limit < 1) {
       throw new IllegalArgumentException(
           "Offset must not be negative and limit must be positive: " + offset + ", " + limit);
     }
-    List<ProviderRecord> all = dataset.recordsFor(provider);
+    List<ProviderRecord> all =
+        dataset.recordsFor(provider).stream().filter(filter::matches).toList();
     var now = clock.instant();
     int from = Math.min(offset, all.size());
     int to = (int) Math.min((long) offset + limit, all.size());

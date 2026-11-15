@@ -3,11 +3,15 @@ package com.flightaggregator.mockgds.gamma;
 import com.flightaggregator.mockgds.model.Provider;
 import com.flightaggregator.mockgds.serving.Paging;
 import com.flightaggregator.mockgds.serving.ProviderInventory;
+import com.flightaggregator.mockgds.serving.RecordFilter;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Gamma's endpoint: the whole inventory as CSV, page by page with an offset and a limit. */
+/**
+ * Gamma's endpoint: the inventory, or one origin's legs, or one flight's quote, as CSV page by page
+ * with an offset and a limit.
+ */
 @RestController
 class GammaController {
 
@@ -19,9 +23,20 @@ class GammaController {
 
   @GetMapping(path = "/gamma/legs.csv", produces = "text/csv;charset=UTF-8")
   String legs(
-      @RequestParam(required = false) String offset, @RequestParam(required = false) String limit) {
+      @RequestParam(required = false) String offset,
+      @RequestParam(required = false) String limit,
+      @RequestParam(required = false) String origin,
+      @RequestParam(required = false) String carrier,
+      @RequestParam(required = false) String flightNumber,
+      @RequestParam(required = false) String destination,
+      @RequestParam(required = false) String departure) {
     var size = Paging.limit(limit);
     var start = offset == null ? 0 : Paging.integer("Offset", offset, 0);
-    return GammaCsv.write(inventory.page(Provider.GAMMA, start, size));
+    return GammaCsv.write(
+        inventory.page(
+            Provider.GAMMA,
+            RecordFilter.of(origin, carrier, flightNumber, destination, departure),
+            start,
+            size));
   }
 }

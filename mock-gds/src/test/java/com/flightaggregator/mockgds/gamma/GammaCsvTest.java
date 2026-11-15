@@ -11,6 +11,7 @@ import com.flightaggregator.mockgds.model.Provider;
 import com.flightaggregator.mockgds.reference.ReferenceData;
 import com.flightaggregator.mockgds.serving.InventoryPage;
 import com.flightaggregator.mockgds.serving.ProviderInventory;
+import com.flightaggregator.mockgds.serving.RecordFilter;
 import java.time.Clock;
 import java.util.Arrays;
 import java.util.List;
@@ -59,7 +60,8 @@ class GammaCsvTest {
     var clock = Clock.systemUTC();
     var inventory = new ProviderInventory(generator.generate(clock), generator.prices(), clock);
 
-    var csv = GammaCsv.write(inventory.page(Provider.GAMMA, 0, Integer.MAX_VALUE));
+    var csv =
+        GammaCsv.write(inventory.page(Provider.GAMMA, RecordFilter.all(), 0, Integer.MAX_VALUE));
 
     var lines = csv.split("\r\n");
     assertThat(lines.length).isGreaterThan(1000);

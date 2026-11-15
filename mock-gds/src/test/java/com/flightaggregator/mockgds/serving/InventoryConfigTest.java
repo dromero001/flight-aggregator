@@ -56,7 +56,7 @@ class InventoryConfigTest {
     for (var provider : Provider.values()) {
       var records = dataset.recordsFor(provider);
 
-      assertThat(inventory.page(provider, 0, records.size()).records())
+      assertThat(inventory.page(provider, RecordFilter.all(), 0, records.size()).records())
           .as(provider.name())
           .isNotEmpty()
           .allSatisfy(
