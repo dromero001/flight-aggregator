@@ -211,3 +211,49 @@ Re-review: C-1 not addressed (a line break bypassed the validation; `#` in the u
 ### User decision (2026-11-15, after Task 3)
 
 - **The top bar's title is "Flight aggregator".** Q7 did not list it; the user kept it (`App.tsx`).
+
+## Task 2 — evidence
+
+Worktree branch `worktree-agent-a8e417b828cfc77d3`, from `main` at `9e6674e` (plan 6 Tasks 1, 3 and 9 integrated). Started on plan 5 Task 9's contract, as the line under the task's title says: `types.ts` aliases only the search's schemas (`Itinerary` = `ItineraryResponse`, `Leg`, `SearchResponse`); `RepriceResponse`, `StatusReport` and `ProviderStatus` come with Tasks 6 and 8.
+
+### Versions (spec 6.1), checked on 2026-11-15
+`npm view <pkg> time --json` and `dist-tags`, cut-off 2026-11-01 as in Task 1's table:
+
+| Package | Pinned | Published | Note |
+|---|---|---|---|
+| openapi-typescript (dev) | 7.13.0 | 2026-02-11 | `latest`; no newer release. Peer `typescript ^5.x` met by 5.9.3 (`npm ls`: deduped, no `ERESOLVE`) |
+| openapi-fetch | 0.17.0 | 2026-02-11 | `latest`, no newer release; the project has no 1.x yet. Its one dependency, `openapi-typescript-helpers` 0.1.0, is from the same day |
+
+`npm audit`: the same 7 moderate findings as Task 1 (the `minimatch` chain under `typescript-eslint`), none from these packages.
+
+### Red → green, one test at a time
+
+`schema.test.ts` `'committed types match the contract'` (Node environment): generates in memory with `openapi-typescript`'s Node API (`COMMENT_HEADER + astToString(await openapiTS(contract))`, what the CLI writes), formats it with Prettier and the repository's settings, and compares it with the committed file.
+- Red (no file): `` AssertionError: src/api/schema.d.ts is missing or out of date with docs/architecture/openapi.json: run `npm run api:generate`: expected undefined to be '/**\n * This file was auto-generated …' ``.
+- Green after `npm run api:generate` (`openapi-typescript ../docs/architecture/openapi.json -o src/api/schema.d.ts && prettier --write src/api/schema.d.ts`). Running the script again leaves the file byte-identical (`cmp`).
+- Red by mutation, one character in `schema.d.ts` (`inventoryChanged` → `inventoryChanges`): the same message, diff `- inventoryChanged: boolean;` / `+ inventoryChanges: boolean;`; restored, green. Also red by a contract mutation (`flightNumber` → `flightNo` in `openapi.json`): diff `- flightNo?: number;` / `+ flightNumber: number;`; restored.
+- A first version read the committed file through `import.meta.glob(..., { query: '?raw', eager: true })`. It went green, then red again with the file in place: Vitest 5's module cache (`node_modules/.vitest-cache`) kept the transformed test with the glob's old result (no file), and deleting the cache made it green. A cache that can keep an old copy could also give a false green on drift, so the test now reads the file with `node:fs` when it runs. That needs Node's types, so the test is type-checked by `tsconfig.node.json` (`include`) and excluded from `tsconfig.app.json`; the app's code still has no Node globals.
+
+`apiError.test.ts`
+- `'reads the problem detail and Retry-After'` (429 `application/problem+json`, `Retry-After: 17`): red `Failed to resolve import "./apiError"`. Green with `ApiError` and `toApiError` reading the JSON body and `Number(Retry-After)`.
+- `'leaves the detail empty for a body that is not a problem'` (502 `text/html`, nginx's page while the app is down): red `SyntaxError: Unexpected token '<', "<html><bod"... is not valid JSON`. Green: the body is parsed only when `Content-Type` is `application/problem+json`, and a missing `Retry-After` stays `undefined`. The second change shown red by mutation: `Number(retryAfter)` without the `null` check gives `AssertionError: expected +0 to be undefined`; restored, green.
+
+`types.ts`, `client.ts`, `fixtures.ts` have no behaviour of their own; the compiler is their check. `fixtures.ts` was written first: `tsc -b` red `TS2307: Cannot find module '../api/types'`, green with `types.ts`. Typed from the schema: `flightNumber: "117"` gives `TS2322: Type 'string' is not assignable to type 'number'` (restored). The fixtures follow the brief: `direct()` IB 3166 MAD 08:15+01:00 → LHR 09:40Z; `connecting()` the same leg, 1 h 10 min in London, BA 117 LHR 10:50Z → JFK 13:40-05:00 (685 min); Friday 20 November 2026.
+
+### CI and the other changes
+- `ci.yml`, job `frontend` only: step "Contract drift" runs `npm run api:check` (`vitest run src/api/schema.test.ts`) after `npm run verify`, the types' half of §6.11 step 3; the backend job's `OpenApiContractTest` is the contract's half. `api:check` exits 1 on the mutated file and 0 restored. Not yet seen running in CI (the controller pushes after the review).
+- `eslint.config.js`: `src/api/schema.d.ts` ignored. It is generated, and `typescript-eslint`'s stylistic rules flag its index signatures (`consistent-indexed-object-style`, 3 errors); Prettier still checks it, and the drift test guards its content.
+- The image never regenerates (Docker's context is `frontend/`): `docker build frontend` green with the committed file.
+
+### Checks before the commit
+- `npm run verify` in `frontend/`: exit 0 (typecheck, ESLint, Prettier, 17 tests in 7 files).
+- `./gradlew build`: exit 0, `BUILD SUCCESSFUL`.
+- Self-review (thermo-nuclear): `ApiError`'s constructor takes one named object instead of two optional positional arguments, and the IB 3166 leg the two fixtures share is one function; no other finding. No existing mechanism to reuse (no API code in the frontend before); nothing fails silently (a missing or stale `schema.d.ts` names the command that fixes it); no state.
+
+### Concerns for the later tasks
+- **`toApiError` and `openapi-fetch` (Task 5).** On a non-2xx answer `openapi-fetch` reads the body itself (`response.text()`, then `JSON.parse`) before it returns `{ error, response }`, so `toApiError(response)` on that `response` would fail with a used body. The plan's interface still works if Task 5 calls it before the client reads the body: an `onResponse` middleware that throws `await toApiError(response)` for a non-2xx answer (queries then reject with `ApiError`), or `toApiError(response.clone())`. Not built: the plan gives Task 2 no consumer.
+- **`baseUrl: ''` in component tests (Task 5).** In Vitest (Node's `fetch` under jsdom) a relative URL cannot be parsed: a throwaway probe of `api.GET('/api/itineraries', …)` against an MSW handler failed with `TypeError: Failed to parse URL from /api/itineraries?origin=MAD`. It works in the browser. Task 5 needs an absolute base in tests, for example `baseUrl: window.location.origin` (the page's own origin in the browser, `http://localhost:3000` in jsdom); the plan fixes `''`, so the choice is left to Task 5 and its reviewer.
+- `Retry-After` is read as whole seconds, as plan 5 sends it (Q9); an HTTP-date form would become `NaN`. Nothing in the stack sends one.
+
+### Extras for the user to decide
+- None built. A possible simplification, not taken because the plan names the test: `openapi-typescript --check` compares the generated types with the file itself, so if `schema.d.ts` were left unformatted (in `.prettierignore`), `api:check` could be that one CLI call and `schema.test.ts` would go. Value: one file and the Node-test `tsconfig` exception less. Cost: the generated file stops following Prettier. Left out unless you approve.
