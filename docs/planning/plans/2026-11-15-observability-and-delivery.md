@@ -19,7 +19,7 @@
 
 Roadmap: [plan 7](../roadmap.md), started as soon as plan 6 ends (tasks marked in the task map start earlier). It builds on what plans 4–6 built and does not repeat it: the meters `ingestion.*`, `provider.calls`, `ingestion.records.discarded`, `ingestion.provider.retries`, the breakers' `resilience4j.circuitbreaker.*` (`TaggedCircuitBreakerMetrics`) and `search.cache{result}` (plan 5 Task 5), listed in [Ingestion](../../architecture/ingestion.md); the ECS console logs with `correlation.id` in the MDC (`IngestionJob`); `SecurityConfig`, `GET /api/admin/status`, `POST /api/admin/ingestions` and the `DEGRADED` health (plan 5 Tasks 11–12); the measured figures of plan 5 Task 13; plan 6's Playwright harness and CI `e2e` job (plan 6 Tasks 9–10). Carried notes: plan 4 close-out (the alert rules' NaN and aggregation), E15 (user, plan 4's extras: "optional at the very end, only with a full re-verification").
 
-**Status:** draft for the user's review on the evening of 2026-11-15. Not approved yet. The user answered Q1–Q4 on 2026-11-15 (A on each, the recommendation); the extras and the plan's approval are still open. How Prometheus reads the metrics and who opens Grafana were decided by the user while the plan was drafted (spec §6.6, §6.10) and are written into Tasks 1 and 2.
+**Status:** approved by the user on 2026-11-15, with Q1–Q4 answered (A on each, the recommendation) and extras E1–E5 and E7–E10 approved; E6 stays out (see "⚠ Extras — your call"). How Prometheus reads the metrics and who opens Grafana were decided by the user while the plan was drafted (spec §6.6, §6.10) and are written into Tasks 1 and 2.
 
 ## Global Constraints
 
@@ -316,6 +316,8 @@ Alertmanager, SLO burn-rate alerts and a trace id in error responses (rejected, 
 - [ ] **Step 4:** a failure not fixed before the cut-off reverts the commit, so the delivered image is never half changed; otherwise gates green, review, commit: `git commit -m "Shrink the application image with a jlink runtime"`. (CLAUDE.md; Global Constraints)
 
 ## ⚠ Extras — your call
+
+**Decided by the user (2026-11-15):** E1, E2, E3, E4, E5, E7, E8, E9 and E10 are approved and become part of this plan; E6 (exemplars) stays out. E9 is the user's own check on the Windows PC on Monday; E2 adds `datasource-micrometer` under §6.1's version rule.
 
 - **E1. A link from a trace to its logs** (Tempo's datasource pointing at Loki). Value: the reverse jump, from a slow span to its lines. Cost: a few provisioning lines and one e2e step. Left out unless you approve.
 - **E2. Database spans in traces** (`datasource-micrometer`, outside Boot's BOM). Value: a search's trace shows its SQL and its time. Cost: one dependency by §6.1, its settings and one test. Left out unless you approve.
