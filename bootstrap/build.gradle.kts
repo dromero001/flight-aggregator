@@ -43,12 +43,18 @@ tasks.bootJar {
     archiveFileName = "bootstrap.jar"
 }
 
-// ComposeFileTest reads compose.yaml, and other tests the files compose mounts from deploy/ (the
-// Keycloak realm, the telemetry configuration): a change to any of them alone must run the tests
-// again.
+// ComposeFileTest reads compose.yaml and the Dockerfiles of the services compose builds, and other
+// tests the files compose mounts from deploy/ (the Keycloak realm, the telemetry configuration): a
+// change to any of them alone must run the tests again. A service built from a new Dockerfile adds
+// it here.
 tasks.test {
     inputs.file(rootProject.layout.projectDirectory.file("compose.yaml"))
         .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(
+        rootProject.layout.projectDirectory.file("bootstrap/Dockerfile"),
+        rootProject.layout.projectDirectory.file("mock-gds/Dockerfile"),
+        rootProject.layout.projectDirectory.file("frontend/Dockerfile"),
+    ).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir(rootProject.layout.projectDirectory.dir("deploy"))
         .withPathSensitivity(PathSensitivity.RELATIVE)
 }
