@@ -31,7 +31,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import net.javacrumbs.shedlock.core.LockConfiguration;
@@ -180,6 +182,51 @@ class IngestionEndToEndTest {
     assertThat(downloads(ALPHA, "FRESH")).isEqualTo(2);
     assertThat(downloads(BETA, "KEPT")).isEqualTo(1);
     assertThat(downloads(GAMMA, "FRESH")).isEqualTo(2);
+  }
+
+  /**
+   * The production wiring keeps day partitions from the run's day to 37 days ahead (§4.3): the
+   * 30-day horizon plus 7 days, should runs fail. Read from the published slot, by its own day.
+   */
+  @Test
+  void partitionsThirtySevenDaysAheadOfTheRunsDay() {
+    // Earlier tests' partitions stay in the slots; without them, the last one is this run's.
+    for (String slot : List.of("itinerary_a", "itinerary_b")) {
+      jdbc.sql(
+              "SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid"
+                  + " WHERE i.inhparent = CAST(? AS regclass) AND c.relname <> ?")
+          .param(slot)
+          .param(slot + "_default")
+          .query(String.class)
+          .list()
+          .forEach(partition -> jdbc.sql("DROP TABLE " + partition).update());
+    }
+
+    job.run();
+
+    String slot =
+        jdbc.sql("SELECT active_slot FROM inventory_publication").query(String.class).single();
+    LocalDate runDay =
+        jdbc.sql("SELECT published_at FROM inventory_publication")
+            .query(OffsetDateTime.class)
+            .single()
+            .atZoneSameInstant(ZoneOffset.UTC)
+            .toLocalDate();
+    String lastDayPartition =
+        jdbc.sql(
+                "SELECT max(c.relname) FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid"
+                    + " WHERE i.inhparent = CAST(? AS regclass) AND c.relname <> ?")
+            .param("itinerary_" + slot)
+            .param("itinerary_" + slot + "_default")
+            .query(String.class)
+            .single();
+
+    assertThat(lastDayPartition)
+        .isEqualTo(
+            "itinerary_"
+                + slot
+                + "_"
+                + runDay.plusDays(37).format(DateTimeFormatter.BASIC_ISO_DATE));
   }
 
   /** Beta's page fails its three attempts: two retries, counted under Beta alone (§6.10). */
