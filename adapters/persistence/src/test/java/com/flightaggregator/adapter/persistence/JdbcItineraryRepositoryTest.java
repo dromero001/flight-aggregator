@@ -727,4 +727,31 @@ class JdbcItineraryRepositoryTest {
     assertThat(storedPrice("itinerary_b", first)).isEqualByComparingTo("126.00");
     assertThat(storedPrice("itinerary_b", second)).isEqualByComparingTo("136.50");
   }
+
+  /**
+   * Two re-prices of the same itinerary at once: the first is held open after its write, and the
+   * second waits for the row the first rewrote. Once the first commits, the row the second's delete
+   * waited for is gone and the first's copy is not in that statement's snapshot, so the second
+   * answers gone and writes nothing: the store keeps the first's quote.
+   */
+  @Test
+  void keepsTheFirstOfTwoRepricesOfOneItinerary() throws Exception {
+    Itinerary chosen = direct(1, "2026-11-25T07:15:00Z");
+    publish(NOW, List.of(chosen));
+    HeldUpdate firstUpdate = new HeldUpdate(requoted(chosen, "120.00"));
+    CompletableFuture<StoreOutcome> secondUpdate;
+    try {
+      int first = firstUpdate.backendOnceWritten();
+      secondUpdate =
+          CompletableFuture.supplyAsync(() -> repository.updateInPlace(requoted(chosen, "130.00")));
+
+      awaitAStatementBlockedBy(first);
+    } finally {
+      firstUpdate.release();
+    }
+
+    assertThat(firstUpdate.outcome()).isEqualTo(StoreOutcome.STORED);
+    assertThat(secondUpdate.get(10, TimeUnit.SECONDS)).isEqualTo(StoreOutcome.GONE);
+    assertThat(storedPrice("itinerary_b", chosen)).isEqualByComparingTo("126.00");
+  }
 }
