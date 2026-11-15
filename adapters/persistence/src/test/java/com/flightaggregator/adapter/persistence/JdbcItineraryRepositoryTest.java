@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import com.flightaggregator.adapter.persistence.support.ItinerarySlots;
+import com.flightaggregator.adapter.persistence.support.OneSession;
 import com.flightaggregator.adapter.persistence.support.PostgresTestDatabase;
 import com.flightaggregator.application.port.in.SearchCriteria;
 import com.flightaggregator.application.port.in.SeekPosition;
@@ -212,29 +213,34 @@ class JdbcItineraryRepositoryTest {
 
   /**
    * A statement of the load that hangs is cut after 5 minutes, and the run fails and rolls back.
+   * The bound is the load's alone: after the commit, in the same session, it is gone.
    */
   @Test
   void boundsEachStatementOfTheLoad() {
     AtomicReference<String> statementTimeout = new AtomicReference<>();
+    try (OneSession session = new OneSession()) {
+      JdbcItineraryRepository sessionRepository =
+          new JdbcItineraryRepository(
+              new DataSourceTransactionManager(session.dataSource()), new JsonFactory(), 37);
 
-    repository.replaceInventory(
-        NOW,
-        sink -> {
-          // The writer runs during the COPY, so the setting is read just before the commit, on the
-          // load's connection, once the COPY has ended.
-          TransactionSynchronizationManager.registerSynchronization(
-              new TransactionSynchronization() {
-                @Override
-                public void beforeCommit(boolean readOnly) {
-                  statementTimeout.set(
-                      jdbc.sql("SHOW statement_timeout").query(String.class).single());
-                }
-              });
-          sink.accept(direct(1, "2026-11-25T07:15:00Z"));
-        });
+      sessionRepository.replaceInventory(
+          NOW,
+          sink -> {
+            // The writer runs during the COPY, so the setting is read just before the commit, on
+            // the load's connection, once the COPY has ended.
+            TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                  @Override
+                  public void beforeCommit(boolean readOnly) {
+                    statementTimeout.set(session.show("statement_timeout"));
+                  }
+                });
+            sink.accept(direct(1, "2026-11-25T07:15:00Z"));
+          });
 
-    assertThat(statementTimeout).hasValue("5min");
-    assertThat(jdbc.sql("SHOW statement_timeout").query(String.class).single()).isEqualTo("0");
+      assertThat(statementTimeout).hasValue("5min");
+      assertThat(session.show("statement_timeout")).isEqualTo("0");
+    }
   }
 
   @Test
@@ -589,23 +595,31 @@ class JdbcItineraryRepositoryTest {
    * An update's transaction is bounded as the load's is: a statement that hangs is cut after 5
    * minutes, and past the publication row, which it never waits for, a lock is awaited for 5 s at
    * most (a row another re-price of the same itinerary is rewriting, say). Each setting is read in
-   * the enclosing transaction once the update has written, and is gone after the commit.
+   * an enclosing transaction once the update has written, then after the commit in the same
+   * session, where it must be gone.
    */
   @ParameterizedTest
   @CsvSource({"statement_timeout, 5min", "lock_timeout, 5s"})
   void boundsTheTransactionOfAnUpdate(String setting, String bound) {
     Itinerary chosen = direct(1, "2026-11-25T07:15:00Z");
     publish(NOW, List.of(chosen));
+    try (OneSession session = new OneSession()) {
+      DataSourceTransactionManager sessionTransactions =
+          new DataSourceTransactionManager(session.dataSource());
+      JdbcItineraryRepository sessionRepository =
+          new JdbcItineraryRepository(sessionTransactions, new JsonFactory(), 37);
 
-    String duringTheUpdate =
-        enclosing.execute(
-            status -> {
-              repository.updateInPlace(requoted(chosen, "120.00"));
-              return jdbc.sql("SHOW " + setting).query(String.class).single();
-            });
+      String duringTheUpdate =
+          new TransactionTemplate(sessionTransactions)
+              .execute(
+                  status -> {
+                    sessionRepository.updateInPlace(requoted(chosen, "120.00"));
+                    return session.show(setting);
+                  });
 
-    assertThat(duringTheUpdate).isEqualTo(bound);
-    assertThat(jdbc.sql("SHOW " + setting).query(String.class).single()).isEqualTo("0");
+      assertThat(duringTheUpdate).isEqualTo(bound);
+      assertThat(session.show(setting)).isEqualTo("0");
+    }
   }
 
   /**

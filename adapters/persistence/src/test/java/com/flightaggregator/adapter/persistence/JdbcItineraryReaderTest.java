@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import com.flightaggregator.adapter.persistence.support.ItinerarySlots;
+import com.flightaggregator.adapter.persistence.support.OneSession;
 import com.flightaggregator.adapter.persistence.support.PostgresTestDatabase;
 import com.flightaggregator.application.port.in.SearchCriteria;
 import com.flightaggregator.application.port.in.SeekPosition;
@@ -56,13 +57,6 @@ class JdbcItineraryReaderTest {
   private final JdbcClient jdbc = JdbcClient.create(dataSource);
   private final JdbcItineraryReader reader =
       new JdbcItineraryReader(new DataSourceTransactionManager(dataSource), new JsonFactory());
-
-  /**
-   * A transaction of the reader's data source. A read inside it joins it, so the test can read the
-   * read's settings before the commit.
-   */
-  private final TransactionTemplate enclosing =
-      new TransactionTemplate(new DataSourceTransactionManager(dataSource));
 
   private final JdbcItineraryRepository repository =
       new JdbcItineraryRepository(
@@ -283,7 +277,9 @@ class JdbcItineraryReaderTest {
   /**
    * A refresh (Q2-B) deletes rows of the active slot and bumps the generation in one transaction. A
    * page that read the generation before the refresh committed still reads that generation's rows,
-   * so the page and its generation agree.
+   * so the page and its generation agree. The page's wait for the lock counts toward its 2 s bound,
+   * a constant, so the refresh must commit within it; it does in milliseconds, but a stall of 2 s
+   * on a loaded machine would cut the page and fail the test.
    */
   @Test
   void readsTheGenerationAndItsRowsInOneSnapshot() throws Exception {
@@ -374,22 +370,30 @@ class JdbcItineraryReaderTest {
   }
 
   /**
-   * Each read bounds its statements at 2 s, in its own transaction alone. The setting is read in
-   * the enclosing transaction, which the read joins, once the read has run, and is gone after the
-   * commit.
+   * Each read bounds its statements at 2 s, in its own transaction alone. The read runs in an
+   * enclosing transaction, which it joins, so the setting is read once the read has run; then,
+   * after the commit, in the same session, where it must be gone, or it would bound whatever next
+   * borrows a pooled connection.
    */
   @ParameterizedTest
   @MethodSource("everyRead")
   void boundsEachReadToTwoSeconds(Consumer<JdbcItineraryReader> read) {
-    String duringTheRead =
-        enclosing.execute(
-            status -> {
-              read.accept(reader);
-              return jdbc.sql("SHOW statement_timeout").query(String.class).single();
-            });
+    try (OneSession session = new OneSession()) {
+      DataSourceTransactionManager transactions =
+          new DataSourceTransactionManager(session.dataSource());
+      JdbcItineraryReader sessionReader = new JdbcItineraryReader(transactions, new JsonFactory());
 
-    assertThat(duringTheRead).isEqualTo("2s");
-    assertThat(jdbc.sql("SHOW statement_timeout").query(String.class).single()).isEqualTo("0");
+      String duringTheRead =
+          new TransactionTemplate(transactions)
+              .execute(
+                  status -> {
+                    read.accept(sessionReader);
+                    return session.show("statement_timeout");
+                  });
+
+      assertThat(duringTheRead).isEqualTo("2s");
+      assertThat(session.show("statement_timeout")).isEqualTo("0");
+    }
   }
 
   /** Re-price must still find a choice that has left, to offer its alternative (Q4). */
