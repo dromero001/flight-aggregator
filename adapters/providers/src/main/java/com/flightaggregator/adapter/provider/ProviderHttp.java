@@ -109,9 +109,8 @@ final class ProviderHttp {
     } catch (ResourceAccessException e) {
       // The JDK client reports a timeout as an I/O error, and so does a body cut mid-stream.
       boolean timedOut = System.nanoTime() - started >= requestTimeout.toNanos();
-      throw new AttemptFailed(
+      throw AttemptFailed.retryable(
           timedOut ? FailureReason.TIMEOUT : FailureReason.HTTP_ERROR,
-          true,
           "No response: " + e.getMessage(),
           e);
     }
@@ -121,18 +120,18 @@ final class ProviderHttp {
   private String read(HttpRequest request, ClientHttpResponse response) throws IOException {
     HttpStatusCode status = response.getStatusCode();
     if (status.is5xxServerError()) {
-      throw new AttemptFailed(FailureReason.HTTP_ERROR, true, "Server error " + status, null);
+      throw AttemptFailed.retryable(FailureReason.HTTP_ERROR, "Server error " + status, null);
     }
     if (status.value() == 401 || status.value() == 403) {
-      throw new AttemptFailed(FailureReason.UNAUTHORIZED, false, "Refused with " + status, null);
+      throw AttemptFailed.permanent(FailureReason.UNAUTHORIZED, "Refused with " + status);
     }
     if (!status.is2xxSuccessful()) {
-      throw new AttemptFailed(FailureReason.HTTP_ERROR, false, "Unexpected " + status, null);
+      throw AttemptFailed.permanent(FailureReason.HTTP_ERROR, "Unexpected " + status);
     }
     byte[] body = response.getBody().readNBytes(maxBodyBytes + 1);
     if (body.length > maxBodyBytes) {
-      throw new AttemptFailed(
-          FailureReason.MALFORMED_PAGE, false, "The body is over " + maxBodyBytes + " bytes", null);
+      throw AttemptFailed.permanent(
+          FailureReason.MALFORMED_PAGE, "The body is over " + maxBodyBytes + " bytes");
     }
     return new String(body, StandardCharsets.UTF_8);
   }
@@ -145,10 +144,21 @@ final class ProviderHttp {
     private final FailureReason reason;
     private final boolean retryable;
 
-    AttemptFailed(FailureReason reason, boolean retryable, String message, Throwable cause) {
+    private AttemptFailed(
+        FailureReason reason, boolean retryable, String message, Throwable cause) {
       super(message, cause);
       this.reason = reason;
       this.retryable = retryable;
+    }
+
+    /** Another attempt may succeed. */
+    static AttemptFailed retryable(FailureReason reason, String message, Throwable cause) {
+      return new AttemptFailed(reason, true, message, cause);
+    }
+
+    /** Another attempt would fail the same way. */
+    static AttemptFailed permanent(FailureReason reason, String message) {
+      return new AttemptFailed(reason, false, message, null);
     }
 
     boolean retryable() {
