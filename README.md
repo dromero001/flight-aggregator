@@ -115,6 +115,7 @@ The documentation is split by what each part shows.
 - [Architecture overview](docs/architecture/README.md): hexagonal modules, flows and the domain glossary
 - [Ingestion](docs/architecture/ingestion.md): the run, the double-buffered slots, and what each failure does
 - [Domain visibility rule](docs/architecture/domain-visibility.md): which domain members are public
+- [OpenAPI contract](docs/architecture/openapi.json): the API as the application serves it, from which the dashboard's types are generated; `OpenApiContractTest` fails when it drifts
 
 ### 2. Planning — how the work was planned
 - [Design spec](docs/planning/design-spec.md): goals, domain rules, every design decision and its reasoning

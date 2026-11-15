@@ -1,0 +1,286 @@
+{
+  "openapi" : "3.1.0",
+  "info" : {
+    "title" : "OpenAPI definition",
+    "version" : "v0"
+  },
+  "servers" : [
+    {
+      "url" : "http://localhost",
+      "description" : "Generated server url"
+    }
+  ],
+  "paths" : {
+    "/api/itineraries" : {
+      "get" : {
+        "operationId" : "search",
+        "parameters" : [
+          {
+            "description" : "The airport the trip departs from: a three-letter code, in any case",
+            "in" : "query",
+            "name" : "origin",
+            "required" : false,
+            "schema" : {
+              "type" : "string",
+              "pattern" : "^[A-Za-z]{3}$"
+            }
+          },
+          {
+            "description" : "The airport the trip arrives at: a three-letter code, in any case",
+            "in" : "query",
+            "name" : "destination",
+            "required" : false,
+            "schema" : {
+              "type" : "string",
+              "pattern" : "^[A-Za-z]{3}$"
+            }
+          },
+          {
+            "description" : "The highest final price in euros, inclusive, above 0",
+            "in" : "query",
+            "name" : "maxPrice",
+            "required" : false,
+            "schema" : {
+              "type" : "string",
+              "pattern" : "^[0-9]{1,9}(\\.[0-9]{1,2})?$"
+            }
+          },
+          {
+            "description" : "The airline that operates every leg: a two-character code, in any case",
+            "in" : "query",
+            "name" : "carrier",
+            "required" : false,
+            "schema" : {
+              "type" : "string",
+              "pattern" : "^[A-Za-z0-9]{2}$"
+            }
+          },
+          {
+            "description" : "The order of the results",
+            "in" : "query",
+            "name" : "sort",
+            "required" : false,
+            "schema" : {
+              "type" : "string",
+              "default" : "price",
+              "enum" : [
+                "price",
+                "departure",
+                "duration"
+              ]
+            }
+          },
+          {
+            "description" : "How many itineraries the page holds at most",
+            "in" : "query",
+            "name" : "limit",
+            "required" : false,
+            "schema" : {
+              "type" : "integer",
+              "format" : "int32",
+              "default" : 20,
+              "maximum" : 100,
+              "minimum" : 1
+            }
+          },
+          {
+            "description" : "The previous page's nextCursor, to read the page after it",
+            "in" : "query",
+            "name" : "cursor",
+            "required" : false,
+            "schema" : {
+              "type" : "string",
+              "maxLength" : 200
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SearchResponse"
+                }
+              }
+            },
+            "description" : "One page of itineraries"
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "A parameter or the cursor is not valid; the detail names it"
+          }
+        },
+        "tags" : [
+          "search-controller"
+        ]
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "ItineraryResponse" : {
+        "type" : "object",
+        "properties" : {
+          "arrival" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "departure" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "destination" : {
+            "type" : "string"
+          },
+          "durationMinutes" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "legs" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Leg"
+            }
+          },
+          "origin" : {
+            "type" : "string"
+          },
+          "price" : {
+            "$ref" : "#/components/schemas/Price"
+          },
+          "quotedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "stops" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [
+          "arrival",
+          "departure",
+          "destination",
+          "durationMinutes",
+          "id",
+          "legs",
+          "origin",
+          "price",
+          "quotedAt",
+          "stops"
+        ]
+      },
+      "Leg" : {
+        "type" : "object",
+        "properties" : {
+          "arrival" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "carrier" : {
+            "type" : "string"
+          },
+          "departure" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "destination" : {
+            "type" : "string"
+          },
+          "flightNumber" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "origin" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "arrival",
+          "carrier",
+          "departure",
+          "destination",
+          "flightNumber",
+          "origin"
+        ]
+      },
+      "Price" : {
+        "type" : "object",
+        "properties" : {
+          "amount" : {
+            "type" : "string"
+          },
+          "currency" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "amount",
+          "currency"
+        ]
+      },
+      "ProblemDetail" : {
+        "type" : "object",
+        "properties" : {
+          "detail" : {
+            "type" : "string"
+          },
+          "instance" : {
+            "type" : "string",
+            "format" : "uri"
+          },
+          "properties" : {
+            "type" : "object",
+            "additionalProperties" : { }
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "type" : {
+            "type" : "string",
+            "format" : "uri"
+          }
+        }
+      },
+      "SearchResponse" : {
+        "type" : "object",
+        "properties" : {
+          "inventoryChanged" : {
+            "type" : "boolean"
+          },
+          "itineraries" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ItineraryResponse"
+            }
+          },
+          "nextCursor" : {
+            "type" : [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required" : [
+          "inventoryChanged",
+          "itineraries",
+          "nextCursor"
+        ]
+      }
+    }
+  }
+}
