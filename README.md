@@ -6,6 +6,16 @@ Flight aggregation & cache optimization system: ingests itineraries from three l
 
 > Work in progress. Architecture, assumptions and trade-offs will be documented in `SOLUTION.md`.
 
+## Run the aggregator
+
+```bash
+docker compose up --build
+```
+
+This starts the three mock providers, PostgreSQL and the aggregator (`bootstrap/Dockerfile`, `-Xmx512m`). The aggregator ingests the providers at startup, then every 30 minutes, and publishes about one million itineraries into PostgreSQL; the first run takes about 12 to 15 seconds. Its health is on `http://localhost:8080/actuator/health`, published on the loopback interface only. PostgreSQL is not published. How a run works, and what each failure does: [Ingestion](docs/architecture/ingestion.md).
+
+**The database password is a committed demo default too**, the same deliberate exception as the provider keys below (spec 6.6): `POSTGRES_PASSWORD` in the shell or a `.env` file overrides it. It protects only a database that no port exposes outside the compose network; in production it would be a secret injected at deploy time.
+
 ## Run the mock providers
 
 The three mock GDS providers run as one image, built from `mock-gds/Dockerfile`:
@@ -58,6 +68,7 @@ The documentation is split by what each part shows.
 
 ### 1. Architecture — what is built
 - [Architecture overview](docs/architecture/README.md): hexagonal modules, flows and the domain glossary
+- [Ingestion](docs/architecture/ingestion.md): the run, the double-buffered slots, and what each failure does
 - [Domain visibility rule](docs/architecture/domain-visibility.md): which domain members are public
 
 ### 2. Planning — how the work was planned

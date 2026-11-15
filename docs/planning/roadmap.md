@@ -10,7 +10,7 @@ Legend: 👤 = with the user (review and decisions), 🌙 = autonomous work by a
 | 1 | [Foundations](plans/2026-11-14-foundations.md) | Empty hexagonal modules with ArchUnit rules, Spotless, the JaCoCo gate, CI and Dependabot, all green | — | Done |
 | 2 | [Domain](plans/2026-11-14-domain.md) | `Leg`, `Itinerary`, `Money`, connection rules, `ItineraryBuilder`, deduplication and markup, pure Java | 1 | Done |
 | 3 | [Mock GDS over HTTP](plans/2026-11-15-mock-gds-http.md) | The three providers answer in their own formats, latency, 500s, API key and pagination, in docker compose | 1 | Done |
-| 4 | [Providers and ingestion](plans/2026-11-15-providers-and-ingestion.md) | Parsers, Resilience4j, partitioned PostgreSQL, atomic publication; ingestion end to end with 1, 2 and 3 providers down | 2, 3 | Sun 🌙 |
+| 4 | [Providers and ingestion](plans/2026-11-15-providers-and-ingestion.md) | Parsers, Resilience4j, partitioned PostgreSQL, atomic publication; ingestion end to end with 1, 2 and 3 providers down | 2, 3 | Done |
 | 5 | Search API | Keyset search with cursor and filters, Valkey cache, rate limit, re-price, OAuth2 for admin, OpenAPI | 4 | Sun 👤 review → 🌙 |
 | 6 | Dashboard | The two approved screens, with Playwright and axe end to end | 5 | Sun night 🌙 |
 | 7 | Observability and delivery | Grafana stack, `SOLUTION.md`, final reviews, a clean-clone check | 6 | Mon 👤 |

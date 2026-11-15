@@ -3,7 +3,7 @@
 Technical documentation of the system, filled in as it is built:
 
 - **Hexagonal modules and their dependency rules** (Gradle enforces the module direction, ArchUnit the package rules), with Mermaid diagrams.
-- **The ingestion and search flows**, from the providers to the dashboard.
+- **The ingestion and search flows**, from the providers to the dashboard. The ingestion is described in [Ingestion](ingestion.md).
 - **The mock providers**: the three GDS mocks that the system ingests.
 - **The domain glossary** (ubiquitous language): leg, offer, itinerary, dead leg, connection, minimum connection time, interlining, markup.
 

@@ -1,8 +1,62 @@
-# Runs the three mock providers: docker compose up --build
-# The keys below are demo defaults, committed on purpose so that the project runs with that single
-# command (spec 6.6). They protect only these local mocks. Override any of them from the shell or a
-# .env file: ALPHA_API_KEY, BETA_API_KEY, GAMMA_API_KEY.
+# Runs the three mock providers, PostgreSQL and the aggregator: docker compose up --build
+# The keys and the database password below are demo defaults, committed on purpose so that the
+# project runs with that single command (spec 6.6). They protect only these local containers, whose
+# ports are bound to the loopback interface. Override any of them from the shell or a .env file:
+# ALPHA_API_KEY, BETA_API_KEY, GAMMA_API_KEY, POSTGRES_PASSWORD.
 services:
+  postgres:
+    image: postgres:18.4-trixie@sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636
+    environment:
+      POSTGRES_DB: flightaggregator
+      POSTGRES_USER: flightaggregator
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-demo-postgres-password}
+    # Not published: only the app, on the compose network, reaches the database.
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flightaggregator -d flightaggregator"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      dockerfile: bootstrap/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-gds:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      # 512 MB of heap: the ingestion streams its ~1M itineraries into COPY, never holding them (R4).
+      JAVA_TOOL_OPTIONS: -Xmx512m
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/flightaggregator
+      SPRING_DATASOURCE_USERNAME: flightaggregator
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-demo-postgres-password}
+      PROVIDERS_ALPHA_BASEURL: http://mock-gds:8080
+      PROVIDERS_ALPHA_APIKEY: ${ALPHA_API_KEY:-demo-alpha-key}
+      PROVIDERS_BETA_BASEURL: http://mock-gds:8080
+      PROVIDERS_BETA_APIKEY: ${BETA_API_KEY:-demo-beta-key}
+      PROVIDERS_GAMMA_BASEURL: http://mock-gds:8080
+      PROVIDERS_GAMMA_APIKEY: ${GAMMA_API_KEY:-demo-gamma-key}
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/localhost/8080
+          && printf 'GET /actuator/health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3
+          && grep -q '"status":"UP"' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
   mock-gds:
     build:
       context: .
@@ -28,3 +82,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+volumes:
+  postgres-data:

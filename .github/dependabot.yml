@@ -44,3 +44,30 @@ updates:
       docker:
         patterns:
           - "*"
+  - package-ecosystem: "docker"
+    directory: "/bootstrap"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 14
+    # Java 25 is the current LTS (spec 6.1): a major bump is a decision, not a routine update.
+    ignore:
+      - dependency-name: "eclipse-temurin"
+        update-types: ["version-update:semver-major"]
+    groups:
+      docker:
+        patterns:
+          - "*"
+  # compose.yaml pins the PostgreSQL image by tag and digest.
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 14
+    groups:
+      docker-compose:
+        patterns:
+          - "*"
