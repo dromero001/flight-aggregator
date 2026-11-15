@@ -31,8 +31,9 @@ import tools.jackson.core.json.JsonFactory;
  * rows with the generation before it. Each read's statements are bounded by {@link
  * StatementTimeout#SEARCH_READ}: a read that takes longer fails with Spring's {@code
  * QueryTimeoutException} and rolls back, so it never holds its connection, or its lock on the slot
- * that a run's {@code TRUNCATE} waits for, past the bound. Every table name comes from {@link
- * Slot}.
+ * that a run's {@code TRUNCATE} waits for, past the bound. A read must not run inside another
+ * transaction: it would join it, lose its own snapshot, and bound the rest of that transaction's
+ * statements at 2 s. Every table name comes from {@link Slot}.
  */
 public final class JdbcItineraryReader implements ItineraryReader {
 
