@@ -187,7 +187,8 @@ final class BetaPageParser {
                 put(values, "destination", airport);
                 put(values, "arrivalTime", content.text());
               }
-              default -> put(values, "price", content.text());
+              case "PriceCents" -> put(values, "price", content.text());
+              default -> throw new IllegalStateException("No mapping for the field " + name);
             }
           }
         }
