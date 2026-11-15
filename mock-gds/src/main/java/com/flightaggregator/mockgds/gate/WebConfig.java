@@ -37,7 +37,7 @@ class WebConfig implements WebMvcConfigurer {
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
     for (var provider : Provider.values()) {
-      var gate = new ProviderGate(settings.forProvider(provider), random, sleeper);
+      var gate = new ProviderGate(provider, settings.forProvider(provider), random, sleeper);
       registry
           .addInterceptor(gate)
           .addPathPatterns("/" + provider.name().toLowerCase(Locale.ROOT) + "/**");

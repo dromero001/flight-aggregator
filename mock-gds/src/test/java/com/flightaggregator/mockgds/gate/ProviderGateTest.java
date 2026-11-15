@@ -2,12 +2,16 @@ package com.flightaggregator.mockgds.gate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.flightaggregator.mockgds.model.Provider;
 import com.flightaggregator.mockgds.support.ProviderKeys;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -19,6 +23,7 @@ class ProviderGateTest {
     var sleeper = new RecordingSleeper();
     var gate =
         new ProviderGate(
+            Provider.GAMMA,
             constantLatency(ProviderKeys.GAMMA, Duration.ofSeconds(5), 1.0),
             new Random(1),
             sleeper);
@@ -35,11 +40,37 @@ class ProviderGateTest {
         .doesNotContain(ProviderKeys.ALPHA, ProviderKeys.BETA, ProviderKeys.GAMMA);
   }
 
+  /** One line per refusal, with the provider and the path; never a key or a header value. */
+  @Test
+  @ExtendWith(OutputCaptureExtension.class)
+  void logsEachRefusalWithItsProviderAndPath(CapturedOutput output) throws Exception {
+    var gate =
+        new ProviderGate(
+            Provider.GAMMA,
+            constantLatency(ProviderKeys.GAMMA, Duration.ZERO, 1.0),
+            new Random(1),
+            new RecordingSleeper());
+
+    gate.preHandle(
+        request("/gamma/legs.csv", "wrong-key"), new MockHttpServletResponse(), new Object());
+    gate.preHandle(
+        request("/gamma/legs.csv", ProviderKeys.GAMMA),
+        new MockHttpServletResponse(),
+        new Object());
+
+    assertThat(output.getAll().lines().filter(line -> line.contains("ProviderGate")))
+        .satisfiesExactly(
+            line -> assertThat(line).contains("WARN", "GAMMA", "/gamma/legs.csv", "401"),
+            line -> assertThat(line).contains("WARN", "GAMMA", "/gamma/legs.csv", "500"));
+    assertThat(output.getAll()).doesNotContain("wrong-key", ProviderKeys.GAMMA);
+  }
+
   @Test
   void waitsBeforeFailingARequest() throws Exception {
     var sleeper = new RecordingSleeper();
     var gate =
         new ProviderGate(
+            Provider.ALPHA,
             constantLatency(ProviderKeys.ALPHA, Duration.ofSeconds(2), 1.0),
             new Random(3),
             sleeper);
@@ -90,6 +121,7 @@ class ProviderGateTest {
   private static int failuresOutOf(double errorRate, int requests) throws Exception {
     var gate =
         new ProviderGate(
+            Provider.ALPHA,
             constantLatency(ProviderKeys.ALPHA, Duration.ZERO, errorRate),
             new Random(11),
             new RecordingSleeper());
@@ -122,7 +154,7 @@ class ProviderGateTest {
   private static List<Duration> latencies(ProviderSettings.Entry entry, int requests)
       throws Exception {
     var sleeper = new RecordingSleeper();
-    var gate = new ProviderGate(entry, new Random(7), sleeper);
+    var gate = new ProviderGate(Provider.BETA, entry, new Random(7), sleeper);
     for (var i = 0; i < requests; i++) {
       gate.preHandle(
           request("/beta/probe", ProviderKeys.BETA), new MockHttpServletResponse(), new Object());
