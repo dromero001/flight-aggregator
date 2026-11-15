@@ -17,7 +17,7 @@ class IngestionReportTest {
         new IngestionReport(
             Instant.parse("2026-11-20T08:00:00Z"),
             Duration.ZERO,
-            IngestionReport.Outcome.NO_OFFERS,
+            IngestionReport.Outcome.NOTHING_TO_PUBLISH,
             0,
             0,
             providers);

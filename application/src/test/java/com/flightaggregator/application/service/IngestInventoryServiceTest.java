@@ -251,6 +251,7 @@ class IngestInventoryServiceTest {
             new Entry(GAMMA, new DiscardedRecord(DiscardReason.CONFLICTING, flight)),
             new Entry(GAMMA, new DiscardedRecord(DiscardReason.CONFLICTING, flight)));
     assertThat(repository.published()).isEmpty();
+    assertThat(report.outcome()).isEqualTo(IngestionReport.Outcome.NOTHING_TO_PUBLISH);
     ProviderReport gammaReport = report.providers().getFirst();
     assertThat(gammaReport.discarded()).isEqualTo(Map.of(DiscardReason.CONFLICTING, 2));
     assertThat(gammaReport.offersUsed()).isZero();
@@ -285,7 +286,7 @@ class IngestInventoryServiceTest {
     IngestionReport report = service(alpha).ingest();
 
     assertThat(repository.calls()).isZero();
-    assertThat(report.outcome()).isEqualTo(IngestionReport.Outcome.NO_OFFERS);
+    assertThat(report.outcome()).isEqualTo(IngestionReport.Outcome.NOTHING_TO_PUBLISH);
     assertThat(report.generation()).isZero();
     assertThat(report.itineraries()).isZero();
   }
@@ -308,6 +309,36 @@ class IngestInventoryServiceTest {
     assertThat(report.outcome()).isEqualTo(IngestionReport.Outcome.CEILING_EXCEEDED);
     assertThat(report.generation()).isZero();
     assertThat(report.itineraries()).isZero();
+  }
+
+  @Test
+  void publishesNothingWhenNoItineraryCanBeBuilt() {
+    Leg departed = leg(ALPHA, 1, "MAD", "LHR", "2026-11-19T10:00:00Z", NOW);
+    FakeFlightProvider alpha = new FakeFlightProvider(ALPHA, () -> download(departed));
+
+    IngestionReport report = service(alpha).ingest();
+
+    assertThat(report.outcome()).isEqualTo(IngestionReport.Outcome.NOTHING_TO_PUBLISH);
+    assertThat(report.generation()).isZero();
+    assertThat(report.itineraries()).isZero();
+    assertThat(repository.published()).isEmpty();
+  }
+
+  @Test
+  void publishesExactlyTheCeiling() {
+    FakeFlightProvider alpha =
+        new FakeFlightProvider(
+            ALPHA,
+            () ->
+                download(
+                    leg(ALPHA, 1, "MAD", "LHR"),
+                    leg(ALPHA, 2, "MAD", "BCN"),
+                    leg(ALPHA, 3, "BCN", "LHR", "2026-11-25T10:30:00Z", NOW)));
+
+    IngestionReport report = serviceWithCeiling(4, alpha).ingest();
+
+    assertThat(report.outcome()).isEqualTo(IngestionReport.Outcome.PUBLISHED);
+    assertThat(repository.published()).hasSize(4);
   }
 
   @Test

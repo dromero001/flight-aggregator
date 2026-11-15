@@ -80,7 +80,7 @@ public final class IngestInventoryService implements IngestInventory {
     Map<Provider, List<Leg>> stored = storedOffers();
     List<Leg> offers = stored.values().stream().flatMap(List::stream).toList();
     if (offers.isEmpty()) {
-      return report(startedAt, IngestionReport.Outcome.NO_OFFERS, 0, 0, reports);
+      return report(startedAt, IngestionReport.Outcome.NOTHING_TO_PUBLISH, 0, 0, reports);
     }
     Deduplication deduplication = LegDeduplicator.deduplicate(offers);
     deduplication.conflicting().forEach(this::discardConflicting);
@@ -95,6 +95,8 @@ public final class IngestInventoryService implements IngestInventory {
           publication.generation(),
           publication.itineraries(),
           finalReports);
+    } catch (NoItineraryBuilt e) {
+      return report(startedAt, IngestionReport.Outcome.NOTHING_TO_PUBLISH, 0, 0, finalReports);
     } catch (IngestionCeiling e) {
       return report(startedAt, IngestionReport.Outcome.CEILING_EXCEEDED, 0, 0, finalReports);
     }
@@ -163,6 +165,9 @@ public final class IngestInventoryService implements IngestInventory {
                 }
                 sink.accept(itinerary);
               });
+      if (written.get() == 0) {
+        throw new NoItineraryBuilt();
+      }
     };
   }
 

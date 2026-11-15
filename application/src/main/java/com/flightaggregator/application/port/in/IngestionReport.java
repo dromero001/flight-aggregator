@@ -19,7 +19,7 @@ public record IngestionReport(
 
   public enum Outcome {
     PUBLISHED,
-    NO_OFFERS,
+    NOTHING_TO_PUBLISH,
     CEILING_EXCEEDED
   }
 }
