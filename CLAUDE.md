@@ -45,6 +45,7 @@ The work moves between a Mac and a Windows PC, so nothing may live on only one o
 
 ## Documenting AI usage
 - Every relevant working session gets a file in `docs/ai/sessions/` (numbered, in English): goal, what happened, decisions, lesson.
+- **Record each prompt that added value when it happens**, not at the end of the session: follow `.claude/skills/prompt-log/SKILL.md` (read it at the start of every session; from the parent folder it is not loaded automatically).
 - Each session ends with a **"Prompts that added value"** section, holding only the prompts (the user's, or the briefs given to subagents) that changed the outcome: a challenge that exposed a wrong assumption, a framing that reshaped the design, a brief that made delegated work verifiable. For each prompt, quote or paraphrase it faithfully and say what it changed.
 - Prompts are written in English. The working sessions were held in Spanish, so prompts are translated faithfully, keeping their meaning and tone.
 - Leave out routine instructions ("commit and push", "document it", "go on"), and never invent or embellish a prompt.

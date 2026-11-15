@@ -70,14 +70,23 @@ The cost of a cut depends on how much state lives only in the conversation, so t
   - moved the per-provider concurrency limit (bulkhead) to plan 5, where re-price and the refresh call providers while ingestion runs;
   - asked to be reminded of spec §6.1 and why the plan departed from it. The plan used only the HTTP client's timeout, while §6.1 names Resilience4j's time limiter. The controller recommended the client timeout alone (option A) over adding a time limiter on each provider's whole download (option B). The user asked whether B was not more complete. Redoing the numbers showed it was: with per-request timeouts alone, a provider that is slow but never fails can stretch a run to about 27 minutes, close to the 30-minute cadence, and the circuit breaker never opens because nothing fails. The controller changed its recommendation, the user chose B, and spec §6.1 now records the two time bounds.
 
-## 6. Prompts that added value
+## 6. A skill for the prompts, tested before it was written
+
+The user asked for a skill so that the prompts that added value are saved, translated into English, without having to remind the agent. It was written test-first, as `superpowers:writing-skills` requires:
+
+- **Baseline, without the skill** (fresh subagents, each placed mid-task with a user message that changes the design and a "carry on"): two of two recorded the prompt in the progress report and deferred, or skipped, its entry in the session file. One wrote *"For this session's 'Prompts that added value': the prompt above…"* and left it for later. That is the entry a dropped session loses. A first pair of scenarios that asked the agent to list everything it would do did not show the failure, so it was replaced by the mid-task one.
+- **The skill** ([`.claude/skills/prompt-log/`](../../../.claude/skills/prompt-log/SKILL.md)) is a recipe rather than a reminder: the next file change after a qualifying prompt is its entry in the session file, in a fixed shape, before the spec, the plan or any dispatch. It adds a table of what qualifies, translation rules, and the excuses for deferring. `CLAUDE.md` points to it, because sessions opened from the parent folder do not load project skills.
+- **With the skill**, same scenarios: two of two made the session entry their first file change, translated the prompt faithfully, and left the routine part out.
+
+## 7. Prompts that added value
 
 - *"I have always been working with Claude from the parent folder. Make sure you use every skill documented in the GitHub repository of flight-aggregator."*: exposed that the hook, two plugins and the reviewer subagents had never been active in these sessions, and led to the fixes in section 3.
 - *"Since the connection can be lost again at any moment, let's set a policy of creating an artifact for every finished task, or if you think that is too much, propose another frequency."*: turned an ad hoc handoff page into the continuity policy of section 4.
 - *"You recommend option A, but isn't B more complete?"*: made the controller redo the worst case it had assumed was bounded. Its recommendation was wrong: a slow provider could stretch ingestion to nearly the full cadence, and the plan now bounds each provider's download (spec §6.1).
 - *"Remember they also want the prompts. Make a skill for it, so that the relevant prompts are saved translated into English and I don't have to keep reminding you."*: turned a rule the agent kept forgetting into a skill, `prompt-log`, that records each prompt when it happens instead of at the end of the session.
+- *"I think we are going to disable Dependabot, it is getting in the way of the project's development; once it is delivered we will turn it back on. Reject the current Dependabot PR."*: paused Dependabot until the delivery (`open-pull-requests-limit: 0`, spec §6.11) while keeping its configuration, after three of its pull requests in one night had each needed a decision (a non-LTS Java, a formatter major, a formatter minor that breaks Spotless).
 - The brief for the fix round (a subagent prompt): *"For the commits whose evidence was never recorded because the session was cut off, say so honestly and, where you can, re-establish evidence after the fact by mutation, labelled 'recorded after the fact by mutation'."*: kept the TDD record truthful instead of reconstructing it as if it had been recorded at the time.
 
-## 7. Lesson
+## 8. Lesson
 
 The cut itself was not the risk. The risk was state that lived only in the conversation: a design change without a recorded decision, and commits without evidence or review. The reviews caught it because the recovery treated the plan as open until the record proved otherwise.

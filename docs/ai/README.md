@@ -39,6 +39,7 @@ Project skills live in [`.claude/skills/`](../../.claude/skills); plugins are de
 |---|---|---|---|
 | `brief-scope` | `.claude/skills/brief-scope/` | Written for this project ([how it was tested](sessions/05-scope-guard-and-agent-skills.md)) | Keep every proposal within the brief and the recorded decisions; flag extras for the user |
 | `thermo-nuclear-code-quality-review` | `.claude/skills/thermo-nuclear-code-quality-review/` | The author's own skill | Strict maintainability review before every commit |
+| `prompt-log` | `.claude/skills/prompt-log/` | Written for this project ([how it was tested](sessions/09-lost-sessions-and-recovery.md)) | Record each prompt that added value in the session file when it happens, translated into English, so a dropped session loses none |
 | `deslop` | `.claude/skills/deslop/` | The author's own skill | Remove AI-generated code slop from a diff |
 | `grilling` | `.claude/skills/grilling/` | [Matt Pocock's skills](https://github.com/mattpocock/skills), MIT | The grill-me sessions on open design decisions |
 | `ubiquitous-language` | `.claude/skills/ubiquitous-language/` | [Matt Pocock's skills](https://github.com/mattpocock/skills), MIT | DDD glossary of domain terms (user-invoked) |
