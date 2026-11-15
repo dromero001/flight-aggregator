@@ -55,6 +55,12 @@ check 0 "git push origin main; date +%H:%M"
 check 0 "git push origin main 2>&1 | grep -F +main"
 check 0 "git push origin main || date +%H:%M"
 check 0 $'cat > notes.txt <<\'EOF\'\nRun git push origin main\nthen date +%H:%M\nEOF'
+check 0 $'cat > notes.md <<\'EOF\'\n- Ran git push origin main\n- Retried once\n- CI green after +5 min\nEOF'
+check 0 $'cat > notes.md <<\'EOF\'\nPush with `git push origin main`\nthen wait +5 min\nEOF'
+# Without a continuation, an option on the next line is a command of its own (the user's decision of
+# 2026-11-15): bash runs the push or the reset, then fails on `--force` or `--hard`.
+check 0 $'git push origin main\n--force'
+check 0 $'git reset\n--hard'
 check 0 "git push origin --delete feature/x && git checkout main"
 check 0 "git reset --soft HEAD~1 && grep -n -- --hard notes.txt"
 check 0 "git clean -n; rm -f build.log"
@@ -101,8 +107,12 @@ check 2 "gh api repos/o/r/git/refs/heads/main --method DELETE"
 check 2 "git update-ref -d refs/heads/main"
 check 2 $'git push origin main \\\n  --force'
 check 2 $'git reset \\\n  --hard origin/main'
-check 2 $'git push origin main\n--force'
-check 2 $'git reset\n--hard'
+# PowerShell continues a line with a backtick, as bash does with a backslash.
+check 2 $'git push origin `\n  +main'
+check 2 $'git push origin `\n  :main'
+check 2 $'git reset `\n  HEAD~3 --hard'
+check 2 $'git push origin main `\n--force'
+check 2 $'git reset \\\n\t--hard'
 
 # Blocked: a destructive command alone, or after another one.
 check 2 "git push -f"
@@ -114,5 +124,13 @@ check 2 "cd x && git push origin :main"
 # Blocked: a separator inside quotes does not end the command.
 check 2 "git push -o \"merge_request.title=Fix; tidy\" --force"
 check 2 "git push -o 'merge_request.title=Fix | tidy' --force"
+
+# Blocked: quoting the span cannot pair as written does not hide what follows it.
+check 2 "gh api -X DELETE \"repos/o/r/git/refs/heads/main\""
+check 2 "gh api -X DELETE 'repos/{owner}/{repo}/git/refs/heads/main'"
+check 2 "gh api \"repos/o/r/git/refs/heads/main\" --method DELETE"
+check 2 "git push -o it\\'s --force"
+check 2 "git push -o \"a\\\"b\" --force"
+check 2 "git push -o a\\;b --force"
 
 if [ "$failures" -eq 0 ]; then echo "All hook tests passed"; else exit 1; fi
