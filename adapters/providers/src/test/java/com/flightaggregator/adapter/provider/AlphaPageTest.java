@@ -131,6 +131,19 @@ class AlphaPageTest {
     assertThatThrownBy(() -> parse(body, QUOTED_AT)).isInstanceOf(PageMalformed.class);
   }
 
+  /** A provider that sends more than it was asked for is not paging as agreed (§6.7). */
+  @Test
+  void failsAPageWithMoreRecordsThanTheLimit() {
+    String threeRecords = pageOf(VALID_LEG, VALID_LEG, "7");
+
+    assertThatThrownBy(
+            () ->
+                new AlphaPage(2, Optional.empty())
+                    .parse(new FetchedPage(threeRecords, Provider.ALPHA, QUOTED_AT)))
+        .isInstanceOf(PageMalformed.class)
+        .hasMessage("Asked for at most 2 records, got 3");
+  }
+
   @Test
   void readsTheNextCursorAndTheEnd() {
     assertThat(parse("{\"legs\":[],\"nextCursor\":\"b2Zmc2V0PTE=\"}", QUOTED_AT).next())

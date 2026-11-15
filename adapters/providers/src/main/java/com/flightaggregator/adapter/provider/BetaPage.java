@@ -23,7 +23,8 @@ import javax.xml.stream.XMLStreamReader;
 /**
  * One page of Beta: nested XML, {@code SegmentsResponse} with its {@code page} and {@code
  * totalPages}, around a list of {@code Segment}s, paged by page number from 1. A segment that is
- * not valid is discarded alone; a page that is not well formed, or not of this shape, fails.
+ * not valid is discarded alone; a page that is not well formed, not of this shape, or of more than
+ * {@code pageSize} items, fails.
  */
 record BetaPage(int page, int pageSize) implements PageRequest {
 
@@ -94,6 +95,11 @@ record BetaPage(int page, int pageSize) implements PageRequest {
       } catch (RecordRejected rejected) {
         discarded.add(new DiscardedRecord(rejected.reason(), segment.excerpt()));
       }
+    }
+    // Each item gave one leg or one discarded record.
+    int records = legs.size() + discarded.size();
+    if (records > pageSize) {
+      throw new PageMalformed("Asked for at most " + pageSize + " records, got " + records);
     }
     expectEnd(xml, "SegmentsResponse");
     while (xml.hasNext()) {

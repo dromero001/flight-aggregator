@@ -45,6 +45,9 @@ record AlphaPage(int limit, Optional<String> cursor) implements PageRequest {
     if (!records.isArray()) {
       throw new PageMalformed("The page has no \"legs\" array");
     }
+    if (records.size() > limit) {
+      throw new PageMalformed("Asked for at most " + limit + " records, got " + records.size());
+    }
     List<Leg> legs = new ArrayList<>();
     List<DiscardedRecord> discarded = new ArrayList<>();
     for (JsonNode record : records) {

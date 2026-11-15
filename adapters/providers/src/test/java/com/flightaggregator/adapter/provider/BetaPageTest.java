@@ -239,6 +239,17 @@ class BetaPageTest {
     assertThat(page.discarded()).isEmpty();
   }
 
+  /** Every item counts toward the page size, a segment that is discarded or not a segment too. */
+  @Test
+  void failsAPageWithMoreRecordsThanThePageSize() {
+    String threeRecords = pageOf(1, 1, VALID_SEGMENT, "<Note/>", VALID_SEGMENT);
+
+    assertThatThrownBy(
+            () -> new BetaPage(1, 2).parse(new FetchedPage(threeRecords, Provider.BETA, QUOTED_AT)))
+        .isInstanceOf(PageMalformed.class)
+        .hasMessage("Asked for at most 2 records, got 3");
+  }
+
   @Test
   void failsAPageThatIsNotTheRequestedOne() {
     assertThatThrownBy(() -> parse(pageOf(5, 5), QUOTED_AT, 2))
