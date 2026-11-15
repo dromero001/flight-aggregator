@@ -1,5 +1,6 @@
 package com.flightaggregator.adapter.web;
 
+import com.flightaggregator.application.port.in.RateLimitedAction;
 import com.flightaggregator.application.port.in.SearchItineraries;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -27,6 +28,7 @@ public final class SearchController {
   }
 
   @GetMapping(path = "/api/itineraries", produces = MediaType.APPLICATION_JSON_VALUE)
+  @RateLimited(RateLimitedAction.SEARCH)
   @ApiResponse(responseCode = "200", description = "One page of itineraries")
   @ApiResponse(
       responseCode = "400",

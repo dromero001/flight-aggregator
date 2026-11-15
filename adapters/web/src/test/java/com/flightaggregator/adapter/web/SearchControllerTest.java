@@ -1,5 +1,6 @@
 package com.flightaggregator.adapter.web;
 
+import static com.flightaggregator.adapter.web.Legs.leg;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.startsWith;
@@ -13,15 +14,9 @@ import com.flightaggregator.application.port.in.SearchCriteria;
 import com.flightaggregator.application.port.in.SearchPage;
 import com.flightaggregator.application.port.in.SearchQuery;
 import com.flightaggregator.application.port.in.SortOrder;
-import com.flightaggregator.domain.Airport;
-import com.flightaggregator.domain.Carrier;
 import com.flightaggregator.domain.Itinerary;
-import com.flightaggregator.domain.Leg;
-import com.flightaggregator.domain.Money;
 import com.flightaggregator.domain.Provider;
 import com.jayway.jsonpath.JsonPath;
-import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -217,27 +212,5 @@ class SearchControllerTest {
         .andExpect(jsonPath("$.detail").value(startsWith(parameter + " ")));
 
     assertThat(search.queries()).isEmpty();
-  }
-
-  private static Leg leg(
-      String carrier,
-      int number,
-      String origin,
-      String destination,
-      String departure,
-      String arrival,
-      String price,
-      Provider provider,
-      String quotedAt) {
-    return new Leg(
-        new Carrier(carrier),
-        number,
-        new Airport(origin),
-        new Airport(destination),
-        OffsetDateTime.parse(departure),
-        OffsetDateTime.parse(arrival),
-        Money.euros(price),
-        provider,
-        Instant.parse(quotedAt));
   }
 }
