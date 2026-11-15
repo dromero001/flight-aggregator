@@ -127,6 +127,8 @@ The documentation is split by what each part shows.
   - [4 — Providers and ingestion](docs/planning/plans/2026-11-15-providers-and-ingestion.md)
   - [5 — Search API](docs/planning/plans/2026-11-15-search-api.md)
   - [6 — Dashboard](docs/planning/plans/2026-11-15-dashboard.md)
+  - [7 — Observability and delivery](docs/planning/plans/2026-11-15-observability-and-delivery.md)
+- [Continuation point](docs/planning/continuation.md): what is in flight and what comes next, for a session that takes over
 - Progress reports:
   - [2026-11-13](docs/planning/progress/2026-11-13.md)
   - [2026-11-14](docs/planning/progress/2026-11-14.md)
