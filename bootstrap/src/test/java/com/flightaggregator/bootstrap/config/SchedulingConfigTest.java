@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import net.javacrumbs.shedlock.core.DefaultLockingTaskExecutor;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.scheduling.config.FixedDelayTask;
@@ -27,7 +28,9 @@ class SchedulingConfigTest {
               () ->
                   new IngestionJob(
                       SchedulingConfigTest::nothingToPublish,
-                      new IngestionMetrics(new SimpleMeterRegistry(), Instant::now)))
+                      new IngestionMetrics(new SimpleMeterRegistry(), Instant::now),
+                      new DefaultLockingTaskExecutor(configuration -> Optional.of(() -> {})),
+                      Instant::now))
           .withPropertyValues("ingestion.interval=PT30M");
 
   @Test

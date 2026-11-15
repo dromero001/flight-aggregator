@@ -1,8 +1,9 @@
 package com.flightaggregator.bootstrap.config;
 
+import net.javacrumbs.shedlock.core.DefaultLockingTaskExecutor;
 import net.javacrumbs.shedlock.core.LockProvider;
+import net.javacrumbs.shedlock.core.LockingTaskExecutor;
 import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;
-import net.javacrumbs.shedlock.spring.annotation.EnableSchedulerLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -10,12 +11,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
- * The ingestion's lock (§6.2): a ShedLock row in PostgreSQL, so that one instance at a time runs
- * the job, whatever calls it, and the others skip their run. ShedLock requires a default for {@code
- * lockAtMostFor}; the job's own {@code @SchedulerLock} sets the same one.
+ * The ingestion's lock (§6.2), a ShedLock row in PostgreSQL that the job takes through the {@code
+ * LockingTaskExecutor}, so that one instance at a time runs it and the others skip their run; and
+ * the job's schedule.
  */
 @Configuration(proxyBeanMethods = false)
-@EnableSchedulerLock(defaultLockAtMostFor = "PT29M")
 class SchedulingConfig {
 
   /**
@@ -31,9 +31,14 @@ class SchedulingConfig {
             .build());
   }
 
+  @Bean
+  LockingTaskExecutor lockingTaskExecutor(LockProvider lockProvider) {
+    return new DefaultLockingTaskExecutor(lockProvider);
+  }
+
   /**
-   * Scheduling itself, off unless {@code ingestion.schedule.enabled} is true. The lock above holds
-   * either way, so a test that turns the schedule off and calls the job still takes the lock.
+   * Scheduling itself, off unless {@code ingestion.schedule.enabled} is true. The job takes the
+   * lock either way, so a test that turns the schedule off and calls the job still takes it.
    */
   @Configuration(proxyBeanMethods = false)
   @EnableScheduling

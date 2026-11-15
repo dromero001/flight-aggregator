@@ -16,20 +16,28 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.classic.spi.ThrowableProxy;
 import ch.qos.logback.core.read.ListAppender;
+import com.flightaggregator.application.port.in.IngestInventory;
 import com.flightaggregator.application.port.in.IngestionReport;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.Publication;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
+import net.javacrumbs.shedlock.core.DefaultLockingTaskExecutor;
+import net.javacrumbs.shedlock.core.LockConfiguration;
+import net.javacrumbs.shedlock.support.LockException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.jdbc.UncategorizedSQLException;
 
 /**
@@ -73,7 +81,7 @@ class IngestionJobTest {
                     published(
                         new Publication(1, 10, 0, LocalDate.parse("2026-12-27")), fresh(ALPHA)))
             .iterator();
-    IngestionJob job = new IngestionJob(() -> runs.next().get(), metrics);
+    IngestionJob job = job(() -> runs.next().get());
 
     assertThatCode(job::run).doesNotThrowAnyException();
     job.run();
@@ -89,19 +97,82 @@ class IngestionJobTest {
     assertThat(runs("PUBLISHED")).isEqualTo(1);
   }
 
+  /**
+   * PostgreSQL is unreachable when the run takes its lock: the run fails before it starts, and is
+   * logged and counted as any failed run is, so that an outage cannot keep the failures flat.
+   */
+  @Test
+  void countsAFailureToTakeTheLockAsAFailedRun() {
+    LockException unreachable =
+        new LockException(
+            "Unexpected exception when locking",
+            new CannotGetJdbcConnectionException("Failed to obtain JDBC Connection"));
+    IngestionJob job =
+        new IngestionJob(
+            () -> published(new Publication(1, 10, 0, LocalDate.parse("2026-12-27"))),
+            metrics,
+            new DefaultLockingTaskExecutor(
+                configuration -> {
+                  throw unreachable;
+                }),
+            () -> STARTED_AT);
+
+    assertThatCode(job::run).doesNotThrowAnyException();
+
+    assertThat(log.list)
+        .filteredOn(event -> event.getLevel() == Level.ERROR)
+        .singleElement()
+        .satisfies(
+            event ->
+                assertThat(((ThrowableProxy) event.getThrowableProxy()).getThrowable())
+                    .isSameAs(unreachable));
+    assertThat(runs("FAILED")).isEqualTo(1);
+  }
+
+  /**
+   * The lock ends with the run, but never before a minute, so that a second instance cannot run
+   * again straight after, nor after 29 minutes, before the next run is due.
+   */
+  @Test
+  void takesTheIngestionLockForAtMost29MinutesAndAtLeastOne() {
+    List<LockConfiguration> taken = new ArrayList<>();
+    IngestionJob job =
+        new IngestionJob(
+            () -> published(new Publication(1, 10, 0, LocalDate.parse("2026-12-27"))),
+            metrics,
+            new DefaultLockingTaskExecutor(
+                configuration -> {
+                  taken.add(configuration);
+                  return Optional.of(() -> {});
+                }),
+            () -> STARTED_AT);
+
+    job.run();
+
+    assertThat(taken)
+        .singleElement()
+        .satisfies(
+            configuration -> {
+              assertThat(configuration.getName()).isEqualTo("ingestion");
+              assertThat(configuration.getLockAtMostFor()).isEqualTo(Duration.ofMinutes(29));
+              assertThat(configuration.getLockAtLeastFor()).isEqualTo(Duration.ofMinutes(1));
+              assertThat(configuration.getLockAtMostUntil())
+                  .isEqualTo(STARTED_AT.plus(Duration.ofMinutes(29)));
+            });
+  }
+
   /** One line per run, and one warning per provider whose last good offers were kept. */
   @Test
   void logsTheRunAndEachKeptProvider() {
     IOException serverError = new IOException("Server error 500");
     IngestionJob job =
-        new IngestionJob(
+        job(
             () ->
                 published(
                     new Publication(7, 1234, 2, LocalDate.parse("2026-12-27")),
                     fresh(ALPHA),
                     kept(BETA, FailureReason.HTTP_ERROR, serverError),
-                    fresh(GAMMA)),
-            metrics);
+                    fresh(GAMMA)));
 
     job.run();
 
@@ -120,6 +191,15 @@ class IngestionJobTest {
                     + " gamma.used=3 gamma.lostToDeduplication=1"));
     assertThat(((ThrowableProxy) log.list.getFirst().getThrowableProxy()).getThrowable())
         .isSameAs(serverError);
+  }
+
+  /** The job over this ingestion, its lock always free. */
+  private IngestionJob job(IngestInventory ingestion) {
+    return new IngestionJob(
+        ingestion,
+        metrics,
+        new DefaultLockingTaskExecutor(configuration -> Optional.of(() -> {})),
+        () -> STARTED_AT);
   }
 
   private static String fields(ILoggingEvent event) {

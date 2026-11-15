@@ -12,6 +12,7 @@ import com.flightaggregator.bootstrap.ingestion.IngestionMetrics;
 import com.flightaggregator.bootstrap.observability.LoggedDiscardedRecords;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
+import net.javacrumbs.shedlock.core.LockingTaskExecutor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -50,7 +51,8 @@ class IngestionConfig {
   }
 
   @Bean
-  IngestionJob ingestionJob(IngestInventory ingestion, IngestionMetrics metrics) {
-    return new IngestionJob(ingestion, metrics);
+  IngestionJob ingestionJob(
+      IngestInventory ingestion, IngestionMetrics metrics, LockingTaskExecutor locks, Clock clock) {
+    return new IngestionJob(ingestion, metrics, locks, clock);
   }
 }

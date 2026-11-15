@@ -53,7 +53,7 @@ import org.testcontainers.utility.DockerImageName;
  * MAD-LHR on Alpha, LHR-JFK on Beta, MAD-JFK and a self-contradicting pair on Gamma, and one
  * malformed record per provider. One application context serves every test; each starts from an
  * empty inventory, the three providers answering, closed circuit breakers and the job's lock free.
- * The schedule is off: each test calls the job, through ShedLock's proxy, as the schedule would.
+ * The schedule is off: each test calls the job, which takes its lock, as the schedule would.
  */
 @SpringBootTest(
     properties = {
