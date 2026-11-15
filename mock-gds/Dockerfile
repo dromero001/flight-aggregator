@@ -10,8 +10,9 @@ COPY gradle gradle
 COPY buildSrc buildSrc
 RUN sed -n 's/^include("\(.*\)")/\1/p' settings.gradle.kts | tr ':' '/' | xargs mkdir -p
 COPY mock-gds mock-gds
-# Tests run in CI, not here.
-RUN --mount=type=cache,target=/root/.gradle ./gradlew :mock-gds:bootJar --no-daemon
+# Tests run in CI, not here. No JDK download: the base image must hold the toolchain's JDK, so a
+# mismatch fails the build instead of fetching an unpinned JDK.
+RUN --mount=type=cache,target=/root/.gradle ./gradlew :mock-gds:bootJar --no-daemon -Porg.gradle.java.installations.auto-download=false
 
 FROM eclipse-temurin:25.0.4.1_1-jre-noble@sha256:ce8543ddd3070ccbeaac2106a74c9387ddeb8d47a1c43348345715c1ef245c7f
 RUN useradd --system --uid 10001 --no-create-home mockgds
