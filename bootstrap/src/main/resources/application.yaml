@@ -1,0 +1,27 @@
+# Each provider's base-url and api-key have no default: they come from the environment
+# (PROVIDERS_ALPHA_BASEURL, PROVIDERS_ALPHA_APIKEY, ...), and startup fails without them.
+spring:
+  threads:
+    virtual:
+      enabled: true
+
+ingestion:
+  # A run that would build more itineraries publishes nothing (R7).
+  max-itineraries: 2000000
+  # Read by the scheduled job (Task 10); no job runs before it.
+  interval: PT30M
+  schedule:
+    enabled: true
+
+logging:
+  structured:
+    format:
+      # Boot's structured JSON (§6.10): the key-value pairs of a log event become fields.
+      console: ecs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Boot's default, stated: the other endpoints wait for admin authentication (plan 5).
+        include: health
