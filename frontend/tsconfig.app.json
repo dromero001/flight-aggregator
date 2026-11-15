@@ -21,5 +21,7 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Node tests (they read files): type-checked by tsconfig.node.json.
+  "exclude": ["src/api/schema.test.ts"]
 }
