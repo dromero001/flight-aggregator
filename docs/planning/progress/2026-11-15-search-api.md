@@ -1186,6 +1186,19 @@ Concerns (not changed):
 - **Memory:** each refresh reads every provider's stored offers and builds the whole inventory, filtered (Q2-B's accepted cost). Concurrent refreshes are bounded only by the providers' concurrency limit: a fifth one finds every download rejected and ends `NOTHING_FRESH` without building. Not measured under `-Xmx512m` at volume (Task 13).
 - During a refresh, a re-price's store answers `BUSY` (by construction: the refresh holds the row `FOR UPDATE`, and its generation update too). After it, a re-price of an itinerary the refresh no longer built answers `GONE`.
 
+### Follow-up after the review: rebased on `main` at `ffedb6e`, bounds read in one session
+
+- **Rebase.** The split commit was redone on `main`'s current `JdbcItineraryRepositoryTest`, still a pure move:
+  - `boundsEachStatementOfTheLoad` (now on `support/OneSession`, `d26b94f`) went to `...LoadTest`;
+  - `boundsTheTransactionOfAnUpdate` (likewise) and the new `keepsTheFirstOfTwoRepricesOfOneItinerary` (`aca4348`) went to `...UpdateTest`, the latter calling `LockWaits.awaitAStatementBlockedBy`.
+  - 26 cases in `main`'s file, 16 + 10 after the split; the only method in both classes is each one's `@BeforeEach`.
+  - The refresh commit took `main`'s `StatementTimeout.STORE` in the rewrite, the load and the update.
+- **`boundsTheTransactionOfARefresh` now reads both settings in one session** (`OneSession`, a repository on that session's manager), as `d26b94f` did for the load and the update. Reading `SHOW` on another pooled connection proved nothing. Mutation "the refresh sets `lock_timeout` for the whole session (`SET`, not `SET LOCAL`)":
+  - the old version of the test stayed green;
+  - the new one failed, `[2] "lock_timeout", "5s" | expected: "0" but was: "5s"`.
+  - The code was restored; the test is green.
+- Gates after the rebase: `./gradlew build --rerun-tasks` green, every test run again.
+
 ### Extras for the user to decide
 
 - **A `NOTHING_FRESH` refresh as a WARN line,** as a run that publishes nothing is. Value: an origin left stale stands out in the log. Cost: one branch and a test. Left out unless you approve.

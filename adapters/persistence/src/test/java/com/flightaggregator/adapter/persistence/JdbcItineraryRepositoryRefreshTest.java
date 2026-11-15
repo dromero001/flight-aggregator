@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.flightaggregator.adapter.persistence.support.ItinerarySlots;
 import com.flightaggregator.adapter.persistence.support.ItinerarySlots.Published;
+import com.flightaggregator.adapter.persistence.support.OneSession;
 import com.flightaggregator.adapter.persistence.support.PostgresTestDatabase;
 import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.domain.Airport;
@@ -191,23 +192,30 @@ class JdbcItineraryRepositoryRefreshTest {
   /**
    * A refresh's transaction is bounded as every store's is: a statement that hangs is cut after 5
    * minutes, and a lock, the publication row's included, is awaited for 5 s at most (a run's load
-   * holds that row for minutes). Each setting is read in the enclosing transaction once the refresh
-   * has written, and is gone after the commit.
+   * holds that row for minutes). Each setting is read in an enclosing transaction once the refresh
+   * has written, then after the commit in the same session, where it must be gone.
    */
   @ParameterizedTest
   @CsvSource({"statement_timeout, 5min", "lock_timeout, 5s"})
   void boundsTheTransactionOfARefresh(String setting, String bound) {
     publishTheFourTrips();
+    try (OneSession session = new OneSession()) {
+      DataSourceTransactionManager sessionTransactions =
+          new DataSourceTransactionManager(session.dataSource());
+      JdbcItineraryRepository sessionRepository =
+          new JdbcItineraryRepository(sessionTransactions, new JsonFactory(), 37);
 
-    String duringTheRefresh =
-        enclosing.execute(
-            status -> {
-              refreshMadrid(madridLondon);
-              return jdbc.sql("SHOW " + setting).query(String.class).single();
-            });
+      String duringTheRefresh =
+          new TransactionTemplate(sessionTransactions)
+              .execute(
+                  status -> {
+                    sessionRepository.replaceThrough(MADRID, sink -> sink.accept(madridLondon));
+                    return session.show(setting);
+                  });
 
-    assertThat(duringTheRefresh).isEqualTo(bound);
-    assertThat(jdbc.sql("SHOW " + setting).query(String.class).single()).isEqualTo("0");
+      assertThat(duringTheRefresh).isEqualTo(bound);
+      assertThat(session.show(setting)).isEqualTo("0");
+    }
   }
 
   /**
