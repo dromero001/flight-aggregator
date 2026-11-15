@@ -75,9 +75,10 @@ public final class ValkeyFailures {
       breaker.onError(since(started), breaker.getTimestampUnit(), e);
       warnOfAnOutage(e);
       return fallback.get();
-    } catch (RuntimeException e) {
-      // Not Valkey's failure, so its breaker takes it for an answer; the bug is thrown.
-      breaker.onError(since(started), breaker.getTimestampUnit(), e);
+    } catch (Throwable e) {
+      // A bug or a JVM error says nothing about Valkey (the user's decision of 2026-11-15): the
+      // call gives its permission back, so the breaker neither closes nor waits for it for good.
+      breaker.releasePermission();
       throw e;
     }
   }

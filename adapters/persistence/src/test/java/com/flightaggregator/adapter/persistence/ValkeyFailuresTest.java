@@ -250,6 +250,51 @@ class ValkeyFailuresTest {
   }
 
   /**
+   * A bug thrown by an outage's probe says nothing about Valkey (the user's decision of
+   * 2026-11-15): the breaker still waits for a probe's answer, and no line says Valkey answers.
+   */
+  @Test
+  void keepsAnOutageWhenItsProbeThrowsABug() {
+    cache.get(KEY);
+    whileDown(() -> cache.get(KEY));
+    clock.advance(SKIP.plusMillis(1));
+
+    assertThatThrownBy(
+            () ->
+                failures.call(
+                    () -> {
+                      throw new IllegalStateException("a bug");
+                    },
+                    () -> null))
+        .isInstanceOf(IllegalStateException.class);
+
+    assertThat(breaker.getState()).isEqualTo(CircuitBreaker.State.HALF_OPEN);
+    assertThat(log.list).extracting(ILoggingEvent::getLevel).containsExactly(Level.WARN);
+  }
+
+  /**
+   * A JVM error thrown by an outage's probe reaches the caller, and a later call can still probe
+   * Valkey (the user's decision of 2026-11-15), instead of Valkey being skipped until a restart.
+   */
+  @Test
+  void letsALaterCallProbeWhenAProbeThrowsAnError() {
+    cache.put(KEY, NOTHING_FOUND);
+    whileDown(() -> cache.get(KEY));
+    clock.advance(SKIP.plusMillis(1));
+
+    assertThatThrownBy(
+            () ->
+                failures.call(
+                    () -> {
+                      throw new StackOverflowError();
+                    },
+                    () -> null))
+        .isInstanceOf(StackOverflowError.class);
+
+    assertThat(cache.get(KEY)).contains(NOTHING_FOUND);
+  }
+
+  /**
    * What one search sends Valkey (Tasks 6 and 10): its request count, the cache lookup, the
    * origin's refresh mark and claim, and the page it read.
    */
