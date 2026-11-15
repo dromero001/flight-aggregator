@@ -1,5 +1,6 @@
 package com.flightaggregator.bootstrap.config;
 
+import com.flightaggregator.adapter.web.AdminController;
 import com.flightaggregator.adapter.web.ProblemResponses;
 import com.flightaggregator.adapter.web.RateLimitInterceptor;
 import com.flightaggregator.adapter.web.RepriceController;
@@ -23,7 +24,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * is not scanned, so each class is named here, as the stores are in {@code PersistenceConfig}.
  */
 @Configuration(proxyBeanMethods = false)
-@Import({SearchController.class, RepriceController.class, ProblemResponses.class})
+@Import({
+  SearchController.class,
+  RepriceController.class,
+  AdminController.class,
+  ProblemResponses.class
+})
 class WebConfig {
 
   /**

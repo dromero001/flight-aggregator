@@ -73,7 +73,7 @@ When no provider's download is fresh, nothing is written and the origin is not m
 
 ## Schedule and lock
 
-`IngestionJob` runs at startup and then 30 minutes after each run ends (`ingestion.interval`, fixed delay). It takes the ShedLock row `ingestion` (table `shedlock`, at most 29 minutes, at least 1 minute) so that one instance at a time runs; an instance that does not get it logs `Skipped an ingestion run: another instance holds its lock` at `INFO` and returns at once. A skipped run is neither counted as a success nor as a failure.
+`IngestionJob` runs at startup and then 30 minutes after each run ends (`ingestion.interval`, fixed delay). It takes the ShedLock row `ingestion` (table `shedlock`, at most 29 minutes, at least 1 minute) so that one instance at a time runs; a run that does not get it, on this instance or another, logs `Skipped an ingestion run: another run holds its lock` at `INFO` and returns at once. A skipped run is neither counted as a success nor as a failure.
 
 What is caught, exactly:
 
