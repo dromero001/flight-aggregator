@@ -59,6 +59,12 @@ class ValkeyFailuresTest {
   /** How long Valkey is skipped after a failure (plan 5, the user's decision of 2026-11-15). */
   private static final Duration SKIP = Duration.ofSeconds(10);
 
+  /**
+   * How long a test that counts what its callers sent lets them run before it fails as hung: far
+   * above one command timeout, far below Lettuce's default of 60 s.
+   */
+  private static final Duration HANG_GUARD = Duration.ofSeconds(5);
+
   /** The commands {@link #search()} sends: the count's script, the two reads and the two writes. */
   private static final String[] SEARCH_COMMANDS = {"evalsha", "eval", "get", "set"};
 
@@ -154,19 +160,22 @@ class ValkeyFailuresTest {
 
   /**
    * Review Focus 3 per search: with Valkey hanging on an open connection, a burst of searches pays
-   * one command timeout in all, not one per command, and after it each operation gets its fail-open
-   * value at once, without being sent.
+   * one command timeout in all, not one per command: each caller sends Valkey at most its first
+   * command, and after the burst a search sends nothing, so each operation gets its fail-open value
+   * at once. Counted on the connection the commands went on, so the count is exact.
    */
   @Test
   void aBurstOfSearchesPaysOneTimeoutWhileValkeyHangs() {
     cache.get(KEY);
-
-    whileDown(() -> concurrently(8, this::search));
     long sentBefore = ValkeyTestServer.commandsRun(SEARCH_COMMANDS);
-    Duration next = whileDown(() -> elapsed(this::search));
 
-    assertThat(next).isLessThan(Duration.ofMillis(50));
-    assertThat(ValkeyTestServer.commandsRun(SEARCH_COMMANDS)).isEqualTo(sentBefore);
+    whileDown(HANG_GUARD, () -> concurrently(8, this::search));
+    long sentByTheBurst = ValkeyTestServer.commandsRun(SEARCH_COMMANDS) - sentBefore;
+    whileDown(HANG_GUARD, this::search);
+
+    assertThat(sentByTheBurst).isLessThanOrEqualTo(8);
+    assertThat(ValkeyTestServer.commandsRun(SEARCH_COMMANDS) - sentBefore)
+        .isEqualTo(sentByTheBurst);
   }
 
   /**
@@ -208,10 +217,13 @@ class ValkeyFailuresTest {
   /**
    * C1: Valkey hangs before the client has ever connected. Until it has answered once, one caller
    * at a time tries it, so callers arriving together do not queue behind each other's connection
-   * attempts: together they return within the bound. The outage is one WARN, as a later one is.
+   * attempts: of 8, the breaker lets one try and refuses the other 7. The outage is one WARN, as a
+   * later one is.
    */
   @Test
   void callersDoNotQueueBeforeTheFirstConnection() {
+    CircuitBreaker neverAnswered =
+        CircuitBreaker.of("valkey", ValkeyFailures.circuitBreakerConfig(SKIP));
     ValkeyTestServer.withNewClient(
         neverConnected -> {
           ValkeySearchCache cacheBeforeItsFirstConnection =
@@ -219,13 +231,14 @@ class ValkeyFailuresTest {
                   neverConnected,
                   new JsonFactory(),
                   Duration.ofMinutes(5),
-                  new ValkeyFailures(
-                      CircuitBreaker.of("valkey", ValkeyFailures.circuitBreakerConfig(SKIP))),
+                  new ValkeyFailures(neverAnswered),
                   meters);
 
-          whileDown(() -> concurrently(8, () -> cacheBeforeItsFirstConnection.get(KEY)));
+          whileDown(
+              HANG_GUARD, () -> concurrently(8, () -> cacheBeforeItsFirstConnection.get(KEY)));
         });
 
+    assertThat(neverAnswered.getMetrics().getNumberOfNotPermittedCalls()).isEqualTo(7);
     assertThat(log.list).extracting(ILoggingEvent::getLevel).containsExactly(Level.WARN);
   }
 
@@ -315,12 +328,6 @@ class ValkeyFailuresTest {
                         CompletableFuture.runAsync(call, task -> Thread.ofVirtual().start(task)))
                 .toArray(CompletableFuture[]::new))
         .join();
-  }
-
-  private static Duration elapsed(Runnable call) {
-    long started = System.nanoTime();
-    call.run();
-    return Duration.ofNanos(System.nanoTime() - started);
   }
 
   private static String cause(ILoggingEvent event) {

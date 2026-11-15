@@ -68,17 +68,42 @@ public final class ValkeyTestServer {
     return run;
   }
 
+  /** The time a Valkey outage may add to one operation (Review Focus 3). */
+  private static final Duration OUTAGE_BOUND = Duration.ofMillis(500);
+
   /**
    * The call's result with the server frozen, as when Valkey hangs: connections stay open and no
    * command is answered. The test fails unless the call returns within 500 ms, the bound a Valkey
-   * outage may add (Review Focus 3). The server resumes before this returns.
+   * outage may add to one operation (Review Focus 3). The server resumes before this returns.
    */
   public static <T> T whileDown(Supplier<T> call) {
+    return whileDown(OUTAGE_BOUND, call);
+  }
+
+  /** {@link #whileDown(Supplier)} for a call that returns nothing. */
+  public static void whileDown(Runnable call) {
+    whileDown(OUTAGE_BOUND, call);
+  }
+
+  /**
+   * {@link #whileDown(Runnable)} for a call whose test counts what it sent instead of timing it:
+   * the test fails only if the call has not returned within {@code hangGuard}.
+   */
+  public static void whileDown(Duration hangGuard, Runnable call) {
+    whileDown(
+        hangGuard,
+        () -> {
+          call.run();
+          return null;
+        });
+  }
+
+  private static <T> T whileDown(Duration bound, Supplier<T> call) {
     DockerClientFactory.instance().client().pauseContainerCmd(CONTAINER.getContainerId()).exec();
     try {
       long started = System.nanoTime();
       T result = call.get();
-      assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofMillis(500));
+      assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(bound);
       return result;
     } finally {
       DockerClientFactory.instance()
@@ -86,15 +111,6 @@ public final class ValkeyTestServer {
           .unpauseContainerCmd(CONTAINER.getContainerId())
           .exec();
     }
-  }
-
-  /** {@link #whileDown(Supplier)} for a call that returns nothing. */
-  public static void whileDown(Runnable call) {
-    whileDown(
-        () -> {
-          call.run();
-          return null;
-        });
   }
 
   /**
