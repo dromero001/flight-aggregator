@@ -21,6 +21,10 @@ public record ProviderReport(
     int offersUsed,
     int lostToDeduplication) {
 
+  public ProviderReport {
+    discarded = Map.copyOf(discarded);
+  }
+
   /** Whether the run stored a new download, or kept the last good one. */
   public enum Status {
     FRESH,

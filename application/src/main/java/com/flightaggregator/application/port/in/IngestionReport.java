@@ -13,6 +13,10 @@ public record IngestionReport(
     long itineraries,
     List<ProviderReport> providers) {
 
+  public IngestionReport {
+    providers = List.copyOf(providers);
+  }
+
   public enum Outcome {
     PUBLISHED,
     NO_OFFERS,
