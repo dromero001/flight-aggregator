@@ -97,3 +97,9 @@ management:
       # The components behind the status are for an administrator only.
       show-details: when-authorized
       roles: ADMIN
+      status:
+        # A provider not up or Valkey down is DEGRADED (plan 5, Q8-A): worse than UP, better than
+        # DOWN, which only PostgreSQL causes. Boot leaves out of the aggregate a status this list
+        # does not name. DEGRADED answers 200 by Boot's default mapping (only DOWN and
+        # OUT_OF_SERVICE are 503), so no http-mapping is set: one would replace those defaults.
+        order: DOWN, OUT_OF_SERVICE, DEGRADED, UP, UNKNOWN

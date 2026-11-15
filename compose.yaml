@@ -55,6 +55,8 @@ services:
       # name (the issuer-uri of application.yaml stays http://localhost:8180/realms/flight-aggregator).
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/flight-aggregator/protocol/openid-connect/certs
     healthcheck:
+      # DEGRADED (a provider not up, or Valkey down) still searches, so it is healthy too (plan 5,
+      # Q8-A); only DOWN, PostgreSQL out of reach, is not.
       test:
         - CMD
         - bash
@@ -62,7 +64,7 @@ services:
         - >-
           exec 3<>/dev/tcp/localhost/8080
           && printf 'GET /actuator/health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3
-          && grep -q '"status":"UP"' <&3
+          && grep -qE '"status":"(UP|DEGRADED)"' <&3
       interval: 10s
       timeout: 5s
       retries: 5
