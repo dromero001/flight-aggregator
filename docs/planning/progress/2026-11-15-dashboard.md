@@ -446,3 +446,13 @@ Refactor under green: the card's flights line and `LegList` both built "IB 3166"
 - `npm run verify` in `frontend/`: exit 0 (typecheck, ESLint, Prettier, 65 tests in 12 files; no warnings in the output).
 - `./gradlew build`: not run, by the user's decision of 2026-11-16 (frontend only).
 - Self-review (thermo-nuclear): the error mapping stays in the client's middleware; mutations keep TanStack's default of no retry (`createQueryClient`), so a 429 spends one request; the outcome-to-sentence rules are two pure functions (`failure`, `confirmation`) instead of conditions in the JSX; one `LegList` serves the chosen and the alternative legs; `flight(leg)` removed the duplicated label. Left as it is: `failure` and Task 5's `describeFailure` share a shape (a 429 with its seconds) but not their sentences, and a shared helper would be a thin wrapper; the 2xx-without-body guard now exists in both hooks (a candidate for a helper in `client.ts`, not done here so as not to touch Task 5's file under review).
+
+### E1: "+1" on an arrival the next local day (approved extra, assigned to Task 6)
+
+Red → green, one test at a time:
+- `format.test.ts` `'counts the local days from departure to arrival'` (22:40 Madrid → 06:15 London is 1; MAD → JFK the same day is 0; 18:00 New York → 21:30 Los Angeles is 0 although it lands at 05:30 UTC the next day; across the end of a month is 1): red `TypeError: daysLater is not a function`. Green with `daysLater(departure, arrival)`, the difference of the two dates written in the strings (the same `wallClock` reading as `localDate`), each taken as a UTC midnight. Shown red by mutation as well (the dates taken from the instants in UTC): `AssertionError: expected 1 to be +0` on the Los Angeles case; restored.
+- `ItineraryCard.test.tsx` `'marks an arrival on the next local day'` (no "+1" on `direct()`; "+1" on the overnight flight): red `Unable to find an element with the text: +1`. Green: the card shows `+N` beside the arrival time when `daysLater` is above 0.
+
+Choices to review: the marker is on the card's arrival only, not on each leg in the open card (E1 names the arrival); it counts any number of days (`+2` would show too), though the rule given is "+1"; it is visible text inside the summary button, so a screen reader reads "plus 1" after the time.
+
+Checks: `npm run verify` exit 0 (67 tests in 12 files). Self-review (thermo-nuclear): `daysLater` reuses `wallClock`, so the date has one reading in the module; the card adds one value and one condition, no new state.

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { Leg } from '../api/types';
 import { connecting, direct } from '../test/fixtures';
 import {
+  daysLater,
   duration,
   freshness,
   isMultiAirline,
@@ -69,4 +70,15 @@ test('detects a multi-airline itinerary', () => {
 
   const iberiaTwice = connecting().legs.map((each) => ({ ...each, carrier: 'IB' }));
   expect(isMultiAirline(iberiaTwice)).toBe(false);
+});
+
+test('counts the local days from departure to arrival', () => {
+  // 22:40 in Madrid to 06:15 in London: the next day at the airport of arrival.
+  expect(daysLater('2026-11-20T22:40:00+01:00', '2026-11-21T06:15:00Z')).toBe(1);
+  expect(daysLater('2026-11-20T08:15:00+01:00', '2026-11-20T13:40:00-05:00')).toBe(0);
+  // 18:00 in New York to 21:30 in Los Angeles is the same local day, although it lands at 05:30
+  // UTC the next day: each date is read from its own string.
+  expect(daysLater('2026-11-20T18:00:00-05:00', '2026-11-20T21:30:00-08:00')).toBe(0);
+  // Across the end of a month.
+  expect(daysLater('2026-11-30T23:50:00Z', '2026-12-01T00:40:00Z')).toBe(1);
 });

@@ -157,3 +157,20 @@ test('opens and closes a card with the keyboard', async () => {
   expect(summary).toHaveAttribute('aria-expanded', 'false');
   expect(screen.queryByRole('list', { name: 'Legs' })).not.toBeInTheDocument();
 });
+
+test('marks an arrival on the next local day', () => {
+  const now = new Date('2026-11-15T09:05:00Z');
+  const sameDay = renderWithClient(<ItineraryCard itinerary={direct()} now={now} />);
+  expect(screen.queryByText('+1')).not.toBeInTheDocument();
+  sameDay.unmount();
+
+  // 22:40 in Madrid, 06:15 the next morning in London.
+  const overnight = direct({
+    departure: '2026-11-20T22:40:00+01:00',
+    arrival: '2026-11-21T06:15:00Z',
+    durationMinutes: 515,
+  });
+  renderWithClient(<ItineraryCard itinerary={overnight} now={now} />);
+
+  expect(within(screen.getByRole('article')).getByText('+1')).toBeInTheDocument();
+});

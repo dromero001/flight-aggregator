@@ -2,6 +2,7 @@ import { useId, useState } from 'react';
 import type { Itinerary } from '../api/types';
 import styles from './ItineraryCard.module.css';
 import {
+  daysLater,
   duration,
   flight,
   freshness,
@@ -40,6 +41,7 @@ function stopsSummary(connections: Layover[]): string {
 export function ItineraryCard({ itinerary, now }: ItineraryCardProps) {
   const { origin, destination, departure, arrival, legs } = itinerary;
   const connections = layovers(legs);
+  const arrivalDays = daysLater(departure, arrival);
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const reprice = useReprice();
@@ -81,6 +83,8 @@ export function ItineraryCard({ itinerary, now }: ItineraryCardProps) {
             <time className={styles.time} dateTime={arrival}>
               {localTime(arrival)}
             </time>
+            {/* "+1": the arrival's local date is the day after the departure's (plan 6 E1). */}
+            {arrivalDays > 0 && <span className={styles.days}>{`+${String(arrivalDays)}`}</span>}
           </span>
           <span className={styles.details}>
             <time dateTime={departure}>{localDate(departure)}</time>

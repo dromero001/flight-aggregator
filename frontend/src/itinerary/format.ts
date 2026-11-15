@@ -33,6 +33,17 @@ export function localDate(iso: string): string {
   return DAY.format(new Date(`${wallClock(iso).date}T00:00:00Z`));
 }
 
+const MILLIS_PER_DAY = 86_400_000;
+
+/**
+ * Calendar days from the departure's airport date to the arrival's, each read from its own string
+ * (spec 4.2): 1 for a 22:40 departure that lands at 06:15 the next local day ("+1", plan 6 E1).
+ */
+export function daysLater(departure: string, arrival: string): number {
+  const day = (iso: string) => Date.parse(`${wallClock(iso).date}T00:00:00Z`);
+  return Math.round((day(arrival) - day(departure)) / MILLIS_PER_DAY);
+}
+
 /** "7h 25m", "45m", "2h". */
 export function duration(minutes: number): string {
   const hours = Math.floor(minutes / 60);
