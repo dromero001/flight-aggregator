@@ -4,7 +4,7 @@ The single place that says what is in flight, where it lives and what comes next
 
 **Rule:** the controller rewrites this file and pushes it at every checkpoint: a subagent dispatched or returned, a review verdict, a user decision, a task integrated (`CLAUDE.md`, "Continuity"). If something here contradicts `git log`, `git log` wins: say so and fix this file first.
 
-**Last updated:** 2026-11-15 18:52 CET, on the Mac, `main` at `80b321d` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
+**Last updated:** 2026-11-15 19:05 CET, on the Mac, `main` at `373ccc5` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
 
 ## Resume in five minutes
 
@@ -42,10 +42,10 @@ Every implementer below writes its report in its own worktree, at `.superpowers/
 
 | Task | State | Worktree (Mac) and branch | Pushed as |
 |---|---|---|---|
-| Plan 5 Task 6, the search use case | Cut off at 18:2x by the usage limit (nothing committed yet, its final build pending); resumed 18:52 | `.claude/worktrees/agent-abf03d55db7511dc3`, `worktree-agent-abf03d55db7511dc3`, from `6db5049` | `wip/plan5-task-6` after its first commit |
-| Plan 5 Task 5, round 2 | Cut off by the usage limit after four commits (C-R1, C-R2, C-R3, the breaker meter; the fewer-WARN extra left); resumed 18:52 | `.claude/worktrees/agent-a3652a06ed07d9591`, `worktree-agent-a3652a06ed07d9591`, from `6db5049` | `wip/plan5-task-5-r2` (at `e76d928`) |
+| Plan 5 Task 6, the search use case | Service built (`6506e5c`, green). Wiring decided by the user (A: provisional `RefreshScheduler`, replaced by Task 7; no refresh before the first publication); implementer resumed 19:05 to wire it; then its double review | `.claude/worktrees/agent-abf03d55db7511dc3`, `worktree-agent-abf03d55db7511dc3`, from `6db5049` | `wip/plan5-task-6` (at `6506e5c`) |
+| Plan 5 Task 5, round 2 | Done (`9d8a2ba`, six commits, full build green): C-R1 to C-R3, the breaker's seven meters (the user kept all seven), `EpisodeWarning` for fewer WARN lines. Its double review dispatched 19:05 | `.claude/worktrees/agent-a3652a06ed07d9591`, `worktree-agent-a3652a06ed07d9591`, from `6db5049` | `wip/plan5-task-5-r2` (at `9d8a2ba`) |
 | Approved extras (plan 5 Tasks 4 and 8, git guard) | Cut off by the usage limit after three commits (2 s read timeout, defensive copies, the race test; the git guard in progress); resumed 18:52 | `.claude/worktrees/agent-a47126e03777a95e1`, `worktree-agent-a47126e03777a95e1`, from `6db5049` | `wip/plan5-extras` (at `b5866bd`) |
-| Plan 7 Task 1, telemetry backends in compose | Round 2 done (`42bc27f`, 729 tests green): the user's decisions and E8. Its first double review (cut off by the usage limit, resumed 18:52) dispatched 18:10 | `.claude/worktrees/agent-a380b01c59520a201`, `worktree-agent-a380b01c59520a201`, from `04586b6` | `wip/plan7-task-1` (at `42bc27f`) |
+| Plan 7 Task 1, telemetry backends in compose | Review: functional CHANGES REQUESTED (F1: no test that no Grafana password is committed), code APPROVED. Round 3 sent 19:05: F1; the user's F2 (query history off), F3 (Prometheus on `tmpfs`), F4 (update checks off); C1 (`rule_files` glob that skips Task 3's promtool test file), C2, C6. Then its re-review | `.claude/worktrees/agent-a380b01c59520a201`, `worktree-agent-a380b01c59520a201`, from `04586b6` | `wip/plan7-task-1` (at `42bc27f`) |
 | Plan 7 Task 9, draft of `SOLUTION.md` | Draft done (`59f8727`, checked: 114 links, figures match their reports; 12 `TODO(plan N Task M)` placeholders). Waiting for the user's review (Step 3); points to look at first: the 30-minute cadence's reason (spec 6.4 says a run takes minutes, plan 4 measured 12 to 14 s), the cache hit ratio (no task measures it under real traffic), three inferred 'Rejected' lines. Merging with Task 1: add/add conflict on the plan 7 progress report, keep both, Task 1's first | `.claude/worktrees/agent-ad45d58ed7874f3b3`, `worktree-agent-ad45d58ed7874f3b3` | `wip/plan7-task-9` (at `59f8727`) |
 
 **Plan 5 Task 6:** the plan's Task 6 text, its Global Constraints, Q1–Q9 as decided, and the tests in the order its Step 1 lists. The refresh request must never delay or fail a search.
