@@ -1205,3 +1205,16 @@ Concerns (not changed):
 - **Each kept provider's failure in a refresh's log,** with its reason and cause, as a run's "Kept the last good offers" line has them. Today the report has only each provider's status; the reasons are in `provider.calls{operation=origin-download}`. Cost: the reason and cause in `RefreshReport`, a log line, tests in two modules. Left out unless you approve.
 - **Refresh meters** (count by outcome, duration). Value: the refresh's behaviour on the dashboard of plan 7. Cost: a bootstrap decorator and a test. Left out unless you approve.
 - **A refresh that finds a run holding the inventory skips at once** (`NOWAIT`, as a re-price does), instead of waiting 5 s and logging an ERROR. Value: no ERROR line and no held connection during every run. Cost: an outcome in the port and the report, and tests. Left out unless you approve.
+
+## Task 7 — review
+
+The double review (`.superpowers/sdd/2026-11-15-search-api/task-7-review.md`, on the pre-rebase commits) answered functional APPROVED and code APPROVED, with no Critical or Important finding. The reviewer rebuilt with `--rerun-tasks`, confirmed both refactor commits change no behaviour, the lock order (run, refresh and re-price all take the publication row first), the delete limited to the active slot's rows with a leg leaving the origin, the mark set only after the commit, and that the provisional scheduler is gone. The branch was then rebased on `main`: the test split was rebuilt from `main`'s current `JdbcItineraryRepositoryTest` (26 cases → 16 + 10; the controller checked the method names match, apart from the moved `awaitAStatementBlockedBy` helper and the second class's own `@BeforeEach`), and the refresh's transaction-bounds test was moved to `OneSession` as `d26b94f` did for the load and the update (a test-only follow-up, shown red by a labelled mutation above; not re-reviewed separately). Eight Minors wait for the end-of-plan review (a Minor opens no round of its own):
+- F1: Q9's 60 s wait is pinned only from below; no test covers the 60 s give-up.
+- F2: a refresh waits 5 s for the publication row and fails with ERROR behind a run or another refresh, retried after its 2 min claim; for the user, with Task 13's timing and the `NOWAIT` extra.
+- F3: the run's 2,000,000-itinerary ceiling does not apply to a refresh; for the user.
+- F4: `ingestion.md` says every refresh line carries its correlation id, but the breaker's lines on the download threads do not.
+- C1: the refresh holds the publication row and a connection while it builds the whole inventory, not only during the delete and copy.
+- C2: a refresh that waited behind a run can write itineraries built from offers read before that run (narrow window; comparing `published_at` before and after would guard it).
+- C3: "never published" is inferred from the slot's missing day partition, not from the locked row's `published_at`.
+- C4: `offersWith` checks freshness in two places that must agree.
+The "Gates" counts in "Task 7 — evidence" predate the rebase; after it, `./gradlew build --rerun-tasks`: persistence 121, application 92, bootstrap 151, web 53, providers 197, domain 91, architecture 39, mock-gds 201.
