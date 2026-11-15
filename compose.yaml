@@ -68,6 +68,28 @@ services:
       retries: 5
       start_period: 40s
 
+  frontend:
+    restart: unless-stopped
+    build:
+      context: frontend
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:8080"
+    environment:
+      # nginx serves the dashboard and proxies /api to the app, so the browser sees one origin.
+      API_UPSTREAM: http://app:8080
+      # Served as /config.json for the admin sign-in: the address a browser reaches Keycloak by.
+      OIDC_AUTHORITY: http://localhost:8180/realms/flight-aggregator
+      OIDC_CLIENT_ID: dashboard
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
   keycloak:
     restart: unless-stopped
     image: quay.io/keycloak/keycloak:26.8.1@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332

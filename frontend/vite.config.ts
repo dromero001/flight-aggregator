@@ -8,6 +8,8 @@ export default defineConfig({
     proxy: { '/api': 'http://localhost:8080' },
   },
   test: {
+    // e2e/ holds Playwright's specs, run by `npm run e2e` against the compose stack.
+    exclude: ['**/node_modules/**', 'e2e/**'],
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
   },

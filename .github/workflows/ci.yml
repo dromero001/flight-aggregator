@@ -42,6 +42,7 @@ jobs:
       # Builds the images to prove the Dockerfiles work; nothing is pushed.
       - run: docker build -f mock-gds/Dockerfile .
       - run: docker build -f bootstrap/Dockerfile .
+      - run: docker build frontend
 
   frontend:
     runs-on: ubuntu-latest

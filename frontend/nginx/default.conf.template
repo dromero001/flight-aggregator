@@ -1,0 +1,34 @@
+# Rendered at container start by the nginx image's entrypoint: ${API_UPSTREAM}, ${OIDC_AUTHORITY} and
+# ${OIDC_CLIENT_ID} come from the environment; nginx's own variables ($uri, $remote_addr) are not
+# environment variables, so the rendering leaves them alone.
+
+# Docker's embedded DNS. With the upstream in a variable, nginx resolves it per request, so a
+# recreated app container (a new address) is found without restarting nginx.
+resolver 127.0.0.11 valid=10s;
+
+server {
+    listen 8080;
+    # "localhost" resolves to ::1 first in the image, which is what the health check connects to.
+    listen [::]:8080;
+    root /usr/share/nginx/html;
+
+    location /api/ {
+        set $api_upstream ${API_UPSTREAM};
+        # Overwritten, never appended: the app's rate limit counts the client address, which a client
+        # must not be able to choose through a header it sends itself.
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Host $host;
+        proxy_pass $api_upstream;
+    }
+
+    # The dashboard's settings, read by the admin screen before it signs in.
+    location = /config.json {
+        default_type application/json;
+        return 200 '{"oidcAuthority":"${OIDC_AUTHORITY}","oidcClientId":"${OIDC_CLIENT_ID}"}';
+    }
+
+    # /admin and shared search URLs are routes of the app, not files: they survive a reload.
+    location / {
+        try_files $uri /index.html;
+    }
+}

@@ -160,3 +160,33 @@ Review: functional and code CHANGES REQUESTED (`task-3-review.md`). F-1 and C-1 
 - C-1 announcement, `'announces an error that appears after a submit'`: red `expected null not to be null` (the message was a plain `<p>` added after the submit). Green: each field has an `aria-live="polite"` region that is always in the page, with the message inside when there is one; `aria-invalid` and `aria-describedby` are unchanged (describedby points at the region only while invalid). `.error:empty` has no margin so empty regions take no space.
 - Checks: `npm run verify` green (typecheck, ESLint, Prettier, 14 tests in 5 files), `npm run build` green, `./gradlew build` BUILD SUCCESSFUL.
 - Self-review (thermo-nuclear): the draft state is the one copy of unsent typing and the URL stays the only source of the search; no field list was added (the draft is built from the same four fields). C-2's double build in `search()` was not touched (the key's string is gone). Not tested: that a sort change keeps unsent typing (it follows from the render-time sync comparing only the filters).
+
+## Task 9 — evidence
+
+### Image tags and digests (spec 6.1)
+| Image | Tag | Multi-arch index digest | Age |
+|---|---|---|---|
+| `node` (build stage) | `26.13.0-alpine3.24` | `sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216` | Node 26.13.0 released 2026-10-28 (nodejs.org/dist/index.json, 18 days); the tag's image was last pushed 2026-11-05 (10 days, Docker Hub tags API) |
+| `nginx` (runtime) | `1.30.5-alpine3.24` | `sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94` | pushed 2026-09-26 (50 days); 1.30 is the stable line (`stable-alpine` is 1.30.6, pushed 2026-11-13, 2 days: too new) |
+| `@playwright/test` | 1.64.1 | npm | 2026-10-14 (32 days); 1.65.0 (2026-11-05) and 1.65.1 (2026-11-13) too new |
+
+How checked: Docker Hub tags API (`last_updated` and `digest` per tag) and `docker buildx imagetools inspect <tag>` (the digest is the image index's, so it holds for amd64 and arm64). The `node` tag is the open point: no `26.13.0` image is 14 days old, because Docker rebuilds the tags on a base-image refresh (the Node release itself is 18 days old, and the stage is only a build stage, not shipped). Alternatives are `26.12.1-alpine` (a non-LTS release, pushed 2026-10-22) or waiting until 2026-11-19. Decision for the user.
+
+### Red to green: `smoke.spec.ts` `'serves the dashboard and proxies the API'`
+- Red, stack without `frontend` (`app`, `keycloak`, `postgres`, `mock-gds` up under `-p t9`; `globalSetup` skipped with a throwaway config): `page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/`.
+- Green for what exists, with the image and the service: the h1 "Find flights", `GET /admin` equal to `GET /` (index.html), `/config.json` as `application/json` naming `dashboard`. The red then moved to the next assertion, see below.
+- `/api/` reaches Spring, not nginx: `curl -i localhost:3000/api/itineraries` answers `404`, `Content-Type: application/json`, with Spring Security's headers (`X-Content-Type-Options`, `Cache-Control: no-cache, no-store...`) and the same body as the app on :8080 (`{"timestamp":...,"status":404,"error":"Not Found","path":"/api/itineraries"}`); nginx's own 404 would be HTML. `/api/nothing` answers 401 (the app's security).
+- Health check: first run `unhealthy`; `wget` resolves `localhost` to `::1` and nginx listened on IPv4 only (the image's IPv6 script does not edit the file as non-root). Fixed with `listen [::]:8080;`; the service is healthy and runs as uid 101 (`nginx`).
+
+### Pending plan 5 Task 9 (not weakened)
+- The smoke assertion that `/api/itineraries` answers a page of itineraries (200, JSON, at least one itinerary) fails today: `Expected: 200, Received: 404`.
+- `globalSetup`'s poll fails for the same reason: `Error: No itinerary after 180 s (last answer: HTTP 404). Is the first ingestion done?` Their green run is pending plan 5 Task 9 (the search reaching `main`).
+- The `search`, `re-price`, `accessibility`, `admin` and `rate-limit` projects are declared in the order of the decisions table; their spec files come with the later tasks.
+
+### Other changes
+- `vite.config.ts`: Vitest excludes `e2e/` (it picked up the Playwright spec). `tsconfig.node.json` includes `playwright.config.ts` and `e2e`, so typecheck and lint cover them.
+- Checks: `npm run verify` green (14 tests in 5 files), `npm run build` green, `docker build frontend` green, `./gradlew build` BUILD SUCCESSFUL.
+- Self-review (thermo-nuclear): the compose service, the template and the health check follow the existing patterns; the repository had no templated-config mechanism to reuse (the image's own `/etc/nginx/templates` is the canonical one); nginx's variables survive the envsubst only because they are not environment variables (commented in the template). Nothing fails silently: `globalSetup` reports the last answer when it gives up.
+
+### Extras for the user to decide
+- None built. Not done on purpose: nginx security and caching headers (E5, rejected).
