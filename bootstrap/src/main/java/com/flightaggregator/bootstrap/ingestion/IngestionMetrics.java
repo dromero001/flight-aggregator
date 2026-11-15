@@ -1,0 +1,114 @@
+package com.flightaggregator.bootstrap.ingestion;
+
+import com.flightaggregator.adapter.persistence.PartitionCalendar;
+import com.flightaggregator.application.port.in.IngestionReport;
+import com.flightaggregator.application.port.in.ProviderReport;
+import com.flightaggregator.application.port.out.Clock;
+import com.flightaggregator.application.port.out.Publication;
+import com.flightaggregator.domain.Provider;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.EnumMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.ToDoubleFunction;
+
+/**
+ * The ingestion's meters, recorded from each run's report, with low-cardinality tags only (§6.10):
+ * how long runs take and how they end (§6.4), how many runs in a row did not publish and how old
+ * each provider's last fresh download is (§6.5), and the partitions' health (§4.3). A gauge whose
+ * value is not known yet, before the first publication or a provider's first fresh download, reads
+ * {@code NaN}.
+ */
+public final class IngestionMetrics {
+
+  /** The outcome of a run that ended with an exception, beside the report's own outcomes. */
+  private static final String FAILED = "FAILED";
+
+  private final MeterRegistry meters;
+  private final Clock clock;
+  private final AtomicReference<Publication> lastPublication = new AtomicReference<>();
+  private final AtomicInteger consecutiveFailures = new AtomicInteger();
+  private final Map<Provider, AtomicReference<Instant>> lastFresh = new EnumMap<>(Provider.class);
+
+  public IngestionMetrics(MeterRegistry meters, Clock clock) {
+    this.meters = meters;
+    this.clock = clock;
+    publicationGauge("ingestion.itineraries", Publication::itineraries);
+    publicationGauge("ingestion.partitions.default.rows", Publication::rowsInDefaultPartition);
+    publicationGauge("ingestion.partitions.days.ahead", this::partitionDaysAhead);
+    Gauge.builder("ingestion.consecutive.failures", consecutiveFailures, AtomicInteger::get)
+        .register(meters);
+    for (Provider provider : Provider.values()) {
+      AtomicReference<Instant> fresh = new AtomicReference<>();
+      lastFresh.put(provider, fresh);
+      Gauge.builder("ingestion.provider.last.fresh.seconds", fresh, this::secondsSince)
+          .tag("provider", provider.name())
+          .register(meters);
+    }
+  }
+
+  /** A run that ended with a report; every outcome but {@code PUBLISHED} counts as a failure. */
+  public void record(IngestionReport report) {
+    String outcome = report.outcome().name();
+    meters.timer("ingestion.duration", "outcome", outcome).record(report.duration());
+    ended(outcome, report.outcome() == IngestionReport.Outcome.PUBLISHED);
+    report.publication().ifPresent(lastPublication::set);
+    for (ProviderReport provider : report.providers()) {
+      meters
+          .counter(
+              "ingestion.provider.downloads",
+              "provider",
+              provider.provider().name(),
+              "status",
+              provider.status().name())
+          .increment();
+      if (provider.status() == ProviderReport.Status.FRESH) {
+        lastFresh.get(provider.provider()).set(report.startedAt());
+      }
+    }
+  }
+
+  /** A run that ended with an exception instead of a report. */
+  public void recordFailedRun() {
+    ended(FAILED, false);
+  }
+
+  /** Counts the run under its outcome; a run that published ends the failures in a row. */
+  private void ended(String outcome, boolean published) {
+    meters.counter("ingestion.runs", "outcome", outcome).increment();
+    if (published) {
+      consecutiveFailures.set(0);
+    } else {
+      consecutiveFailures.incrementAndGet();
+    }
+  }
+
+  /** A gauge of the last publication, {@code NaN} until there is one. */
+  private void publicationGauge(String name, ToDoubleFunction<Publication> value) {
+    Gauge.builder(
+            name,
+            lastPublication,
+            last -> last.get() == null ? Double.NaN : value.applyAsDouble(last.get()))
+        .register(meters);
+  }
+
+  /** The days from today's partition to the last one, counted as the partitions count them. */
+  private double partitionDaysAhead(Publication publication) {
+    return ChronoUnit.DAYS.between(
+        PartitionCalendar.dayOf(clock.now()), publication.lastPartitionDay());
+  }
+
+  /**
+   * The age of a provider's last fresh download, from the start of the run that made it, so it is
+   * never younger than the data.
+   */
+  private double secondsSince(AtomicReference<Instant> fresh) {
+    Instant at = fresh.get();
+    return at == null ? Double.NaN : Duration.between(at, clock.now()).toMillis() / 1000.0;
+  }
+}

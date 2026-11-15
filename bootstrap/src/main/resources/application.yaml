@@ -8,7 +8,8 @@ spring:
 ingestion:
   # A run that would build more itineraries publishes nothing (R7).
   max-itineraries: 2000000
-  # Read by the scheduled job (Task 10); no job runs before it.
+  # IngestionJob runs at startup, then this long after each run ends (§6.4), on every instance
+  # where the schedule is enabled; the ShedLock row lets one instance at a time run it.
   interval: PT30M
   schedule:
     enabled: true

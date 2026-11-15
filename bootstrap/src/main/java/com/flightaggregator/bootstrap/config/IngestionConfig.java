@@ -7,6 +7,8 @@ import com.flightaggregator.application.port.out.DiscardedRecords;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.OfferStore;
 import com.flightaggregator.application.service.IngestInventoryService;
+import com.flightaggregator.bootstrap.ingestion.IngestionJob;
+import com.flightaggregator.bootstrap.ingestion.IngestionMetrics;
 import com.flightaggregator.bootstrap.observability.LoggedDiscardedRecords;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
@@ -14,7 +16,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** The ingestion service, over the three providers and the stores. */
+/** The ingestion service, over the three providers and the stores, and the job that runs it. */
 @Configuration(proxyBeanMethods = false)
 class IngestionConfig {
 
@@ -40,5 +42,15 @@ class IngestionConfig {
         itineraries,
         clock,
         maxItineraries);
+  }
+
+  @Bean
+  IngestionMetrics ingestionMetrics(MeterRegistry meters, Clock clock) {
+    return new IngestionMetrics(meters, clock);
+  }
+
+  @Bean
+  IngestionJob ingestionJob(IngestInventory ingestion, IngestionMetrics metrics) {
+    return new IngestionJob(ingestion, metrics);
   }
 }

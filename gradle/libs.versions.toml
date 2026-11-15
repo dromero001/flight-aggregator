@@ -6,6 +6,7 @@ spring-boot = "4.1.2"
 jacoco = "0.8.16"
 resilience4j = "2.4.0"
 wiremock = "3.13.2"
+shedlock = "7.10.1"
 
 [libraries]
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
@@ -35,6 +36,8 @@ jackson-databind = { module = "tools.jackson.core:jackson-databind" }
 resilience4j-circuitbreaker = { module = "io.github.resilience4j:resilience4j-circuitbreaker", version.ref = "resilience4j" }
 resilience4j-timelimiter = { module = "io.github.resilience4j:resilience4j-timelimiter", version.ref = "resilience4j" }
 wiremock-standalone = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
+shedlock-spring = { module = "net.javacrumbs.shedlock:shedlock-spring", version.ref = "shedlock" }
+shedlock-provider-jdbc-template = { module = "net.javacrumbs.shedlock:shedlock-provider-jdbc-template", version.ref = "shedlock" }
 jackson-core = { module = "tools.jackson.core:jackson-core" }
 flyway-core = { module = "org.flywaydb:flyway-core" }
 flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }

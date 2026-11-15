@@ -1,0 +1,133 @@
+package com.flightaggregator.bootstrap.ingestion;
+
+import static com.flightaggregator.bootstrap.ingestion.Reports.STARTED_AT;
+import static com.flightaggregator.bootstrap.ingestion.Reports.fresh;
+import static com.flightaggregator.bootstrap.ingestion.Reports.kept;
+import static com.flightaggregator.bootstrap.ingestion.Reports.published;
+import static com.flightaggregator.domain.Provider.ALPHA;
+import static com.flightaggregator.domain.Provider.BETA;
+import static com.flightaggregator.domain.Provider.GAMMA;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.tuple;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.spi.ThrowableProxy;
+import ch.qos.logback.core.read.ListAppender;
+import com.flightaggregator.application.port.in.IngestionReport;
+import com.flightaggregator.application.port.out.FailureReason;
+import com.flightaggregator.application.port.out.Publication;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.io.IOException;
+import java.sql.SQLException;
+import java.time.LocalDate;
+import java.util.Iterator;
+import java.util.List;
+import java.util.function.Supplier;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.UncategorizedSQLException;
+
+/**
+ * The log is read as Logback events on the job's logger, as in {@code LoggedDiscardedRecordsTest}.
+ */
+class IngestionJobTest {
+
+  private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
+  private final IngestionMetrics metrics = new IngestionMetrics(meters, () -> STARTED_AT);
+  private final Logger logger = (Logger) LoggerFactory.getLogger(IngestionJob.class);
+  private final ListAppender<ILoggingEvent> log = new ListAppender<>();
+
+  @BeforeEach
+  void captureTheLog() {
+    log.start();
+    logger.addAppender(log);
+  }
+
+  @AfterEach
+  void releaseTheLog() {
+    logger.detachAppender(log);
+  }
+
+  /**
+   * PostgreSQL's {@code lock_timeout} (SQLState 55P03) reaches the job untranslated. The run fails,
+   * and the next one still runs.
+   */
+  @Test
+  void keepsSchedulingAfterAnException() {
+    UncategorizedSQLException lockTimeout =
+        new UncategorizedSQLException(
+            "replaceInventory",
+            "TRUNCATE itinerary_b",
+            new SQLException("canceling statement due to lock timeout", "55P03"));
+    Iterator<Supplier<IngestionReport>> runs =
+        List.<Supplier<IngestionReport>>of(
+                () -> {
+                  throw lockTimeout;
+                },
+                () ->
+                    published(
+                        new Publication(1, 10, 0, LocalDate.parse("2026-12-27")), fresh(ALPHA)))
+            .iterator();
+    IngestionJob job = new IngestionJob(() -> runs.next().get(), metrics);
+
+    assertThatCode(job::run).doesNotThrowAnyException();
+    job.run();
+
+    assertThat(log.list)
+        .filteredOn(event -> event.getLevel() == Level.ERROR)
+        .singleElement()
+        .satisfies(
+            event ->
+                assertThat(((ThrowableProxy) event.getThrowableProxy()).getThrowable())
+                    .isSameAs(lockTimeout));
+    assertThat(runs("FAILED")).isEqualTo(1);
+    assertThat(runs("PUBLISHED")).isEqualTo(1);
+  }
+
+  /** One line per run, and one warning per provider whose last good offers were kept. */
+  @Test
+  void logsTheRunAndEachKeptProvider() {
+    IOException serverError = new IOException("Server error 500");
+    IngestionJob job =
+        new IngestionJob(
+            () ->
+                published(
+                    new Publication(7, 1234, 2, LocalDate.parse("2026-12-27")),
+                    fresh(ALPHA),
+                    kept(BETA, FailureReason.HTTP_ERROR, serverError),
+                    fresh(GAMMA)),
+            metrics);
+
+    job.run();
+
+    assertThat(log.list)
+        .extracting(ILoggingEvent::getLevel, IngestionJobTest::fields)
+        .containsExactly(
+            tuple(Level.WARN, "provider=BETA reason=HTTP_ERROR"),
+            tuple(
+                Level.INFO,
+                "outcome=PUBLISHED generation=7 itineraries=1234 duration=PT1M30S"
+                    + " alpha.status=FRESH alpha.fetched=4 alpha.discarded={PRICE=1}"
+                    + " alpha.used=3 alpha.lostToDeduplication=1"
+                    + " beta.status=KEPT beta.failure=HTTP_ERROR beta.fetched=0 beta.discarded={}"
+                    + " beta.used=2 beta.lostToDeduplication=0"
+                    + " gamma.status=FRESH gamma.fetched=4 gamma.discarded={PRICE=1}"
+                    + " gamma.used=3 gamma.lostToDeduplication=1"));
+    assertThat(((ThrowableProxy) log.list.getFirst().getThrowableProxy()).getThrowable())
+        .isSameAs(serverError);
+  }
+
+  private static String fields(ILoggingEvent event) {
+    return String.join(
+        " ", event.getKeyValuePairs().stream().map(pair -> pair.key + "=" + pair.value).toList());
+  }
+
+  private double runs(String outcome) {
+    return meters.get("ingestion.runs").tag("outcome", outcome).counter().count();
+  }
+}
