@@ -78,11 +78,11 @@ class CountedItineraryRepositoryTest {
   }
 
   /**
-   * One WARN line for an update skipped while a run holds the inventory, naming the itinerary and
-   * no price; none for an update stored or gone.
+   * One WARN line for an update skipped while a run or a refresh holds the inventory, naming the
+   * itinerary and no price; none for an update stored or gone.
    */
   @Test
-  void logsAnUpdateSkippedWhileARunHoldsTheInventory() {
+  void logsAnUpdateSkippedWhileARunOrARefreshHoldsTheInventory() {
     for (StoreOutcome outcome : StoreOutcome.values()) {
       new CountedItineraryRepository(answering(outcome), meters).updateInPlace(REQUOTED);
     }
@@ -95,7 +95,7 @@ class CountedItineraryRepositoryTest {
         .containsExactly(
             tuple(
                 Level.WARN,
-                "Skipped storing a re-price: an ingestion run holds the inventory",
+                "Skipped storing a re-price: an ingestion run or a refresh holds the inventory",
                 "itinerary=" + REQUOTED.id().value()));
   }
 
@@ -117,6 +117,11 @@ class CountedItineraryRepositoryTest {
           }
 
           @Override
+          public Publication replaceThrough(Airport origin, ItineraryWriter writer) {
+            throw new UnsupportedOperationException();
+          }
+
+          @Override
           public StoreOutcome updateInPlace(Itinerary repriced) {
             throw new UnsupportedOperationException();
           }
@@ -124,6 +129,42 @@ class CountedItineraryRepositoryTest {
 
     Publication answered =
         new CountedItineraryRepository(loading, meters).replaceInventory(now, writer);
+
+    assertThat(answered).isSameAs(published);
+    assertThat(meters.find("reprice.store").counters()).isEmpty();
+  }
+
+  /**
+   * A stale-route refresh's rewrite passes through as it was answered, and counts no store: the
+   * background refresh logs its own report.
+   */
+  @Test
+  void passesARefreshThroughUncounted() {
+    Publication published = new Publication(3, 1, 0, Instant.parse("2026-12-28T00:00:00Z"));
+    Airport madrid = new Airport("MAD");
+    ItineraryWriter writer = sink -> sink.accept(REQUOTED);
+    ItineraryRepository rewriting =
+        new ItineraryRepository() {
+          @Override
+          public Publication replaceInventory(Instant now, ItineraryWriter written) {
+            throw new UnsupportedOperationException();
+          }
+
+          @Override
+          public Publication replaceThrough(Airport origin, ItineraryWriter written) {
+            assertThat(origin).isEqualTo(madrid);
+            assertThat(written).isSameAs(writer);
+            return published;
+          }
+
+          @Override
+          public StoreOutcome updateInPlace(Itinerary repriced) {
+            throw new UnsupportedOperationException();
+          }
+        };
+
+    Publication answered =
+        new CountedItineraryRepository(rewriting, meters).replaceThrough(madrid, writer);
 
     assertThat(answered).isSameAs(published);
     assertThat(meters.find("reprice.store").counters()).isEmpty();
@@ -138,11 +179,18 @@ class CountedItineraryRepositoryTest {
     return meters.get("reprice.store").tag("outcome", outcome.name()).counter().count();
   }
 
-  /** A repository whose every update in place answers that outcome; it loads nothing. */
+  /**
+   * A repository whose every update in place answers that outcome; it loads and rewrites nothing.
+   */
   private static ItineraryRepository answering(StoreOutcome outcome) {
     return new ItineraryRepository() {
       @Override
       public Publication replaceInventory(Instant now, ItineraryWriter writer) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public Publication replaceThrough(Airport origin, ItineraryWriter writer) {
         throw new UnsupportedOperationException();
       }
 

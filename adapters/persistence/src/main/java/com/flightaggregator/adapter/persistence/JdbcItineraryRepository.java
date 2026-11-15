@@ -6,12 +6,13 @@ import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.ItineraryWriter;
 import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.application.port.out.StoreOutcome;
+import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Itinerary;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 import javax.sql.DataSource;
 import org.springframework.dao.DataAccessException;
@@ -29,17 +30,25 @@ import tools.jackson.core.json.JsonFactory;
  * anywhere rolls it all back, and the writer's exception propagates as it was thrown. The writer's
  * {@code writeTo} runs inside the load, on the load's connection, and must not use the storage
  * ports. All DDL touches only the inactive slot, and every table name comes from {@link Slot}. A
- * re-price's {@link #updateInPlace} rewrites one row of the active slot under a share of the same
- * lock, which it never waits for.
+ * stale-route refresh's {@link #replaceThrough} rewrites an origin's rows of the active slot under
+ * the same lock, and a run waits up to 60 s for it. A re-price's {@link #updateInPlace} rewrites
+ * one row of the active slot under a share of the same lock, which it never waits for.
  */
 public final class JdbcItineraryRepository implements ItineraryRepository {
 
   /**
-   * How long a run, or an update past the publication row, waits for a lock before it fails, for
-   * example while a search still reads the inactive slot's previous generation, instead of waiting
-   * for ever.
+   * How long a run past the publication row, a refresh, or an update past the publication row,
+   * waits for a lock before it fails, for example while a search still reads the inactive slot's
+   * previous generation, instead of waiting for ever.
    */
   private static final String LOCK_TIMEOUT = "5s";
+
+  /**
+   * How long a run waits for the publication row itself (Q9): a refresh holds it while it deletes
+   * and copies an origin's itineraries, which takes seconds, so a run that starts meanwhile waits
+   * for it instead of failing at the 5 s its other locks wait.
+   */
+  private static final String RUN_WAIT_FOR_THE_PUBLICATION = "60s";
 
   /**
    * PostgreSQL's {@code lock_not_available}, which {@code NOWAIT} raises at once and {@code
@@ -80,6 +89,11 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
   }
 
   @Override
+  public Publication replaceThrough(Airport origin, ItineraryWriter writer) {
+    return transaction.execute(status -> rewriteThrough(origin, writer));
+  }
+
+  @Override
   public StoreOutcome updateInPlace(Itinerary repriced) {
     return transaction.execute(status -> rewrite(repriced));
   }
@@ -96,7 +110,7 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
    * statements are bounded as the load's are.
    */
   private StoreOutcome rewrite(Itinerary repriced) {
-    jdbc.sql("SET LOCAL lock_timeout = '" + LOCK_TIMEOUT + "'").update();
+    waitForEachLockAtMost(LOCK_TIMEOUT);
     StatementTimeout.boundTheTransaction(jdbc);
     Optional<Slot> active = activeSlotUnlessARunHoldsIt();
     if (active.isEmpty()) {
@@ -116,10 +130,58 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
     return StoreOutcome.STORED;
   }
 
+  /**
+   * Rewrites, in the active slot, the itineraries with a leg departing from the origin: deletes
+   * them, copies the writer's in through the load's own {@code COPY} and {@link ItineraryRow}, and
+   * moves the generation on, in one transaction, so search reads the old rows or the new ones,
+   * never a mix, and a failure leaves the slot as it was. The active slot is read under the
+   * publication row's lock, held until the commit, as a run's load holds it: a run cannot switch
+   * slots between the read and the write, and a run that starts meanwhile waits for the commit.
+   * {@code published_at} stays the run's, and so do the slot's day partitions; the {@link
+   * Publication} reports where they end and what the {@code DEFAULT} partition holds after the
+   * rewrite. Its lock waits and statements are bounded as the load's are.
+   */
+  private Publication rewriteThrough(Airport origin, ItineraryWriter writer) {
+    waitForEachLockAtMost(LOCK_TIMEOUT);
+    StatementTimeout.boundTheTransaction(jdbc);
+    Slot slot = activeSlotLocked();
+    Instant partitionedUntil = partitionedUntil(slot);
+    jdbc.sql(
+            "DELETE FROM "
+                + slot.table()
+                + " WHERE legs @> jsonb_build_array(jsonb_build_object('origin', ?))")
+        .param(origin.code())
+        .update();
+    long itineraries = copy(slot, writer);
+    long generation =
+        jdbc.sql(
+                "UPDATE inventory_publication SET generation = generation + 1"
+                    + " RETURNING generation")
+            .query(Long.class)
+            .single();
+    return new Publication(generation, itineraries, rowsInDefaultPartition(slot), partitionedUntil);
+  }
+
+  /**
+   * Where the slot's day partitions end, as the run that loaded it created them. A slot no run has
+   * loaded has none, and nothing to rewrite.
+   */
+  private Instant partitionedUntil(Slot slot) {
+    LocalDate lastDay =
+        dayPartitions(slot).stream()
+            .max(Comparator.naturalOrder())
+            .orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        slot.table() + " has no day partition: no run has published into it"));
+    return PartitionCalendar.start(lastDay.plusDays(1));
+  }
+
   private Publication load(Instant now, ItineraryWriter writer) {
-    jdbc.sql("SET LOCAL lock_timeout = '" + LOCK_TIMEOUT + "'").update();
+    waitForEachLockAtMost(RUN_WAIT_FOR_THE_PUBLICATION);
     StatementTimeout.boundTheTransaction(jdbc);
     Slot slot = activeSlotLocked().other();
+    waitForEachLockAtMost(LOCK_TIMEOUT);
     LocalDate today = PartitionCalendar.dayOf(now);
     LocalDate lastPartitionDay = today.plusDays(partitionDaysAhead);
     // Before the partitions are created: PostgreSQL refuses CREATE ... PARTITION OF while the
@@ -128,8 +190,7 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
     dropPartitionsBefore(slot, today);
     today.datesUntil(lastPartitionDay.plusDays(1)).forEach(day -> createPartition(slot, day));
     long itineraries = copy(slot, writer);
-    long rowsInDefaultPartition =
-        jdbc.sql("SELECT count(*) FROM " + slot.defaultPartition()).query(Long.class).single();
+    long rowsInDefaultPartition = rowsInDefaultPartition(slot);
     // Before the switch, so search never reads the slot without statistics. ANALYZE of the parent
     // samples every partition.
     jdbc.sql("ANALYZE " + slot.table()).update();
@@ -142,10 +203,11 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
   }
 
   /**
-   * The active slot, read under the publication row's lock, held until the run commits or rolls
-   * back: a second run at once waits here, before it touches either slot, and then reads the slot
-   * the first one published. Without the lock it could read the old active slot, and truncate the
-   * new one once the first run switched to it.
+   * The active slot, read under the publication row's lock, held until the run or the refresh
+   * commits or rolls back: a second run, or a refresh, at once waits here, before it touches either
+   * slot, and then reads the slot the first one left active. Without the lock a run could read the
+   * old active slot, and truncate the new one once the first run switched to it; a refresh could
+   * write into the slot a run is about to leave.
    */
   private Slot activeSlotLocked() {
     return Slot.of(jdbc.sql(ACTIVE_SLOT + " FOR UPDATE").query(String.class).single());
@@ -176,17 +238,30 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
             "UPDATE inventory_publication SET active_slot = ?, generation = generation + 1,"
                 + " published_at = ? RETURNING generation")
         .param(slot.code())
-        .param(OffsetDateTime.ofInstant(now, ZoneOffset.UTC))
+        .param(ProviderTime.instantParameter(now))
         .query(Long.class)
         .single();
   }
 
-  /**
-   * Drops the slot's day partitions before today. Their days are read back from their names, so a
-   * partition the repository did not name fails the run instead of being kept or dropped silently.
-   */
+  /** Bounds each lock wait of the rest of the transaction, and of it alone. */
+  private void waitForEachLockAtMost(String timeout) {
+    jdbc.sql("SET LOCAL lock_timeout = '" + timeout + "'").update();
+  }
+
+  /** Drops the slot's day partitions before today. */
   private void dropPartitionsBefore(Slot slot, LocalDate today) {
-    jdbc
+    dayPartitions(slot).stream()
+        .filter(day -> day.isBefore(today))
+        .forEach(day -> jdbc.sql("DROP TABLE " + slot.partition(day)).update());
+  }
+
+  /**
+   * The days of the slot's day partitions. They are read back from the partitions' names, so a
+   * partition the repository did not name fails the caller instead of being kept, dropped or
+   * counted silently.
+   */
+  private List<LocalDate> dayPartitions(Slot slot) {
+    return jdbc
         .sql(
             "SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid"
                 + " WHERE i.inhparent = CAST(? AS regclass) AND c.relname <> ?")
@@ -196,8 +271,11 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
         .list()
         .stream()
         .map(slot::dayOfPartition)
-        .filter(day -> day.isBefore(today))
-        .forEach(day -> jdbc.sql("DROP TABLE " + slot.partition(day)).update());
+        .toList();
+  }
+
+  private long rowsInDefaultPartition(Slot slot) {
+    return jdbc.sql("SELECT count(*) FROM " + slot.defaultPartition()).query(Long.class).single();
   }
 
   private void createPartition(Slot slot, LocalDate day) {

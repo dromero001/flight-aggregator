@@ -491,6 +491,11 @@ class IngestInventoryServiceTest {
           }
 
           @Override
+          public Publication replaceThrough(Airport origin, ItineraryWriter writer) {
+            throw new UnsupportedOperationException("Ingestion rewrites no origin");
+          }
+
+          @Override
           public StoreOutcome updateInPlace(Itinerary repriced) {
             throw new UnsupportedOperationException("Ingestion updates nothing in place");
           }

@@ -5,6 +5,7 @@ import com.flightaggregator.application.port.in.IngestionReport;
 import com.flightaggregator.application.port.in.ProviderReport;
 import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.FailureReason;
+import com.flightaggregator.bootstrap.observability.CorrelationId;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
@@ -30,12 +31,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 public final class IngestionJob {
 
   private static final Logger LOG = LoggerFactory.getLogger(IngestionJob.class);
-
-  /**
-   * The logging context's key of the run id, a new random UUID per run: every line of a run carries
-   * it (§6.10). It rides the MDC, which the log framework reads, not a Scoped Value (spec §6.1).
-   */
-  private static final String RUN_ID = "correlation.id";
 
   /** The ShedLock row that one instance at a time holds while it runs (§6.2). */
   private static final String LOCK = "ingestion";
@@ -69,7 +64,7 @@ public final class IngestionJob {
   @Scheduled(initialDelay = 0, fixedDelayString = "${ingestion.interval}")
   public void run() {
     // Removed in the finally, after the catch, so that a failed run's ERROR line carries it too.
-    MDC.put(RUN_ID, UUID.randomUUID().toString());
+    MDC.put(CorrelationId.MDC_KEY, UUID.randomUUID().toString());
     Instant startedAt = clock.now();
     try {
       TaskResult<IngestionReport> run =
@@ -89,7 +84,7 @@ public final class IngestionJob {
         throw error;
       }
     } finally {
-      MDC.remove(RUN_ID);
+      MDC.remove(CorrelationId.MDC_KEY);
     }
   }
 

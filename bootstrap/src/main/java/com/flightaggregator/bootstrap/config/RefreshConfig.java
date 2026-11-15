@@ -1,28 +1,42 @@
 package com.flightaggregator.bootstrap.config;
 
+import com.flightaggregator.application.port.in.RefreshStaleRoute;
+import com.flightaggregator.application.port.out.AirportCatalogue;
+import com.flightaggregator.application.port.out.Clock;
+import com.flightaggregator.application.port.out.DiscardedRecords;
+import com.flightaggregator.application.port.out.FlightProvider;
+import com.flightaggregator.application.port.out.ItineraryRepository;
+import com.flightaggregator.application.port.out.OfferStore;
+import com.flightaggregator.application.port.out.RefreshCoordination;
 import com.flightaggregator.application.port.out.RefreshScheduler;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.flightaggregator.application.service.RefreshStaleRouteService;
+import com.flightaggregator.bootstrap.refresh.BackgroundRefresh;
+import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Provisional (the user's decision of 2026-11-15, plan 5 Task 6): the search use case needs a
- * refresh scheduler before Task 7 builds the background refresh, so that the application starts and
- * Tasks 7 and 9 can run in parallel. This one only warns of each origin it is asked to refresh.
- * Task 7 replaces it: a second scheduler beside it stops startup, or, if either is marked primary,
- * fails {@code FlightAggregatorApplicationTest}, which counts them, so it cannot stay by accident.
+ * The stale-route refresh (§4.1, §6.4), over the three providers, the stores and Valkey's refresh
+ * coordination, and the scheduler that search asks to start it in the background.
  */
 @Configuration(proxyBeanMethods = false)
 class RefreshConfig {
 
-  private static final Logger LOG = LoggerFactory.getLogger(RefreshConfig.class);
+  @Bean
+  RefreshStaleRoute refreshStaleRoute(
+      List<FlightProvider> providers,
+      OfferStore offers,
+      AirportCatalogue airports,
+      DiscardedRecords discarded,
+      ItineraryRepository itineraries,
+      RefreshCoordination coordination,
+      Clock clock) {
+    return new RefreshStaleRouteService(
+        providers, offers, airports, discarded, itineraries, coordination, clock);
+  }
 
   @Bean
-  RefreshScheduler refreshScheduler() {
-    return origin ->
-        LOG.atWarn()
-            .addKeyValue("origin", origin.code())
-            .log("A searched origin is stale, but its background refresh is not built yet");
+  RefreshScheduler refreshScheduler(RefreshStaleRoute refreshes) {
+    return new BackgroundRefresh(refreshes);
   }
 }

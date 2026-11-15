@@ -11,19 +11,24 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * A provider whose download, or whose quotes, are whatever the test gives it; any other call fails
- * the test.
+ * A provider whose download, whose download of one origin, or whose quotes, are whatever the test
+ * gives it; any other call fails the test.
  */
 public final class FakeFlightProvider implements FlightProvider {
 
   private final Provider provider;
   private final Supplier<ProviderDownload> download;
+  private final Function<Airport, ProviderDownload> originDownload;
   private final Function<LegKey, Optional<Leg>> quote;
 
   public FakeFlightProvider(Provider provider, Supplier<ProviderDownload> download) {
     this(
         provider,
         download,
+        origin -> {
+          throw new UnsupportedOperationException(
+              "This fake downloads only whole: " + origin.code());
+        },
         flight -> {
           throw new UnsupportedOperationException("This fake quotes nothing: " + flight);
         });
@@ -32,9 +37,11 @@ public final class FakeFlightProvider implements FlightProvider {
   private FakeFlightProvider(
       Provider provider,
       Supplier<ProviderDownload> download,
+      Function<Airport, ProviderDownload> originDownload,
       Function<LegKey, Optional<Leg>> quote) {
     this.provider = provider;
     this.download = download;
+    this.originDownload = originDownload;
     this.quote = quote;
   }
 
@@ -42,11 +49,25 @@ public final class FakeFlightProvider implements FlightProvider {
   public static FakeFlightProvider quoting(
       Provider provider, Function<LegKey, Optional<Leg>> quote) {
     return new FakeFlightProvider(
+        provider, FakeFlightProvider::onlyQuotes, origin -> onlyQuotes(), quote);
+  }
+
+  /** A provider that only downloads one origin at a time, each as the function answers it. */
+  public static FakeFlightProvider downloadingFrom(
+      Provider provider, Function<Airport, ProviderDownload> originDownload) {
+    return new FakeFlightProvider(
         provider,
         () -> {
-          throw new UnsupportedOperationException("This fake only quotes");
+          throw new UnsupportedOperationException("This fake downloads only by origin");
         },
-        quote);
+        originDownload,
+        flight -> {
+          throw new UnsupportedOperationException("This fake quotes nothing: " + flight);
+        });
+  }
+
+  private static ProviderDownload onlyQuotes() {
+    throw new UnsupportedOperationException("This fake only quotes");
   }
 
   @Override
@@ -61,7 +82,7 @@ public final class FakeFlightProvider implements FlightProvider {
 
   @Override
   public ProviderDownload downloadFrom(Airport origin) {
-    throw new UnsupportedOperationException("This fake downloads only whole: " + origin.code());
+    return originDownload.apply(origin);
   }
 
   @Override

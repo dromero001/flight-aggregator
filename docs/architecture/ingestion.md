@@ -35,8 +35,8 @@ Every call of a provider is counted, as `provider.calls`, by `CountedFlightProvi
 
 Search will read `itinerary_a` or `itinerary_b`, whichever `inventory_publication.active_slot` names (double buffering, §6.5). A run writes the other one, in a single transaction (`JdbcItineraryRepository.replaceInventory`):
 
-1. `SET LOCAL lock_timeout = '5s'`, so a run fails rather than waiting for ever on a lock, and `SET LOCAL statement_timeout = '5min'`, so a statement that hangs fails the run (the `COPY` of every itinerary takes about 12 s).
-2. `SELECT active_slot FROM inventory_publication FOR UPDATE`: the publication row stays locked until the run commits or rolls back. A second run at the same moment waits here, before it touches either slot, and fails at the lock timeout; it can never read the old active slot and truncate the new one after the first run's switch. A re-price's update in place (`updateInPlace`, one row of the active slot deleted and copied back) takes the same row `FOR SHARE NOWAIT`, with the same two timeouts: re-prices share the row, so they store side by side, and a run that starts meanwhile waits here for them. While a run holds the row, an update does not wait: it stores nothing, and the re-price still answers its live price; `reprice.store{outcome}` counts every update as `STORED`, `GONE` or `BUSY`, and each `BUSY` one is also a `WARN` line naming the itinerary.
+1. `SET LOCAL statement_timeout = '5min'`, so a statement that hangs fails the run (the `COPY` of every itinerary takes about 12 s), and `SET LOCAL lock_timeout = '60s'` for the next step only; every later lock waits 5 s at most, so a run fails rather than waiting for ever on a lock.
+2. `SELECT active_slot FROM inventory_publication FOR UPDATE`: the publication row stays locked until the run commits or rolls back. A second run at the same moment waits here, before it touches either slot, and fails after 60 s; it can never read the old active slot and truncate the new one after the first run's switch. A stale-route refresh holds the same row while it rewrites an origin's itineraries, which takes seconds, so a run that starts meanwhile waits for it here rather than failing at 5 s (Q9). A re-price's update in place (`updateInPlace`, one row of the active slot deleted and copied back) takes the same row `FOR SHARE NOWAIT`, with the same two timeouts: re-prices share the row, so they store side by side, and a run that starts meanwhile waits here for them. While a run holds the row, an update does not wait: it stores nothing, and the re-price still answers its live price; `reprice.store{outcome}` counts every update as `STORED`, `GONE` or `BUSY`, and each `BUSY` one is also a `WARN` line naming the itinerary.
 3. `TRUNCATE` the inactive slot, then drop its day partitions before today.
 4. Create the day partitions from today to today plus 37 (`CREATE TABLE IF NOT EXISTS ... PARTITION OF`). A slot is `PARTITION BY RANGE (departure)` with one partition per UTC day, defined once in `PartitionCalendar`, and a `DEFAULT` partition for any departure beyond them (§4.3). The truncate comes first because PostgreSQL refuses to create a partition while the default one holds rows in its range.
 5. `COPY` the itineraries in, as they are built.
@@ -51,6 +51,25 @@ Two outcomes publish nothing and leave the previous generation active:
 
 - **`NOTHING_TO_PUBLISH`**: no provider has stored offers, or no itinerary can be built from them (an empty generation is never published).
 - **`CEILING_EXCEEDED`**: the run would build more than `ingestion.max-itineraries` (2,000,000), so the writer throws and the transaction rolls back (R7).
+
+## The stale-route refresh
+
+A search from an origin whose last publication or refresh is more than 10 minutes old asks for that origin's refresh, once per claim (§6.4, §6.2). `BackgroundRefresh` runs it on a virtual thread of its own and returns at once, so the search neither waits for it nor fails with it. `RefreshStaleRouteService` then works as follows (plan 5, Q2-B):
+
+1. **Downloads the origin from every provider at once** (`downloadFrom`), each download checked as a run checks its own: `ProviderDownloads` is shared by both. A provider whose download fails, is rejected by its concurrency limit, or leaves no usable leg (`EMPTY_DOWNLOAD`) is `KEPT`; one whose download arrived whole is `FRESH`.
+2. **Swaps, in memory only, each fresh provider's stored offers from the origin** for the ones it has just downloaded. A kept provider's offers stay. `provider_offer` is not written: the next run downloads everything again.
+3. **Deduplicates and builds as a run does,** with the refresh's start as `now`. The conflicting offers of the origin's fresh downloads are reported as `CONFLICTING`, as a run reports its own.
+4. **Rewrites the itineraries with a leg departing from the origin** (`JdbcItineraryRepository.replaceThrough`), in one transaction on the active slot:
+   - the timeouts of every store (5 s per lock, 5 min per statement);
+   - the publication row `FOR UPDATE`, so a run cannot switch slots meanwhile, and a re-price answers `BUSY` until the refresh commits;
+   - `DELETE` of every row whose `legs` contain a leg from the origin (`legs @> '[{"origin": "MAD"}]'`, a scan of the active slot, with no index);
+   - `COPY` of the built itineraries through the load's own `ItineraryRow`;
+   - `generation + 1`, with `published_at` unchanged: it stays the last run's.
+
+   Search reads the old rows or the new ones, never a mix, and a failure anywhere rolls the whole rewrite back. The new generation invalidates every cached page and flags every cursor, as a run's does. The deleted rows are left for autovacuum.
+5. **Marks the origin refreshed** in Valkey, at the refresh's start, once the rewrite has committed.
+
+When no provider's download is fresh, nothing is written and the origin is not marked, so a later search asks again once the claim expires (2 minutes). Each refresh logs one line as ECS JSON, `The refresh of a stale origin ended`, at `INFO`. It holds `origin`, `outcome` (`REFRESHED` or `NOTHING_FRESH`), `generation`, `itineraries` (the rows rewritten; both 0 when nothing was written) and each provider's `status`. A refresh that throws, the rewrite's lock timeout included, is one `ERROR` line with its `origin` and stack trace. Every line of one refresh carries its own `correlation.id`. Its provider calls are counted under `provider.calls{operation=origin-download}`, and its discarded records under `ingestion.records.discarded`, as a run's are.
 
 ## Schedule and lock
 
