@@ -1,6 +1,6 @@
 [versions]
 spotless = "8.10.4"
-google-java-format = "1.36.1"
+google-java-format = "1.37.0"
 archunit = "1.5.1"
 spring-boot = "4.1.2"
 jacoco = "0.8.16"
