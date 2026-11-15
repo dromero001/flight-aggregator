@@ -8,13 +8,16 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Provider;
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.github.tomakehurst.wiremock.http.Fault;
 import com.github.tomakehurst.wiremock.stubbing.Scenario;
@@ -25,9 +28,13 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.core.retry.RetryException;
 
 class ProviderHttpTest {
@@ -235,6 +242,46 @@ class ProviderHttpTest {
 
     assertThatThrownBy(() -> http.get("/flights/{missing}"))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  /**
+   * Only a failure that a wait may heal counts against the circuit breaker: a server error, a
+   * timeout or an I/O error. A refused key, another client error, a redirect or a body over the
+   * limit comes back the same until the configuration or the provider changes.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("attemptFailures")
+  void countsAgainstTheBreakerOnlyAFailureAWaitMayHeal(
+      String failure, ResponseDefinitionBuilder response, boolean counts) {
+    server.stubFor(get(urlEqualTo("/flights")).willReturn(response));
+
+    Throwable lastAttempt = failure(httpWithShortTimeout(), "/flights").getCause().getCause();
+
+    assertThat(ProviderHttp.countsAgainstTheBreaker(lastAttempt)).isEqualTo(counts);
+  }
+
+  static Stream<Arguments> attemptFailures() {
+    return Stream.of(
+        arguments("server error", aResponse().withStatus(500), true),
+        arguments("timeout", aResponse().withFixedDelay(3000).withBody("late"), true),
+        arguments("I/O error", aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER), true),
+        arguments("refused key", aResponse().withStatus(401), false),
+        arguments("forbidden", aResponse().withStatus(403), false),
+        arguments("other client error", aResponse().withStatus(404), false),
+        arguments(
+            "redirect", aResponse().withStatus(302).withHeader("Location", "/elsewhere"), false),
+        arguments("body over the limit", aResponse().withBody("x".repeat(1025)), false));
+  }
+
+  /** A failure of no attempt, such as a template without its variable, is no provider's fault. */
+  @Test
+  void doesNotCountAnUnexpectedFailureAgainstTheBreaker() {
+    ProviderHttp http = http();
+
+    Throwable unexpected = catchThrowable(() -> http.get("/flights/{missing}"));
+
+    assertThat(unexpected).isInstanceOf(IllegalArgumentException.class);
+    assertThat(ProviderHttp.countsAgainstTheBreaker(unexpected)).isFalse();
   }
 
   @Test

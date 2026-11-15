@@ -68,6 +68,17 @@ public final class ProviderHttp {
   }
 
   /**
+   * Whether a failed call counts against the provider's circuit breaker, for its {@code
+   * recordException}: a server error, a timeout or an I/O error does, since a wait may heal it. A
+   * refused key, another client error, a redirect or a body over the limit does not: the provider
+   * answers the same until the configuration or the provider changes, so opening the breaker would
+   * only hide the cause.
+   */
+  public static boolean countsAgainstTheBreaker(Throwable failure) {
+    return failure instanceof AttemptFailed attempt && attempt.retryable();
+  }
+
+  /**
    * Gets a page. The path is a URI template and each variable is encoded into it, so a cursor with
    * {@code +}, {@code &} or {@code #} reaches the provider as one value.
    */
