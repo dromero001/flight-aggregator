@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,9 @@ class GrafanaProvisioningTest {
 
   private static final HttpClient HTTP = HttpClient.newHttpClient();
 
+  /** Lives only in this test's container; compose sets none (ComposeFileTest). */
+  private static final String ADMIN_PASSWORD = UUID.randomUUID().toString();
+
   @SuppressWarnings("resource")
   private static final GenericContainer<?> GRAFANA =
       new GenericContainer<>(ObservabilityImages.GRAFANA)
@@ -47,7 +51,10 @@ class GrafanaProvisioningTest {
 
   @BeforeAll
   static void startGrafanaWithComposesSettings() throws IOException {
-    GRAFANA.withEnv(composeEnvironment("grafana")).start();
+    GRAFANA
+        .withEnv(composeEnvironment("grafana"))
+        .withEnv("GF_SECURITY_ADMIN_PASSWORD", ADMIN_PASSWORD)
+        .start();
   }
 
   @AfterAll
@@ -89,18 +96,37 @@ class GrafanaProvisioningTest {
   }
 
   /**
-   * No Grafana account is committed, so Grafana's built-in administrator keeps its default
-   * password; with the login form and basic authentication off, nobody can sign in with it (plan 7,
-   * "Decisions this plan takes").
+   * Explore's query history was the one thing an anonymous Viewer could save under Q1-A, shared by
+   * every visitor; it is off (the user's decision of 2026-11-15, after the task's review).
+   */
+  @Test
+  void savesNoQueryHistory() throws IOException, InterruptedException {
+    HttpResponse<String> save =
+        send(
+            HttpRequest.newBuilder(uri("/api/query-history"))
+                .header("Content-Type", "application/json")
+                .POST(
+                    HttpRequest.BodyPublishers.ofString(
+                        "{\"datasourceUid\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{}\"}]}")));
+
+    assertThat(save.statusCode()).isBetween(400, 499);
+  }
+
+  /**
+   * With the login form and basic authentication off, nobody signs in, not even with the right
+   * password (plan 7, "Decisions this plan takes"): the test gives its own container's built-in
+   * administrator a password, and both ways of signing in refuse it. A wrong password would be
+   * refused with sign-in on as well.
    */
   @Test
   void letsNoOneSignIn() throws IOException, InterruptedException {
-    String defaultCredentials =
-        Base64.getEncoder().encodeToString("admin:admin".getBytes(StandardCharsets.UTF_8));
+    String credentials =
+        Base64.getEncoder()
+            .encodeToString(("admin:" + ADMIN_PASSWORD).getBytes(StandardCharsets.UTF_8));
     HttpResponse<String> basic =
         send(
             HttpRequest.newBuilder(uri("/api/user"))
-                .header("Authorization", "Basic " + defaultCredentials)
+                .header("Authorization", "Basic " + credentials)
                 .GET());
     HttpResponse<String> form =
         send(
@@ -108,7 +134,8 @@ class GrafanaProvisioningTest {
                 .header("Content-Type", "application/json")
                 .POST(
                     HttpRequest.BodyPublishers.ofString(
-                        "{\"user\":\"admin\",\"password\":\"admin\"}")));
+                        JSON.writeValueAsString(
+                            Map.of("user", "admin", "password", ADMIN_PASSWORD)))));
 
     assertThat(basic.statusCode()).isEqualTo(401);
     assertThat(form.statusCode()).isBetween(400, 499);
@@ -141,6 +168,18 @@ class GrafanaProvisioningTest {
   void sendsNoUsageReport() throws IOException {
     assertThat(composeEnvironment("grafana"))
         .containsEntry("GF_ANALYTICS_REPORTING_ENABLED", "false");
+  }
+
+  /**
+   * Nor does it ask grafana.com for new versions of itself or its plugins ({@code [analytics]
+   * check_for_updates} and {@code check_for_plugin_updates}, same page); the user's decision of
+   * 2026-11-15, after the task's review. Checked in compose for the same reason.
+   */
+  @Test
+  void checksForNoUpdates() throws IOException {
+    assertThat(composeEnvironment("grafana"))
+        .containsEntry("GF_ANALYTICS_CHECK_FOR_UPDATES", "false")
+        .containsEntry("GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES", "false");
   }
 
   private static URI uri(String path) {

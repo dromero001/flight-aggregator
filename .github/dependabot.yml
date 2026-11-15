@@ -70,7 +70,7 @@ updates:
       docker:
         patterns:
           - "*"
-  # compose.yaml pins the PostgreSQL image by tag and digest.
+  # compose.yaml pins every image it pulls by tag and digest (ComposeFileTest).
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
@@ -79,7 +79,8 @@ updates:
     cooldown:
       default-days: 14
     # PostgreSQL 18 is the spec's choice (6.1): a major bump is a decision, not a routine update.
-    # The tests' image (PostgresImage.NAME) must follow any update; ComposeFileTest fails until it does.
+    # The tests run the same images (PostgresImage, KeycloakImage, ObservabilityImages): each must
+    # follow any update, and ComposeFileTest fails until it does.
     ignore:
       - dependency-name: "postgres"
         update-types: ["version-update:semver-major"]
