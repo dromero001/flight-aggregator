@@ -48,6 +48,23 @@ check 0 "git update-ref -d refs/heads/feature/x"
 check 0 $'git push origin main \\\n  --follow-tags'
 check 0 $'git status\ngit log --oneline'
 
+# Allowed: a pattern reads one simple command, so what follows `;`, `&&`, `||`, `|` or a line break
+# is not part of it.
+check 0 "git push -q origin main && date +%H:%M"
+check 0 "git push origin main; date +%H:%M"
+check 0 "git push origin main 2>&1 | grep -F +main"
+check 0 "git push origin main || date +%H:%M"
+check 0 $'cat > notes.txt <<\'EOF\'\nRun git push origin main\nthen date +%H:%M\nEOF'
+check 0 "git push origin --delete feature/x && git checkout main"
+check 0 "git reset --soft HEAD~1 && grep -n -- --hard notes.txt"
+check 0 "git clean -n; rm -f build.log"
+check 0 "git branch --show-current && ./gradlew test -Dorg.gradle.debug=false"
+check 0 "git branch -d merged-branch && rm -f merged.patch"
+check 0 "git update-ref refs/heads/backup HEAD; git show-ref -d refs/heads/main"
+check 0 "gh api -X DELETE repos/o/r/git/refs/heads/feature/x && git log -1 refs/heads/main"
+check 0 "git -C repo;echo push -f"
+check 0 "git --git-dir=.git&&echo push -f"
+
 # Blocked: anything that rewrites remote history, deletes main or throws away work.
 check 2 "git push --force"
 check 2 "git push -f origin main"
@@ -86,5 +103,16 @@ check 2 $'git push origin main \\\n  --force'
 check 2 $'git reset \\\n  --hard origin/main'
 check 2 $'git push origin main\n--force'
 check 2 $'git reset\n--hard'
+
+# Blocked: a destructive command alone, or after another one.
+check 2 "git push -f"
+check 2 "echo a; git push origin +main"
+check 2 "echo a; git push -f"
+check 2 "cd x && git push origin --delete main"
+check 2 "cd x && git push origin :main"
+
+# Blocked: a separator inside quotes does not end the command.
+check 2 "git push -o \"merge_request.title=Fix; tidy\" --force"
+check 2 "git push -o 'merge_request.title=Fix | tidy' --force"
 
 if [ "$failures" -eq 0 ]; then echo "All hook tests passed"; else exit 1; fi
