@@ -1,0 +1,218 @@
+# Promtool's unit tests for ingestion.rules.yaml, run by AlertRulesTest. Each series is one
+# instance of the application, as Prometheus labels its scrape (job app, instance address:port).
+# In the values, "2x5" is a 2 followed by five more, one per interval; promtool repeats a NaN only
+# as "NaN+0x20". An alert expected nowhere is "exp_alerts: []" (promtool lists only firing ones).
+rule_files:
+  - ingestion.rules.yaml
+
+# Prometheus's own (plan 7, Q4).
+evaluation_interval: 15s
+
+tests:
+  - name: IngestionFailing fires at three failed runs in a row, and not at two
+    interval: 1m
+    input_series:
+      - series: 'ingestion_consecutive_failures{job="app", instance="172.18.0.7:8079"}'
+        values: '2x5 3x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: IngestionFailing
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: IngestionFailing
+        exp_alerts:
+          - exp_labels: {}
+            exp_annotations:
+              summary: Ingestion has failed 3 runs in a row
+
+  - name: IngestionFailing fires when one instance has failed three runs in a row and another none
+    interval: 1m
+    input_series:
+      - series: 'ingestion_consecutive_failures{job="app", instance="172.18.0.7:8079"}'
+        values: '3x5'
+      - series: 'ingestion_consecutive_failures{job="app", instance="172.18.0.8:8079"}'
+        values: '0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: IngestionFailing
+        exp_alerts:
+          - exp_labels: {}
+            exp_annotations:
+              summary: Ingestion has failed 3 runs in a row
+
+  - name: IngestionFailing fires after 15 minutes with no instance reporting its failures
+    interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: IngestionFailing
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: IngestionFailing
+        exp_alerts:
+          - exp_labels: {}
+            exp_annotations:
+              summary: No instance has reported its failed ingestion runs for 15 minutes
+
+  - name: PartitionHorizonShort fires below 34 days ahead, and not at 37 or 34
+    interval: 1m
+    input_series:
+      - series: 'ingestion_partitions_days_ahead{job="app", instance="172.18.0.7:8079"}'
+        values: '37x4 34x4 33x4'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: PartitionHorizonShort
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: PartitionHorizonShort
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: PartitionHorizonShort
+        exp_alerts:
+          - exp_labels: {}
+            exp_annotations:
+              summary: The partitions reach only 33 days ahead
+
+  - name: PartitionHorizonShort fires after 15 minutes of NaN on every instance
+    interval: 1m
+    input_series:
+      - series: 'ingestion_partitions_days_ahead{job="app", instance="172.18.0.7:8079"}'
+        values: 'NaN+0x20'
+      - series: 'ingestion_partitions_days_ahead{job="app", instance="172.18.0.8:8079"}'
+        values: 'NaN+0x20'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: PartitionHorizonShort
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: PartitionHorizonShort
+        exp_alerts:
+          - exp_labels: {}
+            exp_annotations:
+              summary: The partition horizon has been unknown on every instance for 15 minutes
+
+  - name: PartitionHorizonShort stays quiet with one instance at 37 and a restarted one at NaN
+    interval: 1m
+    input_series:
+      - series: 'ingestion_partitions_days_ahead{job="app", instance="172.18.0.7:8079"}'
+        values: '37x20'
+      - series: 'ingestion_partitions_days_ahead{job="app", instance="172.18.0.8:8079"}'
+        values: 'NaN+0x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: PartitionHorizonShort
+        exp_alerts: []
+
+  - name: PartitionHorizonShort fires after 15 minutes with no instance reporting it
+    interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: PartitionHorizonShort
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: PartitionHorizonShort
+        exp_alerts:
+          - exp_labels: {}
+            exp_annotations:
+              summary: The partition horizon has been unknown on every instance for 15 minutes
+
+  - name: RowsInDefaultPartition fires at one row on any instance, and not at none
+    interval: 1m
+    input_series:
+      - series: 'ingestion_partitions_default_rows{job="app", instance="172.18.0.7:8079"}'
+        values: '0x9'
+      - series: 'ingestion_partitions_default_rows{job="app", instance="172.18.0.8:8079"}'
+        values: '0x4 1x4'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: RowsInDefaultPartition
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: RowsInDefaultPartition
+        exp_alerts:
+          - exp_labels: {}
+            exp_annotations:
+              summary: 'Rows in the DEFAULT partition: 1; a departure day has no partition'
+
+  - name: ProviderDataStale fires for BETA only when its data is older than 90 minutes
+    interval: 1m
+    input_series:
+      - series: 'ingestion_provider_last_fresh_seconds{job="app", instance="172.18.0.7:8079", provider="ALPHA"}'
+        values: '5400x9'
+      - series: 'ingestion_provider_last_fresh_seconds{job="app", instance="172.18.0.7:8079", provider="BETA"}'
+        values: '5400x4 5401x4'
+      - series: 'ingestion_provider_last_fresh_seconds{job="app", instance="172.18.0.7:8079", provider="GAMMA"}'
+        values: '60x9'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ProviderDataStale
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: ProviderDataStale
+        exp_alerts:
+          - exp_labels:
+              provider: BETA
+            exp_annotations:
+              summary: Provider BETA's newest data is 1h 30m 1s old
+
+  - name: ProviderDataStale stays quiet when another instance has BETA's data from 60 seconds ago
+    interval: 1m
+    input_series:
+      - series: 'ingestion_provider_last_fresh_seconds{job="app", instance="172.18.0.7:8079", provider="BETA"}'
+        values: '5401x9'
+      - series: 'ingestion_provider_last_fresh_seconds{job="app", instance="172.18.0.8:8079", provider="BETA"}'
+        values: '60x9'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ProviderDataStale
+        exp_alerts: []
+
+  - name: ProviderDataStale fires for GAMMA after 15 minutes of NaN on every instance
+    interval: 1m
+    input_series:
+      - series: 'ingestion_provider_last_fresh_seconds{job="app", instance="172.18.0.7:8079", provider="ALPHA"}'
+        values: '60x20'
+      - series: 'ingestion_provider_last_fresh_seconds{job="app", instance="172.18.0.7:8079", provider="GAMMA"}'
+        values: 'NaN+0x20'
+      - series: 'ingestion_provider_last_fresh_seconds{job="app", instance="172.18.0.8:8079", provider="ALPHA"}'
+        values: '60x20'
+      - series: 'ingestion_provider_last_fresh_seconds{job="app", instance="172.18.0.8:8079", provider="GAMMA"}'
+        values: 'NaN+0x20'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: ProviderDataStale
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ProviderDataStale
+        exp_alerts:
+          - exp_labels:
+              provider: GAMMA
+            exp_annotations:
+              summary: Provider GAMMA's data age has been unknown on every instance for 15 minutes
+
+  - name: ProviderDataStale stays quiet with GAMMA at 60 seconds on one instance and NaN on a restarted one
+    interval: 1m
+    input_series:
+      - series: 'ingestion_provider_last_fresh_seconds{job="app", instance="172.18.0.7:8079", provider="GAMMA"}'
+        values: '60x20'
+      - series: 'ingestion_provider_last_fresh_seconds{job="app", instance="172.18.0.8:8079", provider="GAMMA"}'
+        values: 'NaN+0x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ProviderDataStale
+        exp_alerts: []
+
+  - name: ProviderDataStale fires after 15 minutes with no instance reporting any provider
+    interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: ProviderDataStale
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ProviderDataStale
+        exp_alerts:
+          - exp_labels: {}
+            exp_annotations:
+              summary: No instance has reported any provider's data age for 15 minutes

@@ -1,0 +1,77 @@
+# The ingestion's alerts (spec 6.5, 4.3; plan 7, Q3-A and Q4), read on Prometheus's alerts page and
+# in Grafana, with no notification channel (spec 6.10). Tested by ingestion.rules.test.yaml.
+#
+# - Each application instance exports its own gauges, so every rule combines the instances: the max
+#   of the failures in a row and of the partition gauges, the min of a provider's data age (plan 4
+#   close-out). Both skip a NaN unless every instance reads NaN, so a restarted instance beside a
+#   healthy one changes nothing.
+# - A value past its threshold fires at once (Q4: each condition already spans several runs).
+# - A gauge that reads NaN (before an instance's first run) or is missing (no instance scraped)
+#   counts as stale (plan 4 close-out): its rule fires after 15 minutes of that on every instance
+#   (Q4). A normal restart reads NaN for well under a minute; a crashed run's lock, which keeps the
+#   restarted instance from running for up to 29 minutes, does fire. The wait is a "for", so a
+#   Prometheus that has just started, with no history, does not fire before its first scrape.
+# - "x == x" keeps only the series that hold a number, since NaN is not equal to itself.
+# - An alert's two rules (its value, its stale gauge) never hold at once: one needs a number, the
+#   other none. promtool's duplicate-rules lint still lists them (a warning: it exits 0).
+groups:
+  - name: ingestion
+    rules:
+      # Three failed runs in a row are 90 minutes, three times the cadence (spec 6.4, 6.5; Q4).
+      - alert: IngestionFailing
+        expr: max(ingestion_consecutive_failures) >= 3
+        for: 0m
+        annotations:
+          summary: Ingestion has failed {{ $value }} runs in a row
+      # The count is never NaN (it reads 0 from the start), only missing.
+      - alert: IngestionFailing
+        expr: absent(ingestion_consecutive_failures)
+        for: 15m
+        annotations:
+          summary: No instance has reported its failed ingestion runs for 15 minutes
+
+      # 37 days just after a run; 34 means three days of runs missed, with four of the seven spare
+      # days left (spec 4.3; Q4).
+      - alert: PartitionHorizonShort
+        expr: max(ingestion_partitions_days_ahead) < 34
+        for: 0m
+        annotations:
+          summary: The partitions reach only {{ $value }} days ahead
+      - alert: PartitionHorizonShort
+        expr: absent(ingestion_partitions_days_ahead == ingestion_partitions_days_ahead)
+        for: 15m
+        annotations:
+          summary: The partition horizon has been unknown on every instance for 15 minutes
+
+      # Above 0 (spec 4.3). An unknown count is PartitionHorizonShort's: both gauges read the same
+      # publication.
+      - alert: RowsInDefaultPartition
+        expr: max(ingestion_partitions_default_rows) > 0
+        for: 0m
+        annotations:
+          summary: 'Rows in the DEFAULT partition: {{ $value }}; a departure day has no partition'
+
+      # Older than 90 minutes, the same three cadences (Q3-A, Q4).
+      - alert: ProviderDataStale
+        expr: min by (provider) (ingestion_provider_last_fresh_seconds) > 5400
+        for: 0m
+        annotations:
+          summary: Provider {{ $labels.provider }}'s newest data is {{ $value | humanizeDuration }} old
+      # The providers listed, unless an instance holds a number for them. A provider reads NaN
+      # while it has nothing stored, and on a restarted instance until its first run.
+      - alert: ProviderDataStale
+        expr: >-
+          group by (provider) (ingestion_provider_last_fresh_seconds)
+          unless on (provider)
+          (ingestion_provider_last_fresh_seconds == ingestion_provider_last_fresh_seconds)
+        for: 15m
+        annotations:
+          summary: >-
+            Provider {{ $labels.provider }}'s data age has been unknown on every instance for 15
+            minutes
+      # With no series at all, no provider can be named.
+      - alert: ProviderDataStale
+        expr: absent(ingestion_provider_last_fresh_seconds)
+        for: 15m
+        annotations:
+          summary: No instance has reported any provider's data age for 15 minutes

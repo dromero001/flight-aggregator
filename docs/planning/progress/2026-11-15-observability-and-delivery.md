@@ -217,3 +217,145 @@ The task review (one reviewer, functional then code) answered: functional CHANGE
   - Fixed: the compose-only tmpfs check was replaced by a test that runs compose's settings, because the shape check passed while Prometheus could not write.
   - Kept, as deferred (C4): `givesGrafanaNoAdministratorAccount` casts compose's environment inline, as `givesKeycloakNoAdministratorAccount` does. A `ComposeFile.environment(service)` would remove both casts and `GrafanaProvisioningTest`'s own copy.
   - Nothing new passes silently: every new or changed test was seen red, by mutation where the state already held.
+
+## Task 3 — evidence
+
+The alert rules of Q3-A with Q4's values, in `deploy/prometheus/rules/ingestion.rules.yaml`, and promtool's unit tests for them beside it, in `ingestion.rules.test.yaml`. `AlertRulesTest.passesEveryRuleTest` runs `promtool check rules` and `promtool test rules` on them inside `./gradlew build`, in `ObservabilityImages.PROMETHEUS`, and fails with promtool's output.
+
+### The meter names (read before writing a rule)
+
+- On `main`, `IngestionMetrics` registers four gauges, none with a base unit: `ingestion.consecutive.failures`, `ingestion.partitions.days.ahead`, `ingestion.partitions.default.rows`, and `ingestion.provider.last.fresh.seconds` with the tag `provider` (the enum's name: `ALPHA`, `BETA`, `GAMMA`).
+- Micrometer's Prometheus registry is not on `main` yet (Task 2 adds it). Its naming was read from the sources at the BOM's versions (Boot 4.1.2: Micrometer 1.17.2, Prometheus client 1.7.0):
+  - `PrometheusNamingConvention.name` turns every dot into an underscore (`PrometheusNaming.prometheusName`, underscore escaping);
+  - it adds a suffix only for a base unit (none here) or a timer;
+  - `sanitizeMetricName` strips only `_total`, `_created`, `_bucket` and `_info`.
+- So the app exports `ingestion_consecutive_failures`, `ingestion_partitions_days_ahead`, `ingestion_partitions_default_rows` and `ingestion_provider_last_fresh_seconds{provider}`. These are the names Task 2's interface fixes.
+- No tag is added to every meter (`management.metrics.tags` is not set). A series carries its own tags plus Prometheus's `job` and `instance`, as the test series do.
+- Printing a real scrape from the registry was refused (it meant running a downloaded jar), so the names rest on the source. Task 2's Step 4 records them as Prometheus stores them.
+
+### Red → green, one test at a time
+
+Failure messages are AssertJ's, which quote promtool's output (`exp` is the expected alerts, `got` the firing ones). Every mutation below was restored.
+
+**Step 1.** `AlertRulesTest.passesEveryRuleTest`:
+- Red: `[promtool check rules /etc/prometheus/rules/*.rules.yaml` / `promtool: error: path '/etc/prometheus/rules/*.rules.yaml' does not exist, try --help] expected: 0 but was: 1`.
+- Green: a rule file with the group `ingestion` and no rules, and a test file with no tests.
+
+**Task 1's `loadsTheRuleFilesButNotTheirPromtoolTests` (R1).**
+- With the real rule file in `rules/`, it went red as the review predicted: `Expecting actual: "... SUCCESS: 2 rule files found ..." to contain: "SUCCESS: 1 rule files found"`.
+- Changed: the count assertion is dropped. The test keeps its own example pair, so it does not depend on the repository's rule files.
+- The glob check is not weakened, shown by the same two mutations of `prometheus.yaml` as round 3:
+  - `rules/*.yaml`: red. promtool failed on both test files: `field rule_files not found in type rulefmt.RuleGroups`. Now that a real test file sits beside the rules, `checksThePrometheusConfiguration` and `storesItsDataOnComposesTmpfsWithNoVolume` fail on it too.
+  - `rules/*.rule.yaml` (matches nothing): red, `Expecting actual: "Checking /etc/prometheus/prometheus.yaml SUCCESS: ... valid prometheus config file syntax" to contain: "Checking /etc/prometheus/rules/example.rules.yaml"`.
+
+**Step 2: the promtool cases.** Each is one test group in `ingestion.rules.test.yaml`, added on its own. Unless noted, the series are one instance at `172.18.0.7:8079`, one value a minute, and the rules are evaluated every 15 s, as Prometheus does (Q4).
+
+`IngestionFailing`
+1. **Fires at three failed runs in a row, and not at two** (2 until minute 5, 3 from minute 6).
+   - Red: `alertname: IngestionFailing, time: 6m, exp:[{alertname="IngestionFailing"}, summary="Ingestion has failed 3 runs in a row"], got:[]`.
+   - Green: `max(ingestion_consecutive_failures) >= 3`, `for: 0m`.
+   - Mutations: `>= 4` gives `time: 6m ... got:[]`; `>= 2` gives `time: 5m, exp:[], got:[... "Ingestion has failed 2 runs in a row"]`; `for: 1m` gives `time: 6m ... got:[]`.
+2. **Fires with one instance at 3 and another at 0.**
+   - Passed on its first run (`max` was there).
+   - Mutation `min`: `time: 5m ... got:[]`.
+3. **Fires after 15 minutes with no instance reporting it, not after 14** (no series).
+   - Red: `time: 15m ... got:[]`.
+   - Green: a second rule, `absent(ingestion_consecutive_failures)`, `for: 15m`.
+   - Mutations: `for: 14m` gives `time: 14m, exp:[], got:[...]`; `for: 16m` gives `time: 15m ... got:[]`.
+
+`PartitionHorizonShort`
+
+4. **Quiet at 37 and at 34, fires at 33** (37, then 34 from minute 5, then 33 from minute 10).
+   - Red: `time: 10m ... got:[]`.
+   - Green: `max(ingestion_partitions_days_ahead) < 34`, `for: 0m`.
+   - Mutations: `< 35` and `<= 34` give `time: 9m, exp:[], got:[... "The partitions reach only 34 days ahead"]`; `< 33` gives `time: 10m ... got:[]`; `> 34` gives `time: 4m ... "only 37 days ahead"`; `for: 1m` gives `time: 10m ... got:[]`.
+5. **Fires after 15 minutes of NaN on two instances, not after 14.**
+   - First run: a fixture error, `unexpected identifier "NaNx20" in series values, expected number or "stale"`. promtool repeats a NaN only as `NaN+0x20` (checked on a scratch file first).
+   - Red: `time: 15m ... got:[]`.
+   - Green: `absent(ingestion_partitions_days_ahead == ingestion_partitions_days_ahead)`, `for: 15m`. `x == x` keeps only the series holding a number.
+   - Mutations: `for: 14m` and `for: 16m`, red at 14 and 15 minutes.
+6. **Quiet with one instance at 37 and a restarted one at NaN,** evaluated at minute 20.
+   - Passed on its first run.
+   - Mutation, NaN on any instance (`group(ingestion_partitions_days_ahead != ingestion_partitions_days_ahead)`): `time: 20m, exp:[], got:[... "The partition horizon has been unknown on every instance for 15 minutes"]`.
+7. **Fires after 15 minutes with no instance reporting it, not after 14.**
+   - Passed on its first run.
+   - Mutation, NaN only (`max(...) != max(...)`, which misses an absent gauge): `time: 15m ... got:[]`.
+
+`RowsInDefaultPartition`
+
+8. **Fires at one row on any instance, and not at none** (one instance at 0; another at 0, then 1 from minute 5).
+   - Red: `time: 5m ... got:[]`.
+   - Green: `max(ingestion_partitions_default_rows) > 0`, `for: 0m`.
+   - Mutations: `>= 0` gives `time: 4m ... "Rows in the DEFAULT partition: 0"`; `> 1`, `min` and `for: 1m` give `time: 5m ... got:[]`.
+
+`ProviderDataStale`
+
+9. **Fires for BETA only** (ALPHA at 5,400 s, the threshold itself; BETA at 5,400, then 5,401 from minute 5; GAMMA at 60).
+   - Red: `time: 5m, exp:[{alertname="ProviderDataStale", provider="BETA"}, summary="Provider BETA's newest data is 1h 30m 1s old"], got:[]`.
+   - Green: `min by (provider) (ingestion_provider_last_fresh_seconds) > 5400`, `for: 0m`.
+   - Mutations: `> 5401`, `min` without `by (provider)` and `for: 1m` give `time: 5m ... got:[]`; `>= 5400` gives `time: 4m ... got:[ALPHA "1h 30m 0s", BETA "1h 30m 0s"]`.
+10. **Quiet when another instance has BETA at 60 s** (the first at 5,401).
+    - Passed on its first run.
+    - Mutation `max by (provider)`: `time: 5m, exp:[], got:[BETA "1h 30m 1s"]`.
+11. **Fires for GAMMA after 15 minutes of NaN on two instances, not after 14** (ALPHA at 60 on both).
+    - Red: `time: 15m ... got:[]`.
+    - Green: `group by (provider) (x) unless on (provider) (x == x)`, `for: 15m`: the providers listed, unless an instance holds a number for them.
+    - Mutations: `for: 14m` and `for: 16m`, red at 14 and 15 minutes.
+12. **Quiet with GAMMA at 60 s on one instance and NaN on a restarted one,** at minute 20.
+    - Passed on its first run.
+    - Mutation, NaN on any instance (`group by (provider) (x != x)`): `time: 20m, exp:[], got:[GAMMA "... unknown on every instance for 15 minutes"]`.
+13. **Fires after 15 minutes with no instance reporting any provider, not after 14.**
+    - Red: `time: 15m, exp:[{alertname="ProviderDataStale"}, summary="No instance has reported any provider's data age for 15 minutes"], got:[]`.
+    - Green: `absent(ingestion_provider_last_fresh_seconds)`, `for: 15m`.
+    - Mutations: `for: 14m` and `for: 16m`, red at 14 and 15 minutes.
+
+**Refactor, staying green.** The rule file's header says how the rules combine instances, why the value rules fire at once and the stale ones after 15 minutes, and what `x == x` does. The test file's header explains promtool's value notation. `AlertRulesTest` and `PrometheusConfigTest` stayed green.
+
+### Deviations from the plan's wording
+
+- **Each alert whose gauge can be unknown has two rules under one name:** one for its value (`for: 0m`) and one for the stale gauge (`for: 15m`). A rule has a single `for`, and Q4 gives the two conditions different waits.
+- **The 15 minutes are a `for`, not a range such as `absent_over_time(x[15m])`.** A range reads the time before Prometheus started as missing, so every `docker compose up` would fire the stale alerts before the first scrape. A `for` needs 15 minutes of evaluations. Prometheus keeps its data on tmpfs, so a Prometheus restart also starts the wait again.
+- **`IngestionFailing`'s stale rule covers a missing gauge only,** as its interface says. The count is an `AtomicInteger` and reads 0 from the start, never NaN.
+- **`ProviderDataStale` with no series at all carries no `provider` label,** because with no series no provider can be named. Its summary says "any provider". Naming each provider would mean one rule per provider, which the rules would have to be changed for whenever a provider is added. Cost if wrong: the alert list shows one `ProviderDataStale` without a provider when the app is not scraped, beside `IngestionFailing`'s.
+- **Three cases the plan's list does not name,** each for its interface or Review Focus 2:
+  - case 7, `PartitionHorizonShort` with no instance reporting ("or missing", in its interface line);
+  - case 12, GAMMA's NaN on a restarted instance beside a healthy one (Review Focus 2: one restarted instance beside a healthy one must not fire);
+  - case 13, `ProviderDataStale` with no instance reporting ("or missing", in its interface line).
+- **The order of two cases:** `PartitionHorizonShort`'s "NaN on every instance" (5) came before "one at 37 and a restarted one at NaN" (6). Written first, case 6 would have passed before its rule existed. Written after, it was shown red by a mutation of that rule.
+
+### Pending decision for the user: promtool's duplicate-rules lint
+
+`promtool check rules` and `promtool check config` now print `FAILED: lint error 3 duplicate rule(s) found. Metric: IngestionFailing ... PartitionHorizonShort ... ProviderDataStale ... Might cause inconsistency while recording expressions`, and still exit 0. The lint flags rules with the same name and the same labels. The default lint only warns; `--lint-fatal` would make it fail.
+
+The two rules of an alert never hold at once: one needs a number, the other none. So no two alerts with the same labels exist at the same time, and the warning is about recording rules. Built as A for now, with a line in the rule file saying so.
+- **A. Leave it (as built).** Cost: promtool's output says `FAILED` on a valid file, which a reader has to know to ignore.
+- **B. A label on the four stale rules** (for example `gauge: unknown`). The lint passes, and the alert list can filter the stale cases. `AlertRulesTest` could then run with `--lint-fatal`. Cost: one line per rule and one per expected alert in the tests; the stale alerts' labels change.
+- **C. Separate names for the stale rules** (for example `IngestionMetricsMissing`). Cost: alerts that Q3-A does not name.
+- Recommendation: **B.** It keeps Q3-A's four names and makes promtool's output clean.
+
+### The run (not a step of the plan)
+
+Prometheus alone, `docker compose -p plan7-task3 up -d --wait --no-deps prometheus`, healthy:
+- `/api/v1/rules` listed the group `ingestion` from `/etc/prometheus/rules/ingestion.rules.yaml` (compose's read-only mount): eight rules, all `health: ok`, evaluated every 15 s.
+- With no scrape job yet (Task 2), the three rules for a missing gauge were `pending`, labels `{alertname: IngestionFailing}`, `{alertname: PartitionHorizonShort}` and `{alertname: ProviderDataStale}`. The five others were `inactive`.
+- Stopped with `docker compose -p plan7-task3 down -v`; no container, network or volume of the project is left.
+
+### Concerns
+
+- **Until Task 2 adds the scrape job, compose's Prometheus fires three alerts 15 minutes after it starts:** `IngestionFailing`, `PartitionHorizonShort` and `ProviderDataStale`, each for a missing gauge. That is correct, since nothing is scraped. It ends when Task 2 reaches `main`.
+- **When the app is down, those three alerts fire together for one cause.** Each alert's interface asks for it; the summaries say that no instance reports.
+- **After a crash, `IngestionFailing` stays quiet while the dead run's lock lasts** (up to 29 minutes, plan 4 close-out), because the restarted instance's count reads 0. The gap is caught instead by `PartitionHorizonShort` and `ProviderDataStale`, whose gauges read NaN until the first run and fire after 15 minutes. This matches the "Alert semantics" constraint.
+
+### Extras for the user to decide
+
+- **`PrometheusConfigTest` showing promtool's output when it fails,** as `AlertRulesTest` does (run promtool in a kept-alive container and put its output in the assertion). Its failures today say only `Container did not start correctly`, and promtool's error is in the test's log, not the report's message (seen in R1's mutations). Value: a broken configuration names its error. Cost: Task 1's helper changes, three tests unchanged in what they check. Left out unless you approve.
+
+### Gates
+
+- `./gradlew build`: `BUILD SUCCESSFUL` (exit 0), 826 tests across the modules (bootstrap 131), none failed or skipped. The new test is `AlertRulesTest.passesEveryRuleTest`; its 13 promtool cases run inside it. `loadsTheRuleFilesButNotTheirPromtoolTests` changed as R1 asked. `frontend/` is not touched.
+- Self-review (thermo-nuclear) of the diff:
+  - Existing mechanisms reused: the image's own `promtool` and the `ObservabilityImages` pin; the directory copied as compose mounts it, as `PrometheusConfigTest` does; promtool's unit-test format rather than a Java harness around the rules.
+  - `AlertRulesTest` runs promtool with `execInContainer` in a kept-alive container rather than with `PrometheusConfigTest`'s one-shot builder. The one-shot start loses promtool's output (its failure says only `Container did not start correctly`), and the plan asks for that output. The extra above would give `PrometheusConfigTest` the same.
+  - One rule per condition, not one expression per alert. The value and stale conditions have different waits, and a range in place of `for` would fire at every start (see "Deviations").
+  - Silent passes: a quiet expectation (`exp_alerts: []`) under a misspelled alert name would pass. Every quiet expectation is either in a case that also expects the alert to fire under the same name, or was shown red by a mutation (cases 6, 10 and 12). A test file that matches no rule file fails promtool, and no rule file fails `AlertRulesTest` (Step 1).
+  - Sizes: the rule file has 77 lines, its tests 218 and `AlertRulesTest` 47.
