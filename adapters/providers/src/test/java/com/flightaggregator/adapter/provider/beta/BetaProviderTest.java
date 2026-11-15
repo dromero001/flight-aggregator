@@ -86,13 +86,15 @@ class BetaProviderTest {
   }
 
   private BetaProvider provider() {
-    return provider(Duration.ofSeconds(30));
-  }
-
-  private BetaProvider provider(Duration downloadTimeout) {
     ResilienceSettings settings =
         new ResilienceSettings(
-            Duration.ofMillis(500), downloadTimeout, 3, Duration.ofMillis(10), 100, 10, 4096);
+            Duration.ofMillis(500),
+            Duration.ofSeconds(30),
+            3,
+            Duration.ofMillis(10),
+            100,
+            10,
+            4096);
     AtomicInteger arrivals = new AtomicInteger();
     Clock clock = () -> FIRST_ARRIVAL.plusSeconds(arrivals.getAndIncrement());
     ProviderHttp http =

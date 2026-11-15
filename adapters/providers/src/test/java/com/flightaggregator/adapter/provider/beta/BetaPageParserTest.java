@@ -1,10 +1,13 @@
 package com.flightaggregator.adapter.provider.beta;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
+import com.flightaggregator.adapter.provider.LoggedText;
 import com.flightaggregator.adapter.provider.ParsedPage;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
@@ -15,6 +18,8 @@ import com.flightaggregator.domain.Carrier;
 import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.Money;
 import com.flightaggregator.domain.Provider;
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,7 +45,7 @@ class BetaPageParserTest {
 
   @Test
   void parsesAValidSegment() {
-    ParsedPage page = BetaPageParser.parse(pageOf(1, 1, VALID_SEGMENT), QUOTED_AT);
+    ParsedPage page = BetaPageParser.parse(pageOf(1, 1, VALID_SEGMENT), QUOTED_AT, 1);
 
     assertThat(page.legs())
         .containsExactly(
@@ -76,7 +81,8 @@ class BetaPageParserTest {
                 negativePrice,
                 unknownAirport,
                 VALID_SEGMENT),
-            QUOTED_AT);
+            QUOTED_AT,
+            1);
 
     assertThat(page.legs())
         .extracting(Leg::flightNumber, leg -> leg.destination().code())
@@ -106,7 +112,7 @@ class BetaPageParserTest {
             + "\">]>"
             + pageOf(1, 1, VALID_SEGMENT.replace("3170", "&leak;"));
 
-    assertThatThrownBy(() -> BetaPageParser.parse(body, QUOTED_AT))
+    assertThatThrownBy(() -> BetaPageParser.parse(body, QUOTED_AT, 1))
         .isInstanceOfSatisfying(
             ProviderUnavailableException.class,
             e -> {
@@ -126,7 +132,7 @@ class BetaPageParserTest {
         "<SegmentsResponse page=\"1\" totalPages=\"1\"><Segments/></SegmentsResponse><x/>"
       })
   void failsAPageThatIsNotWellFormed(String body) {
-    assertThatThrownBy(() -> BetaPageParser.parse(body, QUOTED_AT))
+    assertThatThrownBy(() -> BetaPageParser.parse(body, QUOTED_AT, 1))
         .isInstanceOfSatisfying(
             ProviderUnavailableException.class,
             e -> {
@@ -137,8 +143,8 @@ class BetaPageParserTest {
 
   @Test
   void readsThePageCountAndPointsToTheNextPageUntilTheLast() {
-    ParsedPage first = BetaPageParser.parse(pageOf(1, 3), QUOTED_AT);
-    ParsedPage last = BetaPageParser.parse(pageOf(3, 3), QUOTED_AT);
+    ParsedPage first = BetaPageParser.parse(pageOf(1, 3), QUOTED_AT, 1);
+    ParsedPage last = BetaPageParser.parse(pageOf(3, 3), QUOTED_AT, 3);
 
     assertThat(first.next()).contains("2");
     assertThat(first.announcedPages()).contains(3);
@@ -157,11 +163,10 @@ class BetaPageParserTest {
         "<SegmentsResponse page=\"1\" totalPages=\"0\"><Segments/></SegmentsResponse>",
         "<SegmentsResponse page=\"1\" totalPages=\"99999999999\"><Segments/></SegmentsResponse>",
         "<SegmentsResponse page=\"1\" totalPages=\"1\"/>",
-        "<SegmentsResponse page=\"1\" totalPages=\"1\"><Segments><Foo/></Segments></SegmentsResponse>",
         "<SegmentsResponse page=\"1\" totalPages=\"1\"><Segment/></SegmentsResponse>"
       })
   void failsAPageThatIsNotBetasShape(String body) {
-    assertThatThrownBy(() -> BetaPageParser.parse(body, QUOTED_AT))
+    assertThatThrownBy(() -> BetaPageParser.parse(body, QUOTED_AT, 1))
         .isInstanceOfSatisfying(
             ProviderUnavailableException.class,
             e -> {
@@ -176,7 +181,7 @@ class BetaPageParserTest {
     String segment =
         VALID_SEGMENT.replace("<PriceCents>", "<Seats><Row>1</Row><Row/></Seats><PriceCents>");
 
-    ParsedPage page = BetaPageParser.parse(pageOf(1, 1, segment), QUOTED_AT);
+    ParsedPage page = BetaPageParser.parse(pageOf(1, 1, segment), QUOTED_AT, 1);
 
     assertThat(page.legs()).extracting(Leg::flightNumber).containsExactly(3170);
     assertThat(page.discarded()).isEmpty();
@@ -186,7 +191,7 @@ class BetaPageParserTest {
   @MethodSource("segmentsOfTheWrongShape")
   void discardsASegmentOfTheWrongShapeAndKeepsItsNeighbours(String segment, String excerpt) {
     ParsedPage page =
-        BetaPageParser.parse(pageOf(1, 1, VALID_SEGMENT, segment, VALID_SEGMENT), QUOTED_AT);
+        BetaPageParser.parse(pageOf(1, 1, VALID_SEGMENT, segment, VALID_SEGMENT), QUOTED_AT, 1);
 
     assertThat(page.legs()).hasSize(2);
     assertThat(page.discarded()).containsExactly(new DiscardedRecord(DiscardReason.SHAPE, excerpt));
@@ -209,8 +214,102 @@ class BetaPageParserTest {
                 + "destination=LHR arrivalTime=2026-11-20T09:30:00+00:00 price=12990"),
         arguments(
             VALID_SEGMENT.replace("<Carrier code=\"IB\"/>", "<Carrier code=\"IB\"><x/></Carrier>"),
+            "flightNumber=3170 origin=MAD departureTime=2026-11-20T08:15:00+01:00 "
+                + "destination=LHR arrivalTime=2026-11-20T09:30:00+00:00 price=12990"),
+        arguments(
+            VALID_SEGMENT.replace("<Carrier code=\"IB\"/>", "<Carrier/><Carrier code=\"BA\"/>"),
+            "flightNumber=3170 origin=MAD departureTime=2026-11-20T08:15:00+01:00 "
+                + "destination=LHR arrivalTime=2026-11-20T09:30:00+00:00 price=12990"),
+        arguments(
+            VALID_SEGMENT.replace("<Segment>", "<Segment>junk"),
             "carrier=IB flightNumber=3170 origin=MAD departureTime=2026-11-20T08:15:00+01:00 "
                 + "destination=LHR arrivalTime=2026-11-20T09:30:00+00:00 price=12990"));
+  }
+
+  @Test
+  void discardsAnItemThatIsNotASegmentAndKeepsItsNeighbours() {
+    String body =
+        "<SegmentsResponse page=\"1\" totalPages=\"1\"><Segments>"
+            + VALID_SEGMENT
+            + "<Foo><Bar/></Foo>"
+            + VALID_SEGMENT
+            + "</Segments></SegmentsResponse>";
+
+    ParsedPage page = BetaPageParser.parse(body, QUOTED_AT, 1);
+
+    assertThat(page.legs()).hasSize(2);
+    assertThat(page.discarded())
+        .containsExactly(new DiscardedRecord(DiscardReason.SHAPE, "element=Foo"));
+  }
+
+  @Test
+  void ignoresProcessingInstructionsAndComments() {
+    String fieldWithPi = VALID_SEGMENT.replace("3170", "31<?x y?>70<!-- c -->");
+    String unknownWithPi = VALID_SEGMENT.replace("<PriceCents>", "<Note><?x?></Note><PriceCents>");
+
+    ParsedPage page = BetaPageParser.parse(pageOf(1, 1, fieldWithPi, unknownWithPi), QUOTED_AT, 1);
+
+    assertThat(page.legs()).extracting(Leg::flightNumber).containsExactly(3170, 3170);
+    assertThat(page.discarded()).isEmpty();
+  }
+
+  @Test
+  void failsAPageThatIsNotTheRequestedOne() {
+    assertThatThrownBy(() -> BetaPageParser.parse(pageOf(5, 5), QUOTED_AT, 2))
+        .isInstanceOfSatisfying(
+            ProviderUnavailableException.class,
+            e -> {
+              assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
+              assertThat(e.getCause()).hasMessageContaining("page 5").hasMessageContaining("2");
+            });
+  }
+
+  @Test
+  void quotesAndCutsAnElementNameInTheFailureMessage() {
+    String name = "x".repeat(500);
+
+    assertThatThrownBy(
+            () -> BetaPageParser.parse("<" + name + " page=\"1\" totalPages=\"1\"/>", QUOTED_AT, 1))
+        .isInstanceOfSatisfying(
+            ProviderUnavailableException.class,
+            e ->
+                assertThat(e.getCause().getMessage())
+                    .isEqualTo(
+                        "Expected <SegmentsResponse>, not the element " + LoggedText.quoted(name)));
+  }
+
+  @Test
+  void neverFetchesAnExternalDtd() {
+    WireMockServer server = new WireMockServer(WireMockConfiguration.options().dynamicPort());
+    server.start();
+    try {
+      String body =
+          "<!DOCTYPE SegmentsResponse SYSTEM \""
+              + server.baseUrl()
+              + "/evil.dtd\">"
+              + pageOf(1, 1, VALID_SEGMENT);
+
+      assertThatThrownBy(() -> BetaPageParser.parse(body, QUOTED_AT, 1))
+          .isInstanceOfSatisfying(
+              ProviderUnavailableException.class,
+              e -> assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE));
+      server.verify(0, getRequestedFor(urlEqualTo("/evil.dtd")));
+    } finally {
+      server.stop();
+    }
+  }
+
+  @Test
+  void parsesTheMocksEmptyPageBeyondTheLastAsTheEnd() {
+    ParsedPage page =
+        BetaPageParser.parse(
+            "<SegmentsResponse page=\"3\" totalPages=\"1\"><Segments/></SegmentsResponse>",
+            QUOTED_AT,
+            3);
+
+    assertThat(page.legs()).isEmpty();
+    assertThat(page.discarded()).isEmpty();
+    assertThat(page.next()).isEmpty();
   }
 
   private static String pageOf(int page, int totalPages, String... segments) {

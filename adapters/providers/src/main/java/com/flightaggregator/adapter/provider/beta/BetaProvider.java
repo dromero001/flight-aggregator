@@ -32,12 +32,10 @@ public final class BetaProvider implements FlightProvider {
   public ProviderDownload download() {
     return paging.download(
         position -> {
+          int page = position.map(Integer::parseInt).orElse(1);
           FetchedPage fetched =
-              http.get(
-                  "/beta/segments?page={page}&pageSize={pageSize}",
-                  position.orElse("1"),
-                  settings.pageSize());
-          return BetaPageParser.parse(fetched.body(), fetched.receivedAt());
+              http.get("/beta/segments?page={page}&pageSize={pageSize}", page, settings.pageSize());
+          return BetaPageParser.parse(fetched.body(), fetched.receivedAt(), page);
         });
   }
 }
