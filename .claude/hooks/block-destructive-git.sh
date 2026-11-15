@@ -1,33 +1,39 @@
 #!/bin/bash
 # PreToolUse hook: blocks git commands that rewrite remote history, delete main or throw away work,
-# whatever global options precede the subcommand, and deleting main through `gh api`.
+# whatever global options precede the subcommand, and deleting main through `gh api`. Each pattern
+# reads one simple command, so what follows `;`, `&&`, `||`, `|` or a line break is not part of it.
 # A normal `git push` and deleting other remote branches stay allowed: agents push their green commits to main and clean up their own branches.
 # Adapted from Matt Pocock's git-guardrails-claude-code skill (MIT).
 
 if command -v jq > /dev/null; then
   COMMAND=$(jq -r '.tool_input.command // empty')
 else
-  # Without jq (Git for Windows does not ship it), match the raw JSON: the command is inside it.
+  # Without jq (Git for Windows does not ship it), match the raw JSON: the command is inside it. The
+  # JSON spells a backslash continuation as \\ and \n, which becomes a space, and any other line
+  # break as \n, which becomes one.
   COMMAND=$(cat)
+  COMMAND=${COMMAND//\\\\\\n/ }
+  COMMAND=${COMMAND//\\n/$'\n'}
 fi
 
-# Join a command split over several lines, which grep would match one line at a time: a backslash
-# continuation becomes a space, and so does every other line break. The raw JSON (no jq) spells a
-# line break as the two characters \n and a backslash as \\.
+# grep matches one line at a time, so a line break ends what a pattern can match, as it ends a
+# command in the shell. A backslash continuation does not: it becomes a space. Nor does a line that
+# starts with an option, which cannot be a command of its own: it is read as part of the line
+# before, so `--force` on the line after a push still makes it a force push.
 COMMAND=${COMMAND//\\$'\n'/ }
-COMMAND=${COMMAND//$'\n'/ }
-COMMAND=${COMMAND//\\\\\\n/ }
-COMMAND=${COMMAND//\\n/ }
+shopt -s extglob
+COMMAND=${COMMAND//$'\n'*([[:space:]])-/ -}
 
 # Where a ref or path word ends: at any character that cannot continue it (a space, a quote, `;`,
 # the JSON's closing quote), or at the end of the line. So `main` matches, but `main-fix` does not.
 END='([^[:alnum:]_./-]|$)'
 
-# An option value, possibly quoted; the raw JSON escapes double quotes as \".
-VALUE="(\\\\?\"[^\"]*\"|'[^']*'|[^[:space:]]+)"
+# An option value, possibly quoted; the raw JSON escapes double quotes as \". Unquoted, it ends at
+# a space or at a character that ends the command (`;`, `&`, `|`).
+VALUE="(\\\\?\"[^\"]*\"|'[^']*'|[^[:space:];|&]+)"
 # `git` and its global options, up to the subcommand: `git -C <dir> push` is still a push.
 OPTION_WITH_VALUE="(-[Cc]|--(git-dir|work-tree|namespace|config-env|attr-source))[[:space:]]+${VALUE}"
-FLAG='--?[a-zA-Z][a-zA-Z-]*(=[^[:space:]]+)?'
+FLAG='--?[a-zA-Z][a-zA-Z-]*(=[^[:space:];|&]+)?'
 GIT="git([[:space:]]+(${OPTION_WITH_VALUE}|${FLAG}))*[[:space:]]+"
 
 # A `git branch` option token that deletes, and one that forces (`-D` is both).
@@ -38,16 +44,21 @@ FORCE='(--force|-[a-zA-Z]*f[a-zA-Z]*)'
 HTTP_DELETE='(-X|--method)[=[:space:]]*DELETE\b'
 MAIN_REF="refs/heads/main${END}"
 
+# The text of one simple command: it does not cross `;`, `&&` or `|` (so `||` either). A lone `&`,
+# as in `2>&1`, does not end it, and a quoted string is taken whole, so a separator inside quotes
+# does not end it either. The raw JSON escapes double quotes as \".
+IN_COMMAND="([^;|&\"']|&[^;|&\"']|\\\\?\"[^\"]*\"|'[^']*')*"
+
 DESTRUCTIVE_PATTERNS=(
-  "${GIT}push\b.*[[:space:]](--force|--mirror|-[a-zA-Z]*f|\+[^[:space:]])"
-  "${GIT}push\b.*([[:space:]](--delete|-d)[[:space:]](.*[[:space:]])?|[[:space:]]:)(refs/heads/)?main${END}"
-  "${GIT}reset[[:space:]]+(.*[[:space:]])?--hard"
-  "${GIT}clean[[:space:]]+(.*[[:space:]])?(--force|-[a-zA-Z]*f)"
-  "${GIT}branch[[:space:]]+(.*[[:space:]])?-[a-zA-Z]*(D|d[a-zA-Z]*f|f[a-zA-Z]*d)"
-  "${GIT}branch[[:space:]]+(.*[[:space:]])?(${DELETE}[[:space:]](.*[[:space:]])?${FORCE}|${FORCE}[[:space:]](.*[[:space:]])?${DELETE})"
+  "${GIT}push\b${IN_COMMAND}[[:space:]](--force|--mirror|-[a-zA-Z]*f|\+[^[:space:]])"
+  "${GIT}push\b${IN_COMMAND}([[:space:]](--delete|-d)[[:space:]](${IN_COMMAND}[[:space:]])?|[[:space:]]:)(refs/heads/)?main${END}"
+  "${GIT}reset[[:space:]]+(${IN_COMMAND}[[:space:]])?--hard"
+  "${GIT}clean[[:space:]]+(${IN_COMMAND}[[:space:]])?(--force|-[a-zA-Z]*f)"
+  "${GIT}branch[[:space:]]+(${IN_COMMAND}[[:space:]])?-[a-zA-Z]*(D|d[a-zA-Z]*f|f[a-zA-Z]*d)"
+  "${GIT}branch[[:space:]]+(${IN_COMMAND}[[:space:]])?(${DELETE}[[:space:]](${IN_COMMAND}[[:space:]])?${FORCE}|${FORCE}[[:space:]](${IN_COMMAND}[[:space:]])?${DELETE})"
   "${GIT}(checkout|restore)[[:space:]]+(--[[:space:]]+)?\.${END}"
-  "${GIT}update-ref[[:space:]]+(.*[[:space:]])?-d[[:space:]]+${MAIN_REF}"
-  "gh[[:space:]]+api\b.*(${HTTP_DELETE}.*${MAIN_REF}|${MAIN_REF}.*${HTTP_DELETE})"
+  "${GIT}update-ref[[:space:]]+(${IN_COMMAND}[[:space:]])?-d[[:space:]]+${MAIN_REF}"
+  "gh[[:space:]]+api\b${IN_COMMAND}(${HTTP_DELETE}${IN_COMMAND}${MAIN_REF}|${MAIN_REF}${IN_COMMAND}${HTTP_DELETE})"
 )
 
 for pattern in "${DESTRUCTIVE_PATTERNS[@]}"; do
