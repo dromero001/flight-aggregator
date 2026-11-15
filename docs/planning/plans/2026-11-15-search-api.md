@@ -222,7 +222,7 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 ### Task 5: Valkey: result cache, refresh coordination, request counters
 
-**Extras approved by the user on 2026-11-15, after fix round 1:** the state of Valkey's circuit breaker as a meter, and fewer WARN lines when many cached values fail to parse at once (as after a format change). A meter for unreadable refresh marks stays out. **Decided by the user on 2026-11-15, after the re-review:** a probe that throws anything (`Throwable`, a JVM `Error` included) releases the breaker's permission and rethrows, so a bug neither closes the breaker with a false recovery nor leaves it half-open for good; this replaces the earlier "recovery after a JVM `Error` stays out".
+**Extras approved by the user on 2026-11-15, after fix round 1:** the state of Valkey's circuit breaker as a meter, and fewer WARN lines when many cached values fail to parse at once (as after a format change). A meter for unreadable refresh marks stays out. All seven of Resilience4j's breaker meters are kept, under `valkey.circuitbreaker.*` (the user, after round 2). **Decided by the user on 2026-11-15, after the re-review:** a probe that throws anything (`Throwable`, a JVM `Error` included) releases the breaker's permission and rethrows, so a bug neither closes the breaker with a false recovery nor leaves it half-open for good; this replaces the earlier "recovery after a JVM `Error` stays out".
 
 **Depends on:** 4 (`SearchPage`, `SearchCriteria`, `LegsJson` from 3). **Parallel:** with 8 (after 4) and 11; it edits `libs.versions.toml`, `bootstrap/build.gradle.kts` and `application.yaml`, shared with 11 and 13, so those merges are by hand.
 
@@ -244,6 +244,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 - [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Cache search pages, coordinate refreshes and count requests in Valkey, failing open"`.
 
 ### Task 6: The search use case
+
+**Decided by the user on 2026-11-15, after the implementation:** `SearchConfig` is wired in this task with a provisional `RefreshScheduler` (one WARN per request, nothing else), so the application starts and Tasks 7 and 9 stay parallel; Task 7 replaces it, and both beans together stop startup, so it cannot linger. No refresh is requested before the first publication (no `publishedAt`; the first run loads every origin).
 
 **Depends on:** 4, 5. **Parallel:** with 8; 7 and 9 start from its commit.
 
