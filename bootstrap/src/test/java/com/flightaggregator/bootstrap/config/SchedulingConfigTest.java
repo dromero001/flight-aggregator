@@ -67,6 +67,7 @@ class SchedulingConfigTest {
         Duration.ZERO,
         IngestionReport.Outcome.NOTHING_TO_PUBLISH,
         Optional.empty(),
-        List.of());
+        List.of(),
+        Optional.empty());
   }
 }

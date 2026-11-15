@@ -331,6 +331,30 @@ class IngestionJobTest {
             });
   }
 
+  /**
+   * A run whose providers' statuses could not be recorded still ended as it did; the failure is a
+   * warning of its own, with its cause, since the provider-status screen now shows an older run.
+   */
+  @Test
+  void warnsOfStatusesNotRecorded() {
+    IllegalStateException databaseDown = new IllegalStateException("database down");
+    job(() ->
+            unpublished(IngestionReport.Outcome.NOTHING_TO_PUBLISH, fresh(ALPHA))
+                .withStatusNotRecorded(databaseDown))
+        .run();
+
+    assertThat(log.list)
+        .filteredOn(event -> event.getLevel() == Level.WARN)
+        .extracting(ILoggingEvent::getFormattedMessage)
+        .containsExactly(
+            "Could not record the providers' statuses: the provider-status screen shows an"
+                + " earlier run",
+            "Ingestion run ended");
+    assertThat(((ThrowableProxy) log.list.getFirst().getThrowableProxy()).getThrowable())
+        .isSameAs(databaseDown);
+    assertThat(runs("NOTHING_TO_PUBLISH")).isEqualTo(1);
+  }
+
   /** The job over this ingestion, its lock always free. */
   private IngestionJob job(IngestInventory ingestion) {
     return new IngestionJob(

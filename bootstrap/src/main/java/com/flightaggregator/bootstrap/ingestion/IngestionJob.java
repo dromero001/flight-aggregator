@@ -100,6 +100,15 @@ public final class IngestionJob {
       // A provider has a failure exactly when its offers were kept.
       provider.failure().ifPresent(reason -> warnKept(provider, reason));
     }
+    report
+        .statusNotRecorded()
+        .ifPresent(
+            failure ->
+                LOG.atWarn()
+                    .setCause(failure)
+                    .log(
+                        "Could not record the providers' statuses: the provider-status screen"
+                            + " shows an earlier run"));
     // A run that publishes nothing leaves search on an older generation: a warning, not news.
     LoggingEventBuilder line =
         (report.outcome() == IngestionReport.Outcome.PUBLISHED ? LOG.atInfo() : LOG.atWarn())

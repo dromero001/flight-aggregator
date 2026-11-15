@@ -11,8 +11,10 @@ import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
 import com.flightaggregator.application.port.out.DiscardedRecords;
 import com.flightaggregator.application.port.out.FailureReason;
+import com.flightaggregator.application.port.out.IngestionStatusStore;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.OfferStore;
+import com.flightaggregator.application.port.out.ProviderRun;
 import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.application.port.out.RefreshScheduler;
 import com.flightaggregator.bootstrap.ingestion.IngestionJob;
@@ -31,6 +33,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -85,6 +88,7 @@ class FlightAggregatorApplicationTest {
   @Autowired private HealthEndpoint health;
   @Autowired private Flyway flyway;
   @Autowired private OfferStore offers;
+  @Autowired private IngestionStatusStore statuses;
   @Autowired private ItineraryRepository itineraries;
   @Autowired private TransactionTemplate transaction;
   @Autowired private JdbcClient jdbc;
@@ -117,7 +121,8 @@ class FlightAggregatorApplicationTest {
             tuple("3", MigrationState.SUCCESS),
             tuple("4", MigrationState.SUCCESS),
             tuple("5", MigrationState.SUCCESS),
-            tuple("6", MigrationState.SUCCESS));
+            tuple("6", MigrationState.SUCCESS),
+            tuple("7", MigrationState.SUCCESS));
   }
 
   /**
@@ -155,13 +160,19 @@ class FlightAggregatorApplicationTest {
         status -> {
           offers.replace(Provider.ALPHA, List.of(leg));
           Publication publication = itineraries.replaceInventory(Instant.now(), sink -> {});
+          statuses.record(
+              List.of(
+                  new ProviderRun(Provider.ALPHA, Optional.empty(), 1, Map.of(), Optional.empty())),
+              Instant.now());
           assertThat(offers.offers(Provider.ALPHA)).extracting(Leg::key).containsExactly(leg.key());
           assertThat(publication.generation()).isEqualTo(generation + 1);
+          assertThat(statuses.latest()).hasSize(1);
           status.setRollbackOnly();
         });
 
     assertThat(offers.offers(Provider.ALPHA)).isEmpty();
     assertThat(generation()).isEqualTo(generation);
+    assertThat(statuses.latest()).isEmpty();
   }
 
   /**
@@ -181,6 +192,12 @@ class FlightAggregatorApplicationTest {
             tuple(Provider.BETA, ProviderReport.Status.KEPT, Optional.of(FailureReason.HTTP_ERROR)),
             tuple(
                 Provider.GAMMA, ProviderReport.Status.KEPT, Optional.of(FailureReason.HTTP_ERROR)));
+    assertThat(statuses.latest())
+        .extracting(ProviderRun::provider, ProviderRun::failure)
+        .containsExactly(
+            tuple(Provider.ALPHA, Optional.of(FailureReason.HTTP_ERROR)),
+            tuple(Provider.BETA, Optional.of(FailureReason.HTTP_ERROR)),
+            tuple(Provider.GAMMA, Optional.of(FailureReason.HTTP_ERROR)));
   }
 
   /** The console is Boot's structured JSON (§6.10), so the record's fields are fields of it. */

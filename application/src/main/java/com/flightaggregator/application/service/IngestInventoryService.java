@@ -8,9 +8,11 @@ import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecords;
 import com.flightaggregator.application.port.out.FlightProvider;
+import com.flightaggregator.application.port.out.IngestionStatusStore;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.ItineraryWriter;
 import com.flightaggregator.application.port.out.OfferStore;
+import com.flightaggregator.application.port.out.ProviderRun;
 import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.application.service.ProviderDownloads.CheckedDownload;
 import com.flightaggregator.domain.Deduplication;
@@ -40,6 +42,7 @@ public final class IngestInventoryService implements IngestInventory {
   private final ProviderDownloads downloads;
   private final OfferStore store;
   private final ItineraryRepository repository;
+  private final IngestionStatusStore statuses;
   private final Clock clock;
   private final long maxItineraries;
 
@@ -49,11 +52,13 @@ public final class IngestInventoryService implements IngestInventory {
       AirportCatalogue catalogue,
       DiscardedRecords discardedRecords,
       ItineraryRepository repository,
+      IngestionStatusStore statuses,
       Clock clock,
       long maxItineraries) {
     this.downloads = new ProviderDownloads(providers, catalogue, discardedRecords);
     this.store = store;
     this.repository = repository;
+    this.statuses = statuses;
     this.clock = clock;
     this.maxItineraries = maxItineraries;
   }
@@ -72,6 +77,31 @@ public final class IngestInventoryService implements IngestInventory {
         .forEach(downloads::discardConflicting);
     List<ProviderReport> reports =
         runs.stream().map(run -> report(run, stored.get(run.provider()), deduplication)).toList();
+    return recorded(publish(startedAt, offers, deduplication, reports));
+  }
+
+  /**
+   * Records the run's providers for the provider-status screen (Q7-B), whatever its outcome: their
+   * statuses are the last known either way. A failure to record them leaves the run as it was; the
+   * report carries it, for the caller to log.
+   */
+  private IngestionReport recorded(IngestionReport report) {
+    try {
+      statuses.record(
+          report.providers().stream().map(ProviderRun::of).toList(),
+          report.startedAt().plus(report.duration()));
+      return report;
+    } catch (RuntimeException e) {
+      return report.withStatusNotRecorded(e);
+    }
+  }
+
+  /** Publishes the itineraries the offers build, when there are any, and reports the run. */
+  private IngestionReport publish(
+      Instant startedAt,
+      List<Leg> offers,
+      Deduplication deduplication,
+      List<ProviderReport> reports) {
     if (offers.isEmpty()) {
       return report(
           startedAt, IngestionReport.Outcome.NOTHING_TO_PUBLISH, Optional.empty(), reports);
@@ -112,7 +142,12 @@ public final class IngestInventoryService implements IngestInventory {
       Optional<Publication> publication,
       List<ProviderReport> providerReports) {
     return new IngestionReport(
-        startedAt, Duration.between(startedAt, clock.now()), outcome, publication, providerReports);
+        startedAt,
+        Duration.between(startedAt, clock.now()),
+        outcome,
+        publication,
+        providerReports,
+        Optional.empty());
   }
 
   private ItineraryWriter writerOf(Deduplication deduplication, Instant now) {

@@ -23,9 +23,15 @@ public interface PostgresContainers {
       new PostgreSQLContainer(
           DockerImageName.parse(PostgresImage.NAME).asCompatibleSubstituteFor("postgres"));
 
-  /** No stored offer, both slots empty, and generation 0 active, as on a fresh database. */
+  /**
+   * No stored offer, both slots empty, generation 0 active and no run's status recorded, as on a
+   * fresh database.
+   */
   static void emptyTheInventory(JdbcClient jdbc) {
-    jdbc.sql("TRUNCATE provider_offer, itinerary_a, itinerary_b").update();
+    jdbc.sql(
+            "TRUNCATE provider_offer, itinerary_a, itinerary_b, ingestion_status,"
+                + " ingestion_status_discarded")
+        .update();
     jdbc.sql(
             "UPDATE inventory_publication"
                 + " SET active_slot = 'a', generation = 0, published_at = NULL")

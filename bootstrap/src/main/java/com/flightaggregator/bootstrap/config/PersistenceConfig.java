@@ -1,10 +1,12 @@
 package com.flightaggregator.bootstrap.config;
 
 import com.flightaggregator.adapter.persistence.JdbcAirportCatalogue;
+import com.flightaggregator.adapter.persistence.JdbcIngestionStatusStore;
 import com.flightaggregator.adapter.persistence.JdbcItineraryReader;
 import com.flightaggregator.adapter.persistence.JdbcItineraryRepository;
 import com.flightaggregator.adapter.persistence.JdbcOfferStore;
 import com.flightaggregator.application.port.out.AirportCatalogue;
+import com.flightaggregator.application.port.out.IngestionStatusStore;
 import com.flightaggregator.application.port.out.ItineraryReader;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.OfferStore;
@@ -48,5 +50,10 @@ class PersistenceConfig {
   @Bean
   ItineraryReader itineraryReader(DataSourceTransactionManager transactions, JsonMapper json) {
     return new JdbcItineraryReader(transactions, json.tokenStreamFactory());
+  }
+
+  @Bean
+  IngestionStatusStore ingestionStatusStore(DataSourceTransactionManager transactions) {
+    return new JdbcIngestionStatusStore(transactions);
   }
 }
