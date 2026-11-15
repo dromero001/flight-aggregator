@@ -34,6 +34,8 @@ dependencies {
     testImplementation(libs.wiremock.standalone)
     testImplementation(libs.spring.boot.starter.webmvc.test)
     testImplementation(libs.spring.security.test)
+    testImplementation(libs.spring.boot.resttestclient)
+    testImplementation(libs.spring.boot.restclient)
 }
 
 // The Dockerfile copies this exact name, whatever the project version.

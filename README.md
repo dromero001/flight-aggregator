@@ -66,19 +66,28 @@ No latency may be negative, each minimum must not exceed its maximum, and both s
 
 ## Admin access
 
-Search and re-price are public. The admin side is OAuth2: the aggregator is a resource server that accepts JWTs signed by Keycloak (started by `docker compose up --build`, on `http://localhost:8180`, realm `flight-aggregator`, imported from [`deploy/keycloak/flight-aggregator-realm.json`](deploy/keycloak/flight-aggregator-realm.json)) and requires the realm role `ADMIN` in `realm_access.roles`. Public: `GET /api/itineraries`, `POST /api/itineraries/{id}/reprice`, `GET /v3/api-docs`, and `GET /actuator/health` (its status only; the components are shown to `ADMIN`). Everything else, `/api/admin/**` and the other Actuator endpoint (`/actuator/metrics`) included, needs `ADMIN`. (`/api/admin/*` arrives with plan 5 Task 12; until then `/actuator/metrics` is the admin endpoint to call.)
+Search and re-price are public. The admin side is OAuth2: the aggregator is a resource server that accepts JWTs signed by Keycloak (started by `docker compose up --build`, on `http://localhost:8180`, realm `flight-aggregator`, imported from [`deploy/keycloak/flight-aggregator-realm.json`](deploy/keycloak/flight-aggregator-realm.json)) and requires the realm role `ADMIN` in `realm_access.roles`. Public: `GET /api/itineraries`, `POST /api/itineraries/{id}/reprice`, `GET /v3/api-docs`, and `GET /actuator/health` (its status only; the components are shown to `ADMIN`). Everything else, `/api/admin/**` and the other Actuator endpoint (`/actuator/metrics`) included, needs `ADMIN`.
 
-**1. Get a token** with the `admin-service` client, a confidential client whose service account holds `ADMIN` (client-credentials grant):
+The examples call `/actuator/metrics`, the only admin endpoint until plan 5 Task 12 adds `/api/admin/*`; that task replaces them with an admin endpoint of its own.
+
+**1. Wait until Keycloak is ready.** It takes 20 to 40 seconds after `docker compose up`; this polls the realm until it answers:
+
+```bash
+until curl -sf http://localhost:8180/realms/flight-aggregator/.well-known/openid-configuration > /dev/null; do sleep 2; done
+```
+
+**2. Get a token** with the `admin-service` client, a confidential client whose service account holds `ADMIN` (client-credentials grant). The secret is read from the variable compose uses, with the demo default:
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8180/realms/flight-aggregator/protocol/openid-connect/token \
-  -d grant_type=client_credentials -d client_id=admin-service -d client_secret=demo-admin-service-secret \
+  -d grant_type=client_credentials -d client_id=admin-service \
+  -d "client_secret=${ADMIN_SERVICE_CLIENT_SECRET:-demo-admin-service-secret}" \
   | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
 ```
 
-(or pipe the response through `jq -r .access_token`). The token lasts 5 minutes; ask for another when it expires.
+(or pipe the response through `jq -r .access_token`). The token lasts 5 minutes; ask for another when it expires. If you set `ADMIN_SERVICE_CLIENT_SECRET` in a `.env` file instead of the shell, `export` the same value in this shell too: the command reads the shell, not `.env`.
 
-**2. Call an admin endpoint with it:**
+**3. Call an admin endpoint with it:**
 
 ```bash
 curl -i -H "Authorization: Bearer $TOKEN" http://localhost:8080/actuator/metrics
@@ -86,17 +95,17 @@ curl -i -H "Authorization: Bearer $TOKEN" http://localhost:8080/actuator/metrics
 
 | Request | Answer |
 |---|---|
-| no `Authorization` header, or a token that is invalid, expired or issued by another realm | `401 Unauthorized` |
+| no `Authorization` header, or a token that is invalid, expired, signed with another key or issued by another realm | `401 Unauthorized` |
 | a valid token whose holder lacks the `ADMIN` role | `403 Forbidden` |
 | a valid token with the `ADMIN` role | `200 OK` |
 
 `curl -i http://localhost:8080/actuator/metrics` gives the 401. No account in the demo realm lacks `ADMIN`, so the 403 is proven by the tests (`SecurityTest`), not by a command.
 
-**The client secret is a committed demo default on purpose**, the same deliberate exception as the provider keys and the database password (spec 6.6): the take-home must run with a single `docker compose up --build`, and a reviewer must be able to call the admin endpoints without the author. It protects only a Keycloak whose port is bound to the loopback interface. In production it would be a secret injected at deploy time. Override it with `ADMIN_SERVICE_CLIENT_SECRET` in the shell or a `.env` file, before the first start: Keycloak imports the realm only once (`docker compose down -v` removes its data). The same goes for Keycloak's own administrator (`KEYCLOAK_ADMIN_PASSWORD`, default `demo-keycloak-admin-password`, console on `http://localhost:8180`), and the realm's `admin` user has the demo password `demo-admin-password`.
+**The client secret is a committed demo default on purpose**, the same deliberate exception as the provider keys and the database password (spec 6.6): the take-home must run with a single `docker compose up --build`, and a reviewer must be able to call the admin endpoints without the author. It protects only a Keycloak whose port is bound to the loopback interface. In production it would be a secret injected at deploy time. Override it with `ADMIN_SERVICE_CLIENT_SECRET` in the shell or a `.env` file. Keycloak keeps nothing between container creations (compose gives it no volume) and imports the realm each time it is created, so changing the variable and running `docker compose up -d keycloak` is enough: compose recreates the container, which imports the realm with the new secret. Do not use `docker compose down -v` for this: it also deletes the stored inventory in PostgreSQL. Keycloak's own console is on `http://localhost:8180`, user `admin`, password `demo-keycloak-admin-password` (override: `KEYCLOAK_ADMIN_PASSWORD`); the realm's own `admin` user, a different account, has the demo password `demo-admin-password`.
 
 **Why client credentials.** The grant is for machines acting as themselves: scripts, CI, a reviewer's `curl`. People will sign in through the dashboard's browser login (authorization code with PKCE, plan 6), which has its own public client. The resource-owner password grant was rejected: OAuth 2.1 removes it, because the client would handle the user's password.
 
-**Two addresses, on purpose.** Tokens name the issuer `http://localhost:8180/realms/flight-aggregator` (`KC_HOSTNAME`), the address a browser uses, while the aggregator, inside the compose network, fetches the signing keys from `http://keycloak:8080/...` (`security.jwt.jwk-set-uri`). It checks the signature against the second and the issuer against the first (`security.jwt.issuer`).
+**Two addresses, on purpose.** Tokens name the issuer `http://localhost:8180/realms/flight-aggregator` (`KC_HOSTNAME`), the address a browser uses, while the aggregator, inside the compose network, fetches the signing keys from `http://keycloak:8080/...`. It checks the signature against the second (`spring.security.oauth2.resourceserver.jwt.jwk-set-uri`) and the issuer against the first (`...jwt.issuer-uri`). They are Spring Boot's own resource-server settings, as is the mapping of `realm_access.roles` to `ROLE_ADMIN`, so another identity provider is a change of configuration only.
 
 ## Documentation
 

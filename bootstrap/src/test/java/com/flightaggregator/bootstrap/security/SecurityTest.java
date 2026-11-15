@@ -64,8 +64,9 @@ class SecurityTest {
     KEYS.start();
     KEYS.stubFor(
         WireMock.get("/certs").willReturn(okJson(new JWKSet(KEY.toPublicJWK()).toString())));
-    registry.add("security.jwt.jwk-set-uri", () -> KEYS.baseUrl() + "/certs");
-    registry.add("security.jwt.issuer", () -> ISSUER);
+    registry.add(
+        "spring.security.oauth2.resourceserver.jwt.jwk-set-uri", () -> KEYS.baseUrl() + "/certs");
+    registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> ISSUER);
   }
 
   @AfterAll
@@ -125,33 +126,60 @@ class SecurityTest {
 
   @Test
   void rejectsATokenOfAnotherIssuer() throws Exception {
-    String token = signed("http://localhost:8180/realms/another-realm");
+    String token = signed("http://localhost:8180/realms/another-realm", 300, KEY, "ADMIN");
 
     mvc.perform(get("/actuator/metrics").header("Authorization", "Bearer " + token))
         .andExpect(status().isUnauthorized());
   }
 
-  /** A real signed token, through the real decoder and the role converter. */
+  /** Beyond the decoder's 60 seconds of clock skew. */
+  @Test
+  void rejectsAnExpiredToken() throws Exception {
+    String token = signed(ISSUER, -300, KEY, "ADMIN");
+
+    mvc.perform(get("/actuator/metrics").header("Authorization", "Bearer " + token))
+        .andExpect(status().isUnauthorized());
+  }
+
+  /** Another key under the same key id: only the signature tells it from Keycloak's token. */
+  @Test
+  void rejectsATokenSignedWithAnotherKey() throws Exception {
+    String token = signed(ISSUER, 300, signingKey(), "ADMIN");
+
+    mvc.perform(get("/actuator/metrics").header("Authorization", "Bearer " + token))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void answers403ToAValidTokenWithoutTheAdminRealmRole() throws Exception {
+    String token = signed(ISSUER, 300, KEY, "user");
+
+    mvc.perform(get("/actuator/metrics").header("Authorization", "Bearer " + token))
+        .andExpect(status().isForbidden());
+  }
+
+  /** A real signed token, through the real decoder and the role mapping. */
   @Test
   void acceptsASignedTokenOfTheIssuerWithTheAdminRealmRole() throws Exception {
-    String token = signed(ISSUER);
+    String token = signed(ISSUER, 300, KEY, "ADMIN");
 
     mvc.perform(get("/actuator/metrics").header("Authorization", "Bearer " + token))
         .andExpect(status().isOk());
   }
 
-  private static String signed(String issuer) throws JOSEException {
+  private static String signed(String issuer, long secondsToExpiry, RSAKey key, String role)
+      throws JOSEException {
     JWTClaimsSet claims =
         new JWTClaimsSet.Builder()
             .issuer(issuer)
             .subject("admin")
-            .expirationTime(Date.from(Instant.now().plusSeconds(300)))
-            .claim("realm_access", Map.of("roles", List.of("ADMIN")))
+            .expirationTime(Date.from(Instant.now().plusSeconds(secondsToExpiry)))
+            .claim("realm_access", Map.of("roles", List.of(role)))
             .build();
     SignedJWT jwt =
         new SignedJWT(
-            new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(KEY.getKeyID()).build(), claims);
-    jwt.sign(new RSASSASigner(KEY));
+            new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(key.getKeyID()).build(), claims);
+    jwt.sign(new RSASSASigner(key));
     return jwt.serialize();
   }
 

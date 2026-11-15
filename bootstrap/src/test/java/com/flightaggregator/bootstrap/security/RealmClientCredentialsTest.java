@@ -62,9 +62,11 @@ class RealmClientCredentialsTest {
   static void keycloak(DynamicPropertyRegistry registry) throws IOException, InterruptedException {
     KEYCLOAK.start();
     String realm = "http://localhost:" + KEYCLOAK.getMappedPort(8080) + REALM;
-    registry.add("security.jwt.jwk-set-uri", () -> realm + "/protocol/openid-connect/certs");
+    registry.add(
+        "spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
+        () -> realm + "/protocol/openid-connect/certs");
     // Without KC_HOSTNAME Keycloak names itself by the address of the request.
-    registry.add("security.jwt.issuer", () -> realm);
+    registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> realm);
   }
 
   @Autowired private MockMvc mvc;

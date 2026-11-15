@@ -52,8 +52,8 @@ services:
       PROVIDERS_GAMMA_BASEURL: http://mock-gds:8080
       PROVIDERS_GAMMA_APIKEY: ${GAMMA_API_KEY:-demo-gamma-key}
       # The signatures are checked against Keycloak on the compose network; the issuer is its public
-      # name (SECURITY_JWT_ISSUER keeps application.yaml's http://localhost:8180/realms/flight-aggregator).
-      SECURITY_JWT_JWK_SET_URI: http://keycloak:8080/realms/flight-aggregator/protocol/openid-connect/certs
+      # name (the issuer-uri of application.yaml stays http://localhost:8180/realms/flight-aggregator).
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/flight-aggregator/protocol/openid-connect/certs
     healthcheck:
       test:
         - CMD

@@ -13,6 +13,20 @@ spring:
       data-source-properties:
         socketTimeout: 120
         tcpKeepAlive: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # The application is a resource server (spec 6.6), configured as Spring Boot documents, so
+          # that another identity provider is a change of these settings only. The keys come from
+          # jwk-set-uri (compose sets the internal URL; nothing is fetched at startup), and each
+          # token must name issuer-uri, the public one, fixed by KC_HOSTNAME. The defaults suit a
+          # Keycloak published on localhost:8180 with the application run outside compose.
+          jwk-set-uri: http://localhost:8180/realms/flight-aggregator/protocol/openid-connect/certs
+          issuer-uri: http://localhost:8180/realms/flight-aggregator
+          # Keycloak's realm roles, nested under realm_access.roles, become ROLE_<role>.
+          authorities-claim-expressions: "[realm_access][roles]"
+          authority-prefix: ROLE_
 
 ingestion:
   # A run that would build more itineraries publishes nothing (R7).
@@ -41,11 +55,3 @@ management:
       # The components behind the status are for an administrator only.
       show-details: when-authorized
       roles: ADMIN
-
-security:
-  jwt:
-    # Where the application fetches Keycloak's signing keys (compose sets the internal URL), and the
-    # issuer a token must name (the public one, fixed by KC_HOSTNAME). Defaults suit a Keycloak
-    # published on localhost:8180 with the application run outside compose.
-    jwk-set-uri: http://localhost:8180/realms/flight-aggregator/protocol/openid-connect/certs
-    issuer: http://localhost:8180/realms/flight-aggregator
