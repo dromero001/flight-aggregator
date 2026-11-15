@@ -11,6 +11,49 @@
     }
   ],
   "paths" : {
+    "/api/admin/ingestions" : {
+      "post" : {
+        "operationId" : "runIngestion",
+        "responses" : {
+          "202" : {
+            "description" : "A run started; it goes on in the background"
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Another run is going on; try again once it ends"
+          }
+        },
+        "tags" : [
+          "admin-controller"
+        ]
+      }
+    },
+    "/api/admin/status" : {
+      "get" : {
+        "operationId" : "status",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description" : "The inventory's and each provider's status"
+          }
+        },
+        "tags" : [
+          "admin-controller"
+        ]
+      }
+    },
     "/api/itineraries" : {
       "get" : {
         "operationId" : "search",
@@ -372,6 +415,65 @@
           }
         }
       },
+      "ProviderStatusResponse" : {
+        "type" : "object",
+        "properties" : {
+          "breaker" : {
+            "type" : "string",
+            "enum" : [
+              "CLOSED",
+              "OPEN",
+              "HALF_OPEN"
+            ]
+          },
+          "discarded" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "integer",
+              "format" : "int32"
+            }
+          },
+          "health" : {
+            "type" : "string",
+            "enum" : [
+              "UP",
+              "DEGRADED",
+              "DOWN"
+            ]
+          },
+          "legs" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "newestQuotedAt" : {
+            "type" : [
+              "string",
+              "null"
+            ],
+            "format" : "date-time"
+          },
+          "provider" : {
+            "type" : "string",
+            "enum" : [
+              "ALPHA",
+              "BETA",
+              "GAMMA"
+            ]
+          },
+          "stale" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [
+          "breaker",
+          "discarded",
+          "health",
+          "legs",
+          "newestQuotedAt",
+          "provider",
+          "stale"
+        ]
+      },
       "RepriceResponse" : {
         "type" : "object",
         "properties" : {
@@ -423,6 +525,41 @@
           "inventoryChanged",
           "itineraries",
           "nextCursor"
+        ]
+      },
+      "StatusResponse" : {
+        "type" : "object",
+        "properties" : {
+          "generation" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "nextIngestionAt" : {
+            "type" : [
+              "string",
+              "null"
+            ],
+            "format" : "date-time"
+          },
+          "providers" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ProviderStatusResponse"
+            }
+          },
+          "publishedAt" : {
+            "type" : [
+              "string",
+              "null"
+            ],
+            "format" : "date-time"
+          }
+        },
+        "required" : [
+          "generation",
+          "nextIngestionAt",
+          "providers",
+          "publishedAt"
         ]
       }
     }

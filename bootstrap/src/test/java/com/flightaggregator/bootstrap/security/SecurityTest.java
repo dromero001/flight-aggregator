@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -27,10 +28,13 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -165,6 +169,27 @@ class SecurityTest {
 
     mvc.perform(get("/actuator/metrics").header("Authorization", "Bearer " + token))
         .andExpect(status().isOk());
+  }
+
+  /** §6.6: the admin endpoints answer 401 without a token and 403 without the ADMIN role. */
+  @ParameterizedTest
+  @CsvSource({"GET, /api/admin/status", "POST, /api/admin/ingestions"})
+  void adminEndpointsNeedTheAdminRole(String method, String path) throws Exception {
+    mvc.perform(request(HttpMethod.valueOf(method), path)).andExpect(status().isUnauthorized());
+    mvc.perform(
+            request(HttpMethod.valueOf(method), path)
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_user"))))
+        .andExpect(status().isForbidden());
+  }
+
+  /** The admin's status reaches the endpoint, wired in the application. */
+  @Test
+  void adminStatusAnswers200WithTheAdminRealmRole() throws Exception {
+    mvc.perform(
+            get("/api/admin/status")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.generation").isNumber());
   }
 
   private static String signed(String issuer, long secondsToExpiry, RSAKey key, String role)
