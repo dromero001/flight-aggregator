@@ -19,6 +19,21 @@ public final class LoggedText {
 
   public static String quoted(String text) {
     String cut = text.length() <= LIMIT ? text : text.substring(0, cutAt(text));
-    return "\"" + new String(JsonStringEncoder.getInstance().quoteAsCharArray(cut)) + "\"";
+    String json = new String(JsonStringEncoder.getInstance().quoteAsCharArray(cut));
+    return "\"" + withoutRawControls(json) + "\"";
+  }
+
+  /** JSON escapes only the controls below space: DEL and the C1 controls are escaped here. */
+  private static String withoutRawControls(String json) {
+    StringBuilder out = new StringBuilder(json.length());
+    for (int i = 0; i < json.length(); i++) {
+      char c = json.charAt(i);
+      if (Character.isISOControl(c)) {
+        out.append(String.format("\\u%04x", (int) c));
+      } else {
+        out.append(c);
+      }
+    }
+    return out.toString();
   }
 }

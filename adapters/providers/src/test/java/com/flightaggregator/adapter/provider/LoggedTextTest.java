@@ -22,4 +22,10 @@ class LoggedTextTest {
     assertThat(LoggedText.quoted("a".repeat(199) + "😀" + "tail"))
         .isEqualTo("\"" + "a".repeat(199) + "\"");
   }
+
+  @Test
+  void escapesDelAndTheC1ControlCharactersToo() {
+    assertThat(LoggedText.quoted("a\u0085b\u007fc\u009fd"))
+        .isEqualTo("\"a\\u0085b\\u007fc\\u009fd\"");
+  }
 }
