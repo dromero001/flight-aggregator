@@ -253,6 +253,11 @@ public final class IngestInventoryService implements IngestInventory {
       Thread.currentThread().interrupt();
       throw new IllegalStateException("Interrupted while waiting for a provider", e);
     } catch (ExecutionException e) {
+      // The handler catches every runtime exception, so an error is what can end up here, and it is
+      // the run's own; anything else would be a bug of the handler.
+      if (e.getCause() instanceof Error error) {
+        throw error;
+      }
       throw new IllegalStateException("A provider download escaped its handler", e.getCause());
     }
   }

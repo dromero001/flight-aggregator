@@ -19,9 +19,10 @@ import org.springframework.scheduling.annotation.Scheduled;
  * One ingestion run: it takes the ingestion's lock, ingests, then logs and meters the run's report
  * (§6.10). The report is one line, {@code INFO} for a run that published and {@code WARN} for any
  * other outcome, with each provider's fields under its name, and each provider whose last good
- * offers were kept is one {@code WARN} line with its reason and its failure's stack trace. Any
- * exception of a run, taking the lock included, fails that run alone: it is logged and counted, and
- * never escapes, so the next run still comes.
+ * offers were kept is one {@code WARN} line with its reason and its failure's stack trace. Anything
+ * a run throws, taking the lock included, fails that run alone: it is logged at {@code ERROR} and
+ * counted. A runtime exception never escapes, so the next run still comes; an {@code Error} is
+ * rethrown after that, to the scheduler.
  */
 public final class IngestionJob {
 
@@ -67,13 +68,14 @@ public final class IngestionJob {
         LOG.info("Skipped an ingestion run: another instance holds its lock");
       }
     } catch (Throwable e) {
-      if (e instanceof Error error) {
-        throw error;
-      }
-      // A runtime exception: the run throws no checked one, though ShedLock's signature declares
-      // it.
+      // A runtime exception or an error: the run throws no checked exception, though ShedLock's
+      // signature declares one.
       LOG.atError().setCause(e).log("An ingestion run failed");
       metrics.recordFailedRun();
+      if (e instanceof Error error) {
+        // The JVM may be in trouble: counted and logged, then left to the scheduler, never kept.
+        throw error;
+      }
     }
   }
 

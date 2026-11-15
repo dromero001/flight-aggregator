@@ -10,6 +10,7 @@ import static com.flightaggregator.domain.Provider.BETA;
 import static com.flightaggregator.domain.Provider.GAMMA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import ch.qos.logback.classic.Level;
@@ -100,6 +101,32 @@ class IngestionJobTest {
                     .isSameAs(lockTimeout));
     assertThat(runs("FAILED")).isEqualTo(1);
     assertThat(runs("PUBLISHED")).isEqualTo(1);
+  }
+
+  /**
+   * An error, such as running out of memory, is not swallowed: the run is logged and counted as
+   * failed, and the error goes on to the scheduler.
+   */
+  @Test
+  void countsAndRethrowsAnError() {
+    OutOfMemoryError outOfMemory = new OutOfMemoryError("Java heap space");
+    IngestionJob job =
+        job(
+            () -> {
+              throw outOfMemory;
+            });
+
+    assertThatThrownBy(job::run).isSameAs(outOfMemory);
+
+    assertThat(log.list)
+        .filteredOn(event -> event.getLevel() == Level.ERROR)
+        .singleElement()
+        .satisfies(
+            event ->
+                assertThat(((ThrowableProxy) event.getThrowableProxy()).getThrowable())
+                    .isSameAs(outOfMemory));
+    assertThat(runs("FAILED")).isEqualTo(1);
+    assertThat(meters.get("ingestion.consecutive.failures").gauge().value()).isEqualTo(1);
   }
 
   /**

@@ -229,6 +229,20 @@ class IngestInventoryServiceTest {
     assertThat(store.offers(GAMMA)).isEqualTo(gammaLegs);
   }
 
+  /** An error in a download's thread is the run's, as it was thrown, never a failed provider. */
+  @Test
+  void letsAnErrorOfADownloadEndTheRun() {
+    OutOfMemoryError outOfMemory = new OutOfMemoryError("Java heap space");
+    FakeFlightProvider alpha =
+        new FakeFlightProvider(
+            ALPHA,
+            () -> {
+              throw outOfMemory;
+            });
+
+    assertThatThrownBy(service(alpha)::ingest).isSameAs(outOfMemory);
+  }
+
   @Test
   void downloadsTheProvidersInParallel() {
     CountDownLatch allStarted = new CountDownLatch(3);
