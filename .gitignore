@@ -21,3 +21,6 @@ build/
 hs_err_pid*.log
 replay_pid*.log
 *.hprof
+
+# Git worktrees of parallel agent tasks (local only)
+.claude/worktrees/

@@ -17,4 +17,14 @@ Legend: 👤 = with the user (review and decisions), 🌙 = autonomous work by a
 
 **Order rationale:** foundations first, so that every later commit already passes the architecture, formatting and coverage gates. Plans 2 and 3 do not depend on each other and can run in parallel. The search API waits for real ingested data, and the dashboard waits for the API contract it is generated from.
 
+## Change of course on Sunday 2026-11-15, to meet the delivery date
+
+The order above assumed one plan after another, each task reviewed by two reviewers before the next began. On Sunday at 12:30 the measured pace (50–60 minutes per task, because the reviews kept finding real defects and most tasks needed a fix round) put the end of plan 7 at the very end of Monday, with no margin. The user chose to keep the quality gates that matter and change the sequence:
+
+- **Parallel work instead of the agreed sequence.** Tasks of plan 5 that do not depend on each other (the mock's origin filter and quote, the Valkey adapters, OAuth with Keycloak) run at the same time, each in its own git worktree, while the main chain continues; each is reviewed before it reaches `main`.
+- **Plan 6 drafted while plan 5 runs,** so the user reviews it the same day and it starts as soon as plan 5's OpenAPI contract is final, instead of after plan 5 ends.
+- **One reviewer per task from plan 5 on,** acting as both the functional and the code reviewer with two verdicts; the end-of-plan review keeps its three separate reviewers (`CLAUDE.md`, "Review protocol").
+
+What did not change: TDD one test at a time, the full suite before every commit, a push and a green CI run after every task, and the user's design decisions. Why and how it was decided: [session 09](../ai/sessions/09-lost-sessions-and-recovery.md).
+
 **Documentation in every plan:** each plan updates its own block of the documentation (`docs/architecture/` for what it builds, `docs/planning/progress/` for its run) and the README index, as part of its tasks.

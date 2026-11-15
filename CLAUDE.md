@@ -23,6 +23,7 @@ These rules apply to every AI agent (main session and subagents) working in this
 ## Review protocol (plans executed with subagents)
 Three reviewer subagents, defined in `.claude/agents/`, each with one concern:
 - **After every task:** `functional-reviewer` (does it deliver what the brief, the spec and the plan ask, with no unapproved extras?) and `code-reviewer` (maintainability with the thermo-nuclear review, plus correctness).
+  - From plan 5 on (the user's decision of 2026-11-15, to fit the delivery date): one reviewer per task acts as both, `functional-reviewer` then `code-reviewer`, and gives two verdicts. The end-of-plan review keeps three separate reviewers. Independent tasks may run in parallel in their own git worktrees; each is reviewed before it reaches `main`.
 - **At the end of every plan:** all three on the whole plan's diff, adding `risk-reviewer` (security, data loss, silent failures, half-applied state, concurrency, resilience).
 - A task moves on only when both of its reviewers say `APPROVED`; a plan closes only when all three do. Findings are fixed, or the user decides to accept them; record which in the progress report.
 - Why this split: `docs/ai/README.md`, "Review protocol".
