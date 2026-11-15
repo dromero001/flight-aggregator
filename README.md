@@ -16,6 +16,8 @@ This starts the three mock providers, PostgreSQL and the aggregator (`bootstrap/
 
 **The database password is a committed demo default too**, the same deliberate exception as the provider keys below (spec 6.6): `POSTGRES_PASSWORD` in the shell or a `.env` file overrides it. It protects only a database that no port exposes outside the compose network; in production it would be a secret injected at deploy time. PostgreSQL sets the password only when it creates its volume: to change it after the first start, remove the volume with `docker compose down -v` (which deletes the stored inventory) and start again.
 
+A `providers.*` setting that names no setting (a misspelt `providers.download-timout`, say) stops the aggregator at startup instead of leaving a default in force. Spring Boot's report of it prints the value it was given, so a secret under a misspelt key (an `api-kye`) would be printed: spell the keys' settings with care.
+
 ## Run the mock providers
 
 The three mock GDS providers run as one image, built from `mock-gds/Dockerfile`. `docker compose up --build` starts them with the rest of the stack; to start the mocks alone:

@@ -11,9 +11,12 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 /**
  * The providers' settings, bound from {@code providers.*}: where each provider is and its key, and
  * how every provider is called and downloaded (§6.1, plan 4): one request is bounded by {@code
- * request-timeout}, a whole download by {@code download-timeout}.
+ * request-timeout}, a whole download by {@code download-timeout}. A setting under {@code providers}
+ * that names none of these stops startup, as mock-gds's do: a misspelt key would otherwise leave
+ * the default it meant to change. Boot's report of it prints its value, so no secret belongs under
+ * a misspelt key.
  */
-@ConfigurationProperties(prefix = "providers")
+@ConfigurationProperties(prefix = "providers", ignoreUnknownFields = false)
 record ProvidersProperties(
     Endpoint alpha,
     Endpoint beta,

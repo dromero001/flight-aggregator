@@ -62,6 +62,19 @@ class ProvidersConfigTest {
         });
   }
 
+  /** A misspelt setting stops startup, instead of leaving the default it meant to change. */
+  @Test
+  void refusesAnUnknownProviderSetting() {
+    runner
+        .withPropertyValues("providers.download-timout=45s")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .hasStackTraceContaining("providers.download-timout");
+            });
+  }
+
   @Test
   void takesEachResilienceSettingFromItsProperty() {
     runner
