@@ -1,6 +1,8 @@
 package com.flightaggregator.adapter.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import com.flightaggregator.adapter.persistence.support.ItinerarySlots;
 import com.flightaggregator.adapter.persistence.support.PostgresTestDatabase;
@@ -17,7 +19,10 @@ import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.Money;
 import com.flightaggregator.domain.Provider;
 import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -26,13 +31,19 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.core.json.JsonFactory;
 
 class JdbcItineraryReaderTest {
@@ -45,6 +56,14 @@ class JdbcItineraryReaderTest {
   private final JdbcClient jdbc = JdbcClient.create(dataSource);
   private final JdbcItineraryReader reader =
       new JdbcItineraryReader(new DataSourceTransactionManager(dataSource), new JsonFactory());
+
+  /**
+   * A transaction of the reader's data source. A read inside it joins it, so the test can read the
+   * read's settings before the commit.
+   */
+  private final TransactionTemplate enclosing =
+      new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+
   private final JdbcItineraryRepository repository =
       new JdbcItineraryRepository(
           new DataSourceTransactionManager(dataSource), new JsonFactory(), 37);
@@ -288,6 +307,89 @@ class JdbcItineraryReaderTest {
 
       assertThat(page.get(15, TimeUnit.SECONDS)).isEqualTo(new StoredPage(1, List.of(first)));
     }
+  }
+
+  /**
+   * How many client backends, this one and {@code holder} apart, run a statement or hold a
+   * transaction open, aborted or not. An aborted transaction has no {@code xact_start}, so the
+   * state is what tells.
+   */
+  private long busyBackendsBesides(Connection holder) throws SQLException {
+    int holderPid;
+    try (Statement statement = holder.createStatement();
+        ResultSet pid = statement.executeQuery("SELECT pg_backend_pid()")) {
+      pid.next();
+      holderPid = pid.getInt(1);
+    }
+    return jdbc.sql(
+            "SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend'"
+                + " AND state <> 'idle' AND pid NOT IN (pg_backend_pid(), ?)")
+        .param(holderPid)
+        .query(Long.class)
+        .single();
+  }
+
+  /**
+   * A read that takes longer than its bound, here waiting for a lock on its slot, fails with
+   * PostgreSQL's statement timeout and rolls back: it holds neither its connection nor its {@code
+   * ACCESS SHARE} lock on the slot any longer, which a run's {@code TRUNCATE} of the slot would
+   * wait for.
+   */
+  @Test
+  void cutsAReadThatTakesLongerThanItsBound() throws SQLException {
+    publish(trip(leg("IB", 1, "MAD", "LHR", "2026-11-21T07:00:00+01:00", 120, "100")));
+    try (Connection holder = dataSource.getConnection()) {
+      holder.setAutoCommit(false);
+      try (Statement statement = holder.createStatement()) {
+        statement.execute("LOCK TABLE itinerary_b IN ACCESS EXCLUSIVE MODE");
+      }
+
+      Throwable failure =
+          assertTimeoutPreemptively(
+              Duration.ofSeconds(10),
+              () ->
+                  catchThrowable(
+                      () -> reader.page(EVERYTHING_BY_PRICE, Optional.empty(), 10, NOW)));
+
+      // Spring translates PostgreSQL's query_canceled, 57014, into a QueryTimeoutException.
+      assertThat(failure).isInstanceOf(QueryTimeoutException.class);
+      assertThat(((QueryTimeoutException) failure).getMostSpecificCause())
+          .isInstanceOfSatisfying(
+              SQLException.class, cause -> assertThat(cause.getSQLState()).isEqualTo("57014"))
+          .hasMessageContaining("statement timeout");
+      assertThat(busyBackendsBesides(holder)).isZero();
+      holder.rollback();
+    }
+  }
+
+  static Stream<Named<Consumer<JdbcItineraryReader>>> everyRead() {
+    return Stream.of(
+        Named.of("state", reader -> reader.state()),
+        Named.of("page", reader -> reader.page(EVERYTHING_BY_PRICE, Optional.empty(), 10, NOW)),
+        Named.of(
+            "byId",
+            reader ->
+                reader.byId(
+                    new ItineraryId(UUID.fromString("0f8e3a52-1c3b-4b6e-9d2a-5b7c8e9f0a1b")))));
+  }
+
+  /**
+   * Each read bounds its statements at 2 s, in its own transaction alone. The setting is read in
+   * the enclosing transaction, which the read joins, once the read has run, and is gone after the
+   * commit.
+   */
+  @ParameterizedTest
+  @MethodSource("everyRead")
+  void boundsEachReadToTwoSeconds(Consumer<JdbcItineraryReader> read) {
+    String duringTheRead =
+        enclosing.execute(
+            status -> {
+              read.accept(reader);
+              return jdbc.sql("SHOW statement_timeout").query(String.class).single();
+            });
+
+    assertThat(duringTheRead).isEqualTo("2s");
+    assertThat(jdbc.sql("SHOW statement_timeout").query(String.class).single()).isEqualTo("0");
   }
 
   /** Re-price must still find a choice that has left, to offer its alternative (Q4). */

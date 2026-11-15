@@ -97,7 +97,7 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
    */
   private StoreOutcome rewrite(Itinerary repriced) {
     jdbc.sql("SET LOCAL lock_timeout = '" + LOCK_TIMEOUT + "'").update();
-    StatementTimeout.boundTheTransaction(jdbc);
+    StatementTimeout.STORE.boundTheTransaction(jdbc);
     Optional<Slot> active = activeSlotUnlessARunHoldsIt();
     if (active.isEmpty()) {
       // The refused lock aborted the transaction; its commit is a rollback.
@@ -118,7 +118,7 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
 
   private Publication load(Instant now, ItineraryWriter writer) {
     jdbc.sql("SET LOCAL lock_timeout = '" + LOCK_TIMEOUT + "'").update();
-    StatementTimeout.boundTheTransaction(jdbc);
+    StatementTimeout.STORE.boundTheTransaction(jdbc);
     Slot slot = activeSlotLocked().other();
     LocalDate today = PartitionCalendar.dayOf(now);
     LocalDate lastPartitionDay = today.plusDays(partitionDaysAhead);

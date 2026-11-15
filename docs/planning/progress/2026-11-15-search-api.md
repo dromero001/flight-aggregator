@@ -819,3 +819,23 @@ Thermo-nuclear review of the round's diff:
 - No branch is added to the service; its check only gains a sentence of Javadoc.
 - The adapter's existing `Clock` port is used, and no file is near 1,000 lines (the adapter 133, its test 376).
 - The write is one command or none: nothing written half-way, and no new way for a search to fail.
+
+## Approved extras (Tasks 4 and 8, git guard)
+
+The extras the user approved on 2026-11-15 (plan 5, Tasks 4 and 8; the git guard), built in one worktree, one commit each. One test at a time; a test that passed on its first run is shown red by a labelled mutation of the production code, which was then restored.
+
+### Task 4: a 2 s statement timeout on every search read
+
+Design notes:
+
+- **A constant, as the stores' bound is.** The stores' `StatementTimeout` is a constant (`SET LOCAL statement_timeout = '5min'`), not a setting, so the reader's 2 s is a constant too, as the brief says for that case; `SearchProperties` and `application.yaml` are untouched. `StatementTimeout` became an enum with two bounds, `STORE` (5 min, the stores' writes, unchanged) and `SEARCH_READ` (2 s), and one `boundTheTransaction(JdbcClient)`; the three store call sites name `STORE`.
+- Each of the reader's three reads (`state`, `page`, `byId`) runs through one private `read(...)`: the read-only `REPEATABLE READ` template, whose first statement is `StatementTimeout.SEARCH_READ.boundTheTransaction(jdbc)`. `SET` takes no snapshot, so the generation and the rows of a page are still one snapshot (`readsTheGenerationAndItsRowsInOneSnapshot` stays green).
+- **How a timeout surfaces:** PostgreSQL cancels the statement with SQLState `57014` (`canceling statement due to statement timeout`), Spring translates it into `org.springframework.dao.QueryTimeoutException` (a `TransientDataAccessException`), and the template rolls the read back before the exception reaches the caller. The web layer can map that type; no mapping is built here.
+- The page's keyset statement is the only one that locks the slot (`ACCESS SHARE`), so a read holds that lock for 2 s at most, less than the 5 s `lock_timeout` a run's `TRUNCATE` of that slot waits for.
+
+Cycles:
+
+- `JdbcItineraryReaderTest.cutsAReadThatTakesLongerThanItsBound`. Set-up: one publication; a second connection holds `LOCK TABLE itinerary_b IN ACCESS EXCLUSIVE MODE`, so the page's keyset statement waits; the read runs under `assertTimeoutPreemptively(10 s)`. Red: `AssertionFailedError: execution timed out after 10000 ms` (nothing cut the read). Green: `SET LOCAL statement_timeout = '2s'` at the start of `page()`'s transaction; the test takes 2.3 s. It asserts a `QueryTimeoutException` whose most specific cause has SQLState `57014` and says `statement timeout`, and that no other client backend runs a statement or holds a transaction open.
+  - The "no transaction left open" check first counted backends with `xact_start` set, and a mutation showed it vacuous: with "the read opens its transaction by hand and never rolls it back on failure", the test stayed green, because PostgreSQL clears `xact_start` once a statement aborts the transaction. The check now counts backends whose `state` is not `idle`; the same mutation then failed: `expected: 0L but was: 1L` (the backend left `idle in transaction (aborted)`).
+- `boundsEachReadToTwoSeconds`, one case per read, each read run inside an enclosing transaction of the same data source and `SHOW statement_timeout` read before its commit, then `0` after it. Red: `[1] state` and `[3] byId`: `expected: "2s" but was: "0"`; `[2] page` passed. Green: all three reads go through `read(...)`, which bounds the transaction. `[2] page` passed on its first run; mutation "the bound is `3s`": all three cases `expected: "2s" but was: "3s"`, while `cutsAReadThatTakesLongerThanItsBound` stayed green, which is why the value needs its own pin.
+- Refactor under green: the literal `SET LOCAL` became `StatementTimeout.SEARCH_READ`, and the stores' calls `StatementTimeout.STORE` (their pins, `boundsEachStatementOfTheLoad`, `boundsTheTransactionOfAnUpdate` and the offer store's, stay green at `5min`).
