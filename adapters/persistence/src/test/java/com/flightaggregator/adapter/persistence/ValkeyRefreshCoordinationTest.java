@@ -7,16 +7,19 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.flightaggregator.adapter.persistence.support.SettableClock;
 import com.flightaggregator.adapter.persistence.support.ValkeyTestServer;
 import com.flightaggregator.domain.Airport;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.KeyValuePair;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 class ValkeyRefreshCoordinationTest {
@@ -27,15 +30,20 @@ class ValkeyRefreshCoordinationTest {
   /** Short, so that a test can wait for a claim to expire. */
   private static final Duration CLAIM_TTL = Duration.ofMillis(300);
 
+  /** The freshness threshold (§6.4), which a refresh mark lives for. */
+  private static final Duration FRESHNESS_THRESHOLD = Duration.ofMinutes(10);
+
   private final StringRedisTemplate valkey = ValkeyTestServer.valkey();
+  private final SettableClock clock = new SettableClock(Instant.parse("2026-11-20T10:00:00Z"));
   private final ValkeyRefreshCoordination coordination =
       new ValkeyRefreshCoordination(
           valkey,
           CLAIM_TTL,
-          Duration.ofMinutes(10),
+          FRESHNESS_THRESHOLD,
           new ValkeyFailures(
               CircuitBreaker.of(
-                  "valkey", ValkeyFailures.circuitBreakerConfig(Duration.ofSeconds(10)))));
+                  "valkey", ValkeyFailures.circuitBreakerConfig(Duration.ofSeconds(10)))),
+          clock::instant);
 
   private final Logger logger = (Logger) LoggerFactory.getLogger(ValkeyRefreshCoordination.class);
   private final ListAppender<ILoggingEvent> log = new ListAppender<>();
@@ -112,6 +120,43 @@ class ValkeyRefreshCoordinationTest {
                 Level.WARN,
                 "An origin's refresh mark cannot be read, so the origin counts as not refreshed",
                 null));
+  }
+
+  /**
+   * Many marks that cannot be read at once, as after a change of their format, are one WARN, not
+   * one each.
+   */
+  @Test
+  void warnsOnceOfManyMarksItCannotReadAtOnce() {
+    valkey.opsForValue().set("fresh:MAD", "yesterday");
+    valkey.opsForValue().set("fresh:BCN", "yesterday");
+
+    coordination.refreshedAt(MADRID);
+    coordination.refreshedAt(BARCELONA);
+    coordination.refreshedAt(MADRID);
+
+    assertThat(log.list).extracting(ILoggingEvent::getLevel).containsExactly(Level.WARN);
+  }
+
+  /**
+   * That WARN's episode lasts the freshness threshold, which a mark lives for. The first mark that
+   * cannot be read after it is a WARN again, which counts the ones that were not logged.
+   */
+  @Test
+  void warnsAgainOnceTheFreshnessThresholdHasPassedCountingTheOnesNotLogged() {
+    valkey.opsForValue().set("fresh:MAD", "yesterday");
+
+    coordination.refreshedAt(MADRID);
+    clock.advance(FRESHNESS_THRESHOLD.minusMillis(1));
+    coordination.refreshedAt(MADRID);
+    clock.advance(Duration.ofMillis(1));
+    coordination.refreshedAt(MADRID);
+
+    assertThat(log.list)
+        .extracting(ILoggingEvent::getLevel, ILoggingEvent::getKeyValuePairs)
+        .containsExactly(
+            tuple(Level.WARN, List.of(new KeyValuePair("unloggedRepeats", 0L))),
+            tuple(Level.WARN, List.of(new KeyValuePair("unloggedRepeats", 1L))));
   }
 
   /** Valkey down, no caller gets a claim, so no refresh starts until it is back (§6.2). */

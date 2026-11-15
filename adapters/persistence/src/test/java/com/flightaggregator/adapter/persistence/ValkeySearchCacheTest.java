@@ -7,6 +7,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.flightaggregator.adapter.persistence.support.SettableClock;
 import com.flightaggregator.adapter.persistence.support.ValkeyTestServer;
 import com.flightaggregator.application.port.in.PageCursor;
 import com.flightaggregator.application.port.in.SearchCriteria;
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.KeyValuePair;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import tools.jackson.core.json.JsonFactory;
 
@@ -77,17 +79,22 @@ class ValkeySearchCacheTest {
                   "2026-11-21T08:05:00+01:00",
                   "89.99")));
 
+  /** The cache's time to live (§6.4). */
+  private static final Duration TTL = Duration.ofMinutes(5);
+
   private final StringRedisTemplate valkey = ValkeyTestServer.valkey();
   private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
+  private final SettableClock clock = new SettableClock(Instant.parse("2026-11-20T10:00:00Z"));
   private final ValkeySearchCache cache =
       new ValkeySearchCache(
           valkey,
           new JsonFactory(),
-          Duration.ofMinutes(5),
+          TTL,
           new ValkeyFailures(
               CircuitBreaker.of(
                   "valkey", ValkeyFailures.circuitBreakerConfig(Duration.ofSeconds(10)))),
-          meters);
+          meters,
+          clock::instant);
 
   private final Logger logger = (Logger) LoggerFactory.getLogger(ValkeySearchCache.class);
   private final ListAppender<ILoggingEvent> log = new ListAppender<>();
@@ -194,6 +201,50 @@ class ValkeySearchCacheTest {
                 Level.WARN,
                 "A cached search page cannot be read, so the search runs without it",
                 null));
+  }
+
+  /**
+   * Many pages that cannot be read at once, as after a change of their format, are one WARN, not
+   * one each; the meter still counts every one.
+   */
+  @Test
+  void warnsOnceOfManyPagesItCannotReadAtOnce() {
+    List<SearchKey> keys =
+        List.of(
+            new SearchKey(4, FROM_MADRID, 20),
+            new SearchKey(4, FROM_MADRID, 40),
+            new SearchKey(5, FROM_MADRID, 20));
+    keys.forEach(key -> valkey.opsForValue().set(key.value(), "not json"));
+
+    keys.forEach(cache::get);
+
+    assertThat(log.list).extracting(ILoggingEvent::getLevel).containsExactly(Level.WARN);
+    assertThat(lookups("error")).isEqualTo(3);
+  }
+
+  /**
+   * That WARN's episode lasts the cache's time to live, the longest a page written in another
+   * format can still be found. The first page that cannot be read after it is a WARN again, which
+   * counts the ones that were not logged.
+   */
+  @Test
+  void warnsAgainOnceItsTimeToLiveHasPassedCountingTheOnesNotLogged() {
+    SearchKey key = new SearchKey(4, FROM_MADRID, 20);
+    valkey.opsForValue().set(key.value(), "not json");
+
+    cache.get(key);
+    cache.get(key);
+    cache.get(key);
+    clock.advance(TTL.minusMillis(1));
+    cache.get(key);
+    clock.advance(Duration.ofMillis(1));
+    cache.get(key);
+
+    assertThat(log.list)
+        .extracting(ILoggingEvent::getLevel, ILoggingEvent::getKeyValuePairs)
+        .containsExactly(
+            tuple(Level.WARN, List.of(new KeyValuePair("unloggedRepeats", 0L))),
+            tuple(Level.WARN, List.of(new KeyValuePair("unloggedRepeats", 3L))));
   }
 
   /** Valkey down, a lookup is a miss, counted as an error rather than a miss (§6.2). */

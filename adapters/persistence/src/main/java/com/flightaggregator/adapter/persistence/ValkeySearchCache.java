@@ -1,6 +1,7 @@
 package com.flightaggregator.adapter.persistence;
 
 import com.flightaggregator.application.port.in.SearchPage;
+import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.SearchCache;
 import com.flightaggregator.application.port.out.SearchKey;
 import io.micrometer.core.instrument.Counter;
@@ -16,8 +17,9 @@ import tools.jackson.core.json.JsonFactory;
  * The search cache in Valkey: each page a JSON string under its key's value, for the cache's time
  * to live. Each lookup counts once in {@code search.cache}, tagged {@code result=hit|miss|error},
  * so the hit ratio can be read (§6.2, §6.10). A page this version cannot read, such as one another
- * version wrote, counts as an error and is one {@code WARN}: Valkey is a cache, so nothing it holds
- * may fail a search.
+ * version wrote, counts as an error and is a {@code WARN}: Valkey is a cache, so nothing it holds
+ * may fail a search. Many at once, as after a change of format, are one {@code WARN} per time to
+ * live, the longest such a page can still be found.
  */
 public final class ValkeySearchCache implements SearchCache {
 
@@ -30,13 +32,15 @@ public final class ValkeySearchCache implements SearchCache {
   private final Counter hits;
   private final Counter misses;
   private final Counter errors;
+  private final EpisodeWarning unreadablePages;
 
   public ValkeySearchCache(
       StringRedisTemplate valkey,
       JsonFactory json,
       Duration ttl,
       ValkeyFailures failures,
-      MeterRegistry meters) {
+      MeterRegistry meters,
+      Clock clock) {
     this.valkey = valkey;
     this.json = json;
     this.ttl = ttl;
@@ -44,6 +48,9 @@ public final class ValkeySearchCache implements SearchCache {
     this.hits = lookups(meters, "hit");
     this.misses = lookups(meters, "miss");
     this.errors = lookups(meters, "error");
+    this.unreadablePages =
+        new EpisodeWarning(
+            LOG, "A cached search page cannot be read, so the search runs without it", ttl, clock);
   }
 
   /** Nothing, counted as an error, when Valkey fails the lookup. */
@@ -70,7 +77,7 @@ public final class ValkeySearchCache implements SearchCache {
       page = SearchPageJson.read(document, json);
     } catch (IllegalStateException unreadable) {
       // Neither the page nor the failure, which can quote it, is logged.
-      LOG.warn("A cached search page cannot be read, so the search runs without it");
+      unreadablePages.warn();
       errors.increment();
       return Optional.empty();
     }

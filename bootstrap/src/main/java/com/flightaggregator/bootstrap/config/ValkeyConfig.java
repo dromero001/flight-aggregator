@@ -4,6 +4,7 @@ import com.flightaggregator.adapter.persistence.ValkeyFailures;
 import com.flightaggregator.adapter.persistence.ValkeyRefreshCoordination;
 import com.flightaggregator.adapter.persistence.ValkeyRequestCounter;
 import com.flightaggregator.adapter.persistence.ValkeySearchCache;
+import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.RefreshCoordination;
 import com.flightaggregator.application.port.out.RequestCounter;
 import com.flightaggregator.application.port.out.SearchCache;
@@ -81,16 +82,17 @@ class ValkeyConfig {
       JsonMapper json,
       SearchProperties search,
       ValkeyFailures failures,
-      MeterRegistry meters) {
+      MeterRegistry meters,
+      Clock clock) {
     return new ValkeySearchCache(
-        valkey, json.tokenStreamFactory(), search.cacheTtl(), failures, meters);
+        valkey, json.tokenStreamFactory(), search.cacheTtl(), failures, meters, clock);
   }
 
   @Bean
   RefreshCoordination refreshCoordination(
-      StringRedisTemplate valkey, SearchProperties search, ValkeyFailures failures) {
+      StringRedisTemplate valkey, SearchProperties search, ValkeyFailures failures, Clock clock) {
     return new ValkeyRefreshCoordination(
-        valkey, search.refreshClaimTtl(), search.freshnessThreshold(), failures);
+        valkey, search.refreshClaimTtl(), search.freshnessThreshold(), failures, clock);
   }
 
   @Bean
