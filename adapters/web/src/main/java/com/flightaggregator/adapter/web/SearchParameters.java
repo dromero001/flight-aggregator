@@ -1,0 +1,102 @@
+package com.flightaggregator.adapter.web;
+
+import com.flightaggregator.application.port.in.SearchCriteria;
+import com.flightaggregator.application.port.in.SearchQuery;
+import com.flightaggregator.application.port.in.SortOrder;
+import com.flightaggregator.domain.Airport;
+import com.flightaggregator.domain.Carrier;
+import com.flightaggregator.domain.Money;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * The search's query parameters as the client sent them, each absent or its text, and the query
+ * they make (§4, §5.4, Q9). Each value must match its parameter's pattern in full, ASCII only, so a
+ * code that upper-cases into another one (the dotless {@code ı}) is refused; a bad value is an
+ * {@link InvalidParameterException} whose message starts with the parameter's name, and a bad
+ * cursor an {@code InvalidCursorException}. The patterns, the default and the largest page size are
+ * the ones {@link SearchController} documents in the contract.
+ */
+record SearchParameters(
+    String origin,
+    String destination,
+    String maxPrice,
+    String carrier,
+    String sort,
+    String limit,
+    String cursor) {
+
+  static final String AIRPORT = "^[A-Za-z]{3}$";
+  static final String CARRIER = "^[A-Za-z0-9]{2}$";
+  static final String AMOUNT = "^[0-9]{1,9}(\\.[0-9]{1,2})?$";
+  static final String DEFAULT_SORT = "price";
+  static final int DEFAULT_LIMIT = 20;
+  static final int MAXIMUM_LIMIT = 100;
+
+  private static final String LIMIT = "^[0-9]{1,3}$";
+  private static final String MAX_PRICE_RULE =
+      "maxPrice must be an amount in euros above 0, with at most two decimals, like 150 or 149.99";
+  private static final String LIMIT_RULE =
+      "limit must be a whole number from 1 to " + MAXIMUM_LIMIT;
+
+  private static final Map<String, SortOrder> SORT_ORDERS =
+      Map.of(
+          "price", SortOrder.PRICE,
+          "departure", SortOrder.DEPARTURE,
+          "duration", SortOrder.DURATION);
+
+  SearchQuery toQuery() {
+    return new SearchQuery(
+        new SearchCriteria(
+            airport("origin", origin),
+            airport("destination", destination),
+            maxPrice(maxPrice),
+            carrier(carrier),
+            sortOrder(sort)),
+        limit(limit),
+        Optional.ofNullable(cursor).map(CursorCodec::decode));
+  }
+
+  private static Optional<Airport> airport(String parameter, String code) {
+    return matching(code, AIRPORT, parameter + " must be a three-letter airport code, like MAD")
+        .map(value -> new Airport(value.toUpperCase(Locale.ROOT)));
+  }
+
+  private static Optional<Money> maxPrice(String amount) {
+    Optional<Money> euros = matching(amount, AMOUNT, MAX_PRICE_RULE).map(Money::euros);
+    if (euros.filter(money -> money.compareTo(Money.ZERO) == 0).isPresent()) {
+      throw new InvalidParameterException(MAX_PRICE_RULE);
+    }
+    return euros;
+  }
+
+  private static Optional<Carrier> carrier(String code) {
+    return matching(code, CARRIER, "carrier must be a two-character airline code, like IB")
+        .map(value -> new Carrier(value.toUpperCase(Locale.ROOT)));
+  }
+
+  private static SortOrder sortOrder(String sort) {
+    SortOrder order = SORT_ORDERS.get(sort == null ? DEFAULT_SORT : sort);
+    if (order == null) {
+      throw new InvalidParameterException("sort must be price, departure or duration");
+    }
+    return order;
+  }
+
+  private static int limit(String limit) {
+    int value = matching(limit, LIMIT, LIMIT_RULE).map(Integer::parseInt).orElse(DEFAULT_LIMIT);
+    if (value < 1 || value > MAXIMUM_LIMIT) {
+      throw new InvalidParameterException(LIMIT_RULE);
+    }
+    return value;
+  }
+
+  /** The value, when the client sent one, refused with the rule unless it matches in full. */
+  private static Optional<String> matching(String value, String pattern, String rule) {
+    if (value != null && !value.matches(pattern)) {
+      throw new InvalidParameterException(rule);
+    }
+    return Optional.ofNullable(value);
+  }
+}
