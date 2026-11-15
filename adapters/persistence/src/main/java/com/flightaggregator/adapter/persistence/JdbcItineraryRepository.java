@@ -17,8 +17,10 @@ import tools.jackson.core.json.JsonFactory;
  * inventory_publication} names the one search reads (§6.5). A run is one transaction that empties
  * the other slot, keeps its day partitions from today to today plus {@code partitionDaysAhead},
  * copies the itineraries in with {@code COPY}, and switches the active slot and the generation. A
- * failure anywhere rolls it all back, and the writer's exception propagates as it was thrown. All
- * DDL touches only the inactive slot, and every table name comes from {@link Slot}.
+ * failure anywhere rolls it all back, and the writer's exception propagates as it was thrown. The
+ * writer's {@code writeTo} runs inside the load, on the load's connection, and must not use the
+ * storage ports. All DDL touches only the inactive slot, and every table name comes from {@link
+ * Slot}.
  */
 public final class JdbcItineraryRepository implements ItineraryRepository {
 
@@ -56,6 +58,8 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
     Slot slot = activeSlot().other();
     LocalDate today = PartitionCalendar.dayOf(now);
     LocalDate lastPartitionDay = today.plusDays(partitionDaysAhead);
+    // Before the partitions are created: PostgreSQL refuses CREATE ... PARTITION OF while the
+    // DEFAULT partition holds rows in the new partition's range.
     jdbc.sql("TRUNCATE " + slot.table()).update();
     dropPartitionsBefore(slot, today);
     today.datesUntil(lastPartitionDay.plusDays(1)).forEach(day -> createPartition(slot, day));
