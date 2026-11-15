@@ -6,7 +6,8 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'test-results', 'playwright-report'] },
+  // schema.d.ts is generated (`npm run api:generate`); its drift test guards it instead.
+  { ignores: ['dist', 'test-results', 'playwright-report', 'src/api/schema.d.ts'] },
   {
     files: ['**/*.{ts,tsx,js}'],
     extends: [

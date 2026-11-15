@@ -62,6 +62,11 @@ jobs:
       - run: npm ci
       # Typecheck (strict), ESLint, Prettier and Vitest, in that order (spec 6.11).
       - run: npm run verify
+      # Spec 6.11 step 3, the types' half: src/api/schema.d.ts must be what openapi-typescript
+      # generates from the committed contract; the backend job's OpenApiContractTest is the other
+      # half (the committed contract is the one the app serves).
+      - name: Contract drift
+        run: npm run api:check
       # cancelled() too: a job that hits timeout-minutes is cancelled, and its reports matter most.
       - if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
