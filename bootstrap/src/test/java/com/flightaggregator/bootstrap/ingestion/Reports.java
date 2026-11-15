@@ -46,7 +46,6 @@ final class Reports {
   static ProviderReport fresh(Provider provider) {
     return new ProviderReport(
         provider,
-        ProviderReport.Status.FRESH,
         Optional.empty(),
         Optional.empty(),
         4,
@@ -60,7 +59,6 @@ final class Reports {
   static ProviderReport kept(Provider provider, FailureReason reason, Throwable cause) {
     return new ProviderReport(
         provider,
-        ProviderReport.Status.KEPT,
         Optional.of(reason),
         Optional.of(cause),
         0,

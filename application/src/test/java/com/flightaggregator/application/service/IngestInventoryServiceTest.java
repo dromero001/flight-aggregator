@@ -91,12 +91,14 @@ class IngestInventoryServiceTest {
   void keepsAFailedProvidersOffersWhole() {
     List<Leg> lastGood = List.of(leg(BETA, 7, "MAD", "LHR"));
     store.with(BETA, lastGood);
-    IOException timedOut = new IOException("read timed out");
+    ProviderUnavailableException timedOut =
+        new ProviderUnavailableException(
+            BETA, FailureReason.TIMEOUT, new IOException("read timed out"));
     FakeFlightProvider beta =
         new FakeFlightProvider(
             BETA,
             () -> {
-              throw new ProviderUnavailableException(BETA, FailureReason.TIMEOUT, timedOut);
+              throw timedOut;
             });
 
     IngestionReport report = service(beta).ingest();
@@ -106,9 +108,26 @@ class IngestInventoryServiceTest {
     ProviderReport betaReport = report.providers().getFirst();
     assertThat(betaReport.status()).isEqualTo(ProviderReport.Status.KEPT);
     assertThat(betaReport.failure()).contains(FailureReason.TIMEOUT);
+    // The exception itself, which names the provider and the reason above its own cause.
     assertThat(betaReport.cause()).containsSame(timedOut);
     assertThat(betaReport.offersFetched()).isZero();
     assertThat(betaReport.offersUsed()).isEqualTo(1);
+  }
+
+  /** The offers a run keeps are read from the store once, for the build and the report alike. */
+  @Test
+  void readsAKeptProvidersStoredOffersOnce() {
+    store.with(BETA, List.of(leg(BETA, 7, "MAD", "LHR")));
+    FakeFlightProvider beta =
+        new FakeFlightProvider(
+            BETA,
+            () -> {
+              throw new ProviderUnavailableException(BETA, FailureReason.HTTP_ERROR, null);
+            });
+
+    service(beta).ingest();
+
+    assertThat(store.reads(BETA)).isEqualTo(1);
   }
 
   /**
