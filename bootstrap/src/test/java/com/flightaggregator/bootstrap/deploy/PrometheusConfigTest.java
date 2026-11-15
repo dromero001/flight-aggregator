@@ -97,8 +97,8 @@ class PrometheusConfigTest {
     return new GenericContainer<>(ObservabilityImages.PROMETHEUS)
         .withCopyFileToContainer(MountableFile.forHostPath(CONFIG_DIRECTORY), "/etc/prometheus")
         .withCreateContainerCmdModifier(command -> command.withEntrypoint("promtool"))
-        .withCommand("check", "config", "/etc/prometheus/prometheus.yaml")
-        // start() fails unless the command exits with 0.
+        .withCommand("check", "config", "--lint-fatal", "/etc/prometheus/prometheus.yaml")
+        // start() fails unless the command exits with 0; a lint error of the rules exits with 3.
         .withStartupCheckStrategy(new OneShotStartupCheckStrategy());
   }
 }

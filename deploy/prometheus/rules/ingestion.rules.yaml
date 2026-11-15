@@ -8,12 +8,13 @@
 # - A value past its threshold fires at once (Q4: each condition already spans several runs).
 # - A gauge that reads NaN (before an instance's first run) or is missing (no instance scraped)
 #   counts as stale (plan 4 close-out): its rule fires after 15 minutes of that on every instance
-#   (Q4). A normal restart reads NaN for well under a minute; a crashed run's lock, which keeps the
-#   restarted instance from running for up to 29 minutes, does fire. The wait is a "for", so a
-#   Prometheus that has just started, with no history, does not fire before its first scrape.
+#   (Q4), with the label gauge: unknown. A normal restart reads NaN for well under a minute; a
+#   crashed run's lock, which keeps the restarted instance from running for up to 29 minutes, does
+#   fire. The wait is a "for", so a Prometheus that has just started, with no history, does not
+#   fire before its first scrape.
 # - "x == x" keeps only the series that hold a number, since NaN is not equal to itself.
-# - An alert's two rules (its value, its stale gauge) never hold at once: one needs a number, the
-#   other none. promtool's duplicate-rules lint still lists them (a warning: it exits 0).
+# - The label also keeps an alert's two rules (its value, its stale gauge) apart, as promtool's
+#   duplicate-rules lint requires: the tests run it with --lint-fatal (the user's decision).
 groups:
   - name: ingestion
     rules:
@@ -27,6 +28,8 @@ groups:
       - alert: IngestionFailing
         expr: absent(ingestion_consecutive_failures)
         for: 15m
+        labels:
+          gauge: unknown
         annotations:
           summary: No instance has reported its failed ingestion runs for 15 minutes
 
@@ -40,6 +43,8 @@ groups:
       - alert: PartitionHorizonShort
         expr: absent(ingestion_partitions_days_ahead == ingestion_partitions_days_ahead)
         for: 15m
+        labels:
+          gauge: unknown
         annotations:
           summary: The partition horizon has been unknown on every instance for 15 minutes
 
@@ -57,21 +62,22 @@ groups:
         for: 0m
         annotations:
           summary: Provider {{ $labels.provider }}'s newest data is {{ $value | humanizeDuration }} old
-      # The providers listed, unless an instance holds a number for them. A provider reads NaN
-      # while it has nothing stored, and on a restarted instance until its first run.
+      # The providers listed, unless an instance holds a number for them; or, with no series at
+      # all, the gauge itself, with no provider to name. A provider reads NaN while it has nothing
+      # stored, and on a restarted instance until its first run.
       - alert: ProviderDataStale
         expr: >-
-          group by (provider) (ingestion_provider_last_fresh_seconds)
-          unless on (provider)
-          (ingestion_provider_last_fresh_seconds == ingestion_provider_last_fresh_seconds)
+          (
+            group by (provider) (ingestion_provider_last_fresh_seconds)
+            unless on (provider)
+            (ingestion_provider_last_fresh_seconds == ingestion_provider_last_fresh_seconds)
+          )
+          or absent(ingestion_provider_last_fresh_seconds)
         for: 15m
+        labels:
+          gauge: unknown
         annotations:
           summary: >-
-            Provider {{ $labels.provider }}'s data age has been unknown on every instance for 15
-            minutes
-      # With no series at all, no provider can be named.
-      - alert: ProviderDataStale
-        expr: absent(ingestion_provider_last_fresh_seconds)
-        for: 15m
-        annotations:
-          summary: No instance has reported any provider's data age for 15 minutes
+            {{ with $labels.provider }}Provider {{ . }}'s data age has been unknown on every instance
+            for 15 minutes{{ else }}No instance has reported any provider's data age for 15
+            minutes{{ end }}

@@ -30,7 +30,8 @@ class AlertRulesTest {
             .withCommand("600")) {
       prometheus.start();
 
-      assertSucceeds(prometheus, "promtool check rules /etc/prometheus/rules/*.rules.yaml");
+      assertSucceeds(
+          prometheus, "promtool check rules --lint-fatal /etc/prometheus/rules/*.rules.yaml");
       assertSucceeds(prometheus, "promtool test rules /etc/prometheus/rules/*.rules.test.yaml");
     }
   }
