@@ -59,7 +59,7 @@ The cost of a cut depends on how much state lives only in the conversation, so t
 
 ## 5. Plan 3 and plan 4
 
-- **Plan 3:** see the [progress report](../../planning/progress/2026-11-15.md), "Plan 3 close-out", for the findings and how each was fixed or decided.
+- **Plan 3:** closed after two fix rounds; the three reviewers approved the second. See the [progress report](../../planning/progress/2026-11-15.md), "Plan 3 close-out", for the findings and how each was fixed or decided.
 - **Plan 4:** [providers and ingestion](../../planning/plans/2026-11-15-providers-and-ingestion.md). The user decided four points before it was written:
   - a double buffer: two itinerary slots, loaded with `TRUNCATE` and `COPY` and switched in one transaction;
   - the stale-route refresh moves to plan 5;
@@ -85,6 +85,7 @@ The user asked for a skill so that the prompts that added value are saved, trans
 - *"You recommend option A, but isn't B more complete?"*: made the controller redo the worst case it had assumed was bounded. Its recommendation was wrong: a slow provider could stretch ingestion to nearly the full cadence, and the plan now bounds each provider's download (spec §6.1).
 - *"Remember they also want the prompts. Make a skill for it, so that the relevant prompts are saved translated into English and I don't have to keep reminding you."*: turned a rule the agent kept forgetting into a skill, `prompt-log`, that records each prompt when it happens instead of at the end of the session.
 - *"I think we are going to disable Dependabot, it is getting in the way of the project's development; once it is delivered we will turn it back on. Reject the current Dependabot PR."*: paused Dependabot until the delivery (`open-pull-requests-limit: 0`, spec §6.11) while keeping its configuration, after three of its pull requests in one night had each needed a decision (a non-LTS Java, a formatter major, a formatter minor that breaks Spotless).
+- Paraphrased (an option the user chose in a question, not typed): asked whether to build the two small extras the reviews had proposed, the user chose to include both: E1, the mock refuses to start on a `MOCKGDS_PROVIDERS_*` environment variable that names no setting, because Spring Boot does not check the environment for unknown keys; and E2, the gate logs each refusal with its provider and path, never a key. Both were built test-first in plan 3's second fix round (`609f2ad`, `bc6d27a`).
 - The brief for the fix round (a subagent prompt): *"For the commits whose evidence was never recorded because the session was cut off, say so honestly and, where you can, re-establish evidence after the fact by mutation, labelled 'recorded after the fact by mutation'."*: kept the TDD record truthful instead of reconstructing it as if it had been recorded at the time.
 
 ## 8. Lesson
