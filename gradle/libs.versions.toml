@@ -4,6 +4,8 @@ google-java-format = "1.36.1"
 archunit = "1.5.1"
 spring-boot = "4.1.2"
 jacoco = "0.8.16"
+resilience4j = "2.4.0"
+wiremock = "3.13.2"
 
 [libraries]
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
@@ -21,8 +23,12 @@ spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-
 spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }
 spring-boot-resttestclient = { module = "org.springframework.boot:spring-boot-resttestclient" }
 spring-boot-restclient = { module = "org.springframework.boot:spring-boot-restclient" }
+spring-web = { module = "org.springframework:spring-web" }
 spring-jdbc = { module = "org.springframework:spring-jdbc" }
 postgresql = { module = "org.postgresql:postgresql" }
+jackson-databind = { module = "tools.jackson.core:jackson-databind" }
+resilience4j-circuitbreaker = { module = "io.github.resilience4j:resilience4j-circuitbreaker", version.ref = "resilience4j" }
+wiremock-standalone = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
 jackson-core = { module = "tools.jackson.core:jackson-core" }
 flyway-core = { module = "org.flywaydb:flyway-core" }
 flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
