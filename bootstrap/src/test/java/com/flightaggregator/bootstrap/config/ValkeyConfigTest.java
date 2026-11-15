@@ -255,4 +255,19 @@ class ValkeyConfigTest {
               assertThat(context.getStartupFailure()).hasStackTraceContaining(setting);
             });
   }
+
+  /**
+   * Valkey's breaker waits whole milliseconds and cannot be built to wait less than one, so a skip
+   * under a millisecond stops startup naming the setting, not with the breaker's own message.
+   */
+  @Test
+  void refusesAValkeySkipUnderAMillisecond() {
+    runner
+        .withPropertyValues("search.valkey-skip=PT0.0005S")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure()).hasStackTraceContaining("search.valkey-skip");
+            });
+  }
 }
