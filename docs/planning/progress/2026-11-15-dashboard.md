@@ -200,3 +200,10 @@ Review: functional APPROVED, code CHANGES REQUESTED (`task-9-review.md`). C-1 fi
   - Green with `frontend/nginx/10-validate-config.sh` in `/docker-entrypoint.d/` (POSIX `sh`, runs before `20-envsubst-on-templates.sh`): `API_UPSTREAM` and `OIDC_AUTHORITY` must be `http(s)://` plus `[A-Za-z0-9._~:/?#@!&=+,%-]`, `OIDC_CLIENT_ID` `[A-Za-z0-9._-]+`; a bad or missing value prints `10-validate-config.sh: OIDC_AUTHORITY is missing or not valid (expected ...)` and exits 1. All three cases `ok`.
 - Checks: `npm run verify`, `npm run build`, `docker build frontend` and `./gradlew build` green.
 - Self-review (thermo-nuclear): the entrypoint hook is the image's own extension point; the allowed-character set is one whitelist per kind, shared by the two URLs; a failure is loud and names the variable. The test script is the only addition beyond the ruling (it is what the ruling asked for).
+
+## Task 9 — fix round 2
+
+Re-review: C-1 not addressed (a line break bypassed the validation; `#` in the upstream).
+- Line break: `grep` matches per line, so `OIDC_AUTHORITY=$'http://x\n"y'` passed. Test cases added to `test-config-validation.sh`, which now also requires the log line to come from `10-validate-config.sh` itself. Red: `FAIL: expected a refusal naming OIDC_AUTHORITY (exit 1)` and the same for `OIDC_CLIENT_ID='dash\nboard'` (nginx died later, or the validation named nothing). Green: `check` rejects any value containing a newline or carriage return before the pattern is applied, so the pattern sees the whole value.
+- `#`: `API_UPSTREAM=http://app:8080#x` passed (red: `FAIL: expected a refusal naming API_UPSTREAM (exit 0)`). `API_UPSTREAM` reaches nginx unquoted in `set`, where `#` starts a comment, so it is no longer allowed there. `OIDC_AUTHORITY` only reaches the quoted JSON string, where `#` is plain text, so it keeps it (two patterns, commented in the script).
+- All six cases of the script `ok`; `npm run verify`, `npm run build`, `docker build frontend` and `./gradlew build` green. Self-review (thermo-nuclear): the two URL patterns differ only by `#`, each with its reason in a comment; no new mechanism.
