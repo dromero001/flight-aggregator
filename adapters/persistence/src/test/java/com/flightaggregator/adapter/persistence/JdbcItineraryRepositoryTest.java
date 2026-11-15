@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.IntStream;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
@@ -117,6 +118,31 @@ class JdbcItineraryRepositoryTest {
         .isEqualTo(new Publication(1, 2, 0, Instant.parse("2026-12-28T00:00:00Z")));
     assertThat(published()).isEqualTo(new Published("b", 1, NOW));
     assertThat(rows("itinerary_b")).isEqualTo(2);
+  }
+
+  /**
+   * Two runs at once (§6.5): while one holds the publication row, the other waits for it before it
+   * reads the active slot or touches either slot, and gives up at the lock timeout. Without that
+   * wait it would read the slot the first run is about to publish and truncate it after the switch.
+   */
+  @Test
+  void aSecondLoadTouchesNoSlotWhileAnotherHoldsThePublication() throws SQLException {
+    publish(NOW, List.of(direct(1, "2026-11-25T07:15:00Z")));
+    try (Connection firstRun = dataSource.getConnection()) {
+      firstRun.setAutoCommit(false);
+      try (Statement statement = firstRun.createStatement()) {
+        statement.execute("SELECT active_slot FROM inventory_publication FOR UPDATE");
+      }
+      AtomicBoolean written = new AtomicBoolean();
+
+      Throwable failure =
+          catchThrowable(() -> repository.replaceInventory(NOW, sink -> written.set(true)));
+
+      firstRun.rollback();
+      assertThat(failure).hasStackTraceContaining("lock timeout");
+      assertThat(written).isFalse();
+    }
+    assertThat(rows("itinerary_b")).isEqualTo(1);
   }
 
   @Test

@@ -14,13 +14,13 @@ import tools.jackson.core.json.JsonFactory;
 
 /**
  * The itineraries in two slots, {@code itinerary_a} and {@code itinerary_b}, of which {@code
- * inventory_publication} names the one search reads (§6.5). A run is one transaction that empties
- * the other slot, keeps its day partitions from today to today plus {@code partitionDaysAhead},
- * copies the itineraries in with {@code COPY}, and switches the active slot and the generation. A
- * failure anywhere rolls it all back, and the writer's exception propagates as it was thrown. The
- * writer's {@code writeTo} runs inside the load, on the load's connection, and must not use the
- * storage ports. All DDL touches only the inactive slot, and every table name comes from {@link
- * Slot}.
+ * inventory_publication} names the one search reads (§6.5). A run is one transaction that first
+ * locks the publication row, so two runs never load at once, then empties the other slot, keeps its
+ * day partitions from today to today plus {@code partitionDaysAhead}, copies the itineraries in
+ * with {@code COPY}, and switches the active slot and the generation. A failure anywhere rolls it
+ * all back, and the writer's exception propagates as it was thrown. The writer's {@code writeTo}
+ * runs inside the load, on the load's connection, and must not use the storage ports. All DDL
+ * touches only the inactive slot, and every table name comes from {@link Slot}.
  */
 public final class JdbcItineraryRepository implements ItineraryRepository {
 
@@ -55,7 +55,7 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
 
   private Publication load(Instant now, ItineraryWriter writer) {
     jdbc.sql("SET LOCAL lock_timeout = '" + LOCK_TIMEOUT + "'").update();
-    Slot slot = activeSlot().other();
+    Slot slot = activeSlotLocked().other();
     LocalDate today = PartitionCalendar.dayOf(now);
     LocalDate lastPartitionDay = today.plusDays(partitionDaysAhead);
     // Before the partitions are created: PostgreSQL refuses CREATE ... PARTITION OF while the
@@ -74,9 +74,17 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
         PartitionCalendar.start(lastPartitionDay.plusDays(1)));
   }
 
-  private Slot activeSlot() {
+  /**
+   * The active slot, read under the publication row's lock, held until the run commits or rolls
+   * back: a second run at once waits here, before it touches either slot, and then reads the slot
+   * the first one published. Without the lock it could read the old active slot, and truncate the
+   * new one once the first run switched to it.
+   */
+  private Slot activeSlotLocked() {
     return Slot.of(
-        jdbc.sql("SELECT active_slot FROM inventory_publication").query(String.class).single());
+        jdbc.sql("SELECT active_slot FROM inventory_publication FOR UPDATE")
+            .query(String.class)
+            .single());
   }
 
   /** Makes the slot the one search reads, in the next generation, and returns that generation. */
