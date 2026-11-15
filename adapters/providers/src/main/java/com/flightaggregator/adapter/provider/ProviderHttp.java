@@ -6,11 +6,14 @@ import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Provider;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig.SlidingWindowType;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.function.Predicate;
 import org.springframework.core.retry.RetryException;
 import org.springframework.core.retry.RetryPolicy;
 import org.springframework.core.retry.RetryTemplate;
@@ -26,6 +29,16 @@ import org.springframework.web.client.RestClient;
  * size, behind a circuit breaker.
  */
 public final class ProviderHttp {
+
+  private static final CircuitBreakerConfig BREAKER =
+      CircuitBreakerConfig.custom()
+          .slidingWindow(10, 10, SlidingWindowType.COUNT_BASED)
+          .failureRateThreshold(50)
+          .waitDurationInOpenState(Duration.ofSeconds(60))
+          .permittedNumberOfCallsInHalfOpenState(3)
+          .recordException(ProviderHttp::isTransient)
+          .ignoreException(Predicate.not(ProviderHttp::isTransient))
+          .build();
 
   /** One page's body and the instant its response arrived. */
   public record FetchedPage(String body, Instant receivedAt) {}
@@ -59,8 +72,7 @@ public final class ProviderHttp {
                 .maxRetries(settings.maxAttempts() - 1L)
                 .delay(settings.firstBackoff())
                 .multiplier(2)
-                .predicate(
-                    failure -> failure instanceof AttemptFailed attempt && attempt.retryable())
+                .predicate(ProviderHttp::isTransient)
                 .build());
     this.requestTimeout = settings.requestTimeout();
     this.maxBodyBytes = settings.maxBodyBytes();
@@ -68,13 +80,22 @@ public final class ProviderHttp {
   }
 
   /**
-   * Whether a failed call counts against the provider's circuit breaker, for its {@code
-   * recordException}: a server error, a timeout or an I/O error does, since a wait may heal it. A
-   * refused key, another client error, a redirect or a body over the limit does not: the provider
-   * answers the same until the configuration or the provider changes, so opening the breaker would
-   * only hide the cause.
+   * The breaker for a provider's calls (plan 4): over its last 10 calls, it opens at 50% failures,
+   * stays open 60 s, then lets 3 trial calls through. It counts only the transient failures, the
+   * ones the retry repeats, and ignores every other failure.
    */
-  public static boolean countsAgainstTheBreaker(Throwable failure) {
+  public static CircuitBreaker circuitBreakerFor(Provider provider) {
+    return CircuitBreaker.of(provider.name(), BREAKER);
+  }
+
+  /**
+   * Whether a failed attempt is transient, so another attempt may succeed: a server error, a
+   * timeout or an I/O error. The retry repeats only these, and each provider's breaker counts only
+   * these. A refused key, another client error, a redirect or a body over the limit comes back the
+   * same until the configuration or the provider changes, so the breaker ignores it: opening on it
+   * would only hide the cause, and counting it as a success would hide an outage.
+   */
+  private static boolean isTransient(Throwable failure) {
     return failure instanceof AttemptFailed attempt && attempt.retryable();
   }
 

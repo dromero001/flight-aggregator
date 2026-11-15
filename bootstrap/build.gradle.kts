@@ -22,6 +22,5 @@ dependencies {
     testImplementation(libs.spring.boot.testcontainers)
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.testcontainers.junit.jupiter)
-    testImplementation(libs.wiremock.standalone)
     testImplementation(testFixtures(project(":adapters:persistence")))
 }

@@ -1,13 +1,7 @@
 package com.flightaggregator.bootstrap.config;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
-import static com.github.tomakehurst.wiremock.client.WireMock.get;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
-import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
-import static org.assertj.core.api.Assertions.tuple;
 
 import com.flightaggregator.adapter.provider.PagedDownload;
 import com.flightaggregator.adapter.provider.ParsedPage;
@@ -15,9 +9,6 @@ import com.flightaggregator.adapter.provider.ResilienceSettings;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Provider;
-import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig.SlidingWindowType;
 import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 import java.time.Duration;
 import java.util.Comparator;
@@ -25,15 +16,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.ApplicationContext;
 
 class ProvidersConfigTest {
-
-  @RegisterExtension
-  static final WireMockExtension providers =
-      WireMockExtension.newInstance().options(wireMockConfig().dynamicPort()).build();
 
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
@@ -47,8 +33,9 @@ class ProvidersConfigTest {
               "providers.gamma.api-key=gamma-key");
 
   /**
-   * One factory method derives every part from the provider, so no part of one provider can be
-   * wired to another's: a mis-wired provider's failures would be reported under another name.
+   * Every provider of the closed set is wired, and one factory method derives every part from the
+   * provider, so no part of one provider can be wired to another's: a mis-wired provider's failures
+   * would be reported under another name.
    */
   @Test
   void buildsEachProviderFromItsOwnSettings() {
@@ -60,7 +47,7 @@ class ProvidersConfigTest {
 
               assertThat(wired)
                   .extracting(provider -> provider.adapter().provider())
-                  .containsExactly(Provider.ALPHA, Provider.BETA, Provider.GAMMA);
+                  .containsExactly(Provider.values());
               for (WiredProvider provider : wired) {
                 Provider name = provider.adapter().provider();
                 String lower = name.name().toLowerCase(Locale.ROOT);
@@ -117,62 +104,16 @@ class ProvidersConfigTest {
                         8 * 1024 * 1024)));
   }
 
-  /**
-   * A server error counts against the breaker, and a refused key or a body over the limit neither
-   * counts as a failure nor as a success, since no wait heals them.
-   */
+  /** Each provider's calls open only its own breaker, named after the provider. */
   @Test
-  void breakerRecordsAServerErrorAndIgnoresARefusedKeyOrAnOversizedBody() {
-    providers.stubFor(get(urlPathEqualTo("/alpha/legs")).willReturn(aResponse().withStatus(500)));
-    providers.stubFor(
-        get(urlPathEqualTo("/beta/segments")).willReturn(aResponse().withStatus(401)));
-    providers.stubFor(
-        get(urlPathEqualTo("/gamma/legs.csv"))
-            .willReturn(aResponse().withBody("x".repeat(8 * 1024 * 1024 + 1))));
-
-    runner
-        .withPropertyValues(
-            "providers.alpha.base-url=" + providers.baseUrl(),
-            "providers.beta.base-url=" + providers.baseUrl(),
-            "providers.gamma.base-url=" + providers.baseUrl())
-        .run(
-            context -> {
-              List<WiredProvider> wired = wiredProviders(context);
-              wired.forEach(provider -> catchThrowable(() -> provider.adapter().download()));
-
-              assertThat(wired)
-                  .extracting(
-                      provider -> provider.adapter().provider(),
-                      provider -> provider.circuitBreaker().getMetrics().getNumberOfFailedCalls(),
-                      provider ->
-                          provider.circuitBreaker().getMetrics().getNumberOfSuccessfulCalls())
-                  .containsExactly(
-                      tuple(Provider.ALPHA, 3, 0),
-                      tuple(Provider.BETA, 0, 0),
-                      tuple(Provider.GAMMA, 0, 0));
-            });
-  }
-
-  /** The plan's window: the last 10 calls, open at 50% failures for 60 s, then 3 trial calls. */
-  @Test
-  void givesEachProviderItsOwnBreakerWithTheProductionWindow() {
+  void givesEachProviderItsOwnBreakerNamedAfterIt() {
     runner.run(
-        context -> {
-          List<WiredProvider> wired = wiredProviders(context);
-
-          assertThat(wired)
-              .extracting(provider -> provider.circuitBreaker().getName())
-              .containsExactly("ALPHA", "BETA", "GAMMA");
-          for (WiredProvider provider : wired) {
-            CircuitBreakerConfig config = provider.circuitBreaker().getCircuitBreakerConfig();
-            assertThat(config.getSlidingWindowType()).isEqualTo(SlidingWindowType.COUNT_BASED);
-            assertThat(config.getSlidingWindowSize()).isEqualTo(10);
-            assertThat(config.getMinimumNumberOfCalls()).isEqualTo(10);
-            assertThat(config.getFailureRateThreshold()).isEqualTo(50);
-            assertThat(config.getWaitIntervalFunctionInOpenState().apply(1)).isEqualTo(60_000L);
-            assertThat(config.getPermittedNumberOfCallsInHalfOpenState()).isEqualTo(3);
-          }
-        });
+        context ->
+            assertThat(wiredProviders(context))
+                .allSatisfy(
+                    provider ->
+                        assertThat(provider.circuitBreaker().getName())
+                            .isEqualTo(provider.adapter().provider().name())));
   }
 
   /** The wired providers, in {@code Provider} order. */

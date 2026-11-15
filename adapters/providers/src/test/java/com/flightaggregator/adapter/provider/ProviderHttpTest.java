@@ -8,7 +8,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
@@ -28,6 +27,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -244,44 +244,75 @@ class ProviderHttpTest {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
+  /** The plan's window: the last 10 calls, open at 50% failures for 60 s, then 3 trial calls. */
+  @Test
+  void buildsEachProvidersBreakerWithTheProductionWindow() {
+    CircuitBreaker breaker = ProviderHttp.circuitBreakerFor(Provider.BETA);
+
+    CircuitBreakerConfig config = breaker.getCircuitBreakerConfig();
+    assertThat(breaker.getName()).isEqualTo("BETA");
+    assertThat(config.getSlidingWindowType()).isEqualTo(SlidingWindowType.COUNT_BASED);
+    assertThat(config.getSlidingWindowSize()).isEqualTo(10);
+    assertThat(config.getMinimumNumberOfCalls()).isEqualTo(10);
+    assertThat(config.getFailureRateThreshold()).isEqualTo(50);
+    assertThat(config.getWaitIntervalFunctionInOpenState().apply(1)).isEqualTo(60_000L);
+    assertThat(config.getPermittedNumberOfCallsInHalfOpenState()).isEqualTo(3);
+  }
+
   /**
    * Only a failure that a wait may heal counts against the circuit breaker: a server error, a
-   * timeout or an I/O error. A refused key, another client error, a redirect or a body over the
-   * limit comes back the same until the configuration or the provider changes.
+   * timeout or an I/O error, once per attempt. A refused key, another client error, a redirect or a
+   * body over the limit comes back the same until the configuration or the provider changes, so the
+   * breaker ignores it: neither a failure nor a success. Columns: failed and ignored calls.
    */
   @ParameterizedTest(name = "{0}")
   @MethodSource("attemptFailures")
   void countsAgainstTheBreakerOnlyAFailureAWaitMayHeal(
-      String failure, ResponseDefinitionBuilder response, boolean counts) {
+      String failure, ResponseDefinitionBuilder response, int failed, int ignored) {
     server.stubFor(get(urlEqualTo("/flights")).willReturn(response));
+    CircuitBreaker breaker = ProviderHttp.circuitBreakerFor(Provider.ALPHA);
+    AtomicInteger ignoredCalls = ignoredCallsOf(breaker);
 
-    Throwable lastAttempt = failure(httpWithShortTimeout(), "/flights").getCause().getCause();
+    failure(http(breaker, Duration.ofMillis(10), Duration.ofMillis(500)), "/flights");
 
-    assertThat(ProviderHttp.countsAgainstTheBreaker(lastAttempt)).isEqualTo(counts);
+    assertThat(breaker.getMetrics().getNumberOfFailedCalls()).isEqualTo(failed);
+    assertThat(breaker.getMetrics().getNumberOfSuccessfulCalls()).isZero();
+    assertThat(ignoredCalls).hasValue(ignored);
   }
 
   static Stream<Arguments> attemptFailures() {
     return Stream.of(
-        arguments("server error", aResponse().withStatus(500), true),
-        arguments("timeout", aResponse().withFixedDelay(3000).withBody("late"), true),
-        arguments("I/O error", aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER), true),
-        arguments("refused key", aResponse().withStatus(401), false),
-        arguments("forbidden", aResponse().withStatus(403), false),
-        arguments("other client error", aResponse().withStatus(404), false),
+        arguments("server error", aResponse().withStatus(500), 3, 0),
+        arguments("timeout", aResponse().withFixedDelay(3000).withBody("late"), 3, 0),
+        arguments("I/O error", aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER), 3, 0),
+        arguments("refused key", aResponse().withStatus(401), 0, 1),
+        arguments("forbidden", aResponse().withStatus(403), 0, 1),
+        arguments("other client error", aResponse().withStatus(404), 0, 1),
         arguments(
-            "redirect", aResponse().withStatus(302).withHeader("Location", "/elsewhere"), false),
-        arguments("body over the limit", aResponse().withBody("x".repeat(1025)), false));
+            "redirect", aResponse().withStatus(302).withHeader("Location", "/elsewhere"), 0, 1),
+        arguments("body over the limit", aResponse().withBody("x".repeat(1025)), 0, 1));
   }
 
   /** A failure of no attempt, such as a template without its variable, is no provider's fault. */
   @Test
-  void doesNotCountAnUnexpectedFailureAgainstTheBreaker() {
-    ProviderHttp http = http();
+  void ignoresAnUnexpectedFailureInTheBreaker() {
+    CircuitBreaker breaker = ProviderHttp.circuitBreakerFor(Provider.ALPHA);
+    AtomicInteger ignoredCalls = ignoredCallsOf(breaker);
+    ProviderHttp http = http(breaker);
 
-    Throwable unexpected = catchThrowable(() -> http.get("/flights/{missing}"));
+    assertThatThrownBy(() -> http.get("/flights/{missing}"))
+        .isInstanceOf(IllegalArgumentException.class);
 
-    assertThat(unexpected).isInstanceOf(IllegalArgumentException.class);
-    assertThat(ProviderHttp.countsAgainstTheBreaker(unexpected)).isFalse();
+    assertThat(breaker.getMetrics().getNumberOfFailedCalls()).isZero();
+    assertThat(breaker.getMetrics().getNumberOfSuccessfulCalls()).isZero();
+    assertThat(ignoredCalls).hasValue(1);
+  }
+
+  /** Resilience4j counts no ignored call in its metrics, only in its events. */
+  private static AtomicInteger ignoredCallsOf(CircuitBreaker breaker) {
+    AtomicInteger ignored = new AtomicInteger();
+    breaker.getEventPublisher().onIgnoredError(event -> ignored.incrementAndGet());
+    return ignored;
   }
 
   @Test
