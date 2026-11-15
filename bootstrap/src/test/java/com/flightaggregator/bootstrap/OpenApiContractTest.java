@@ -134,6 +134,36 @@ class OpenApiContractTest {
         .isEmpty();
   }
 
+  /**
+   * The provider-status screen (§6.8): every field is always written, and only the times not known
+   * yet are null (before the first run, or for a provider with nothing stored), as the search's
+   * last cursor is; they are plain strings, so a nullable type is valid OpenAPI 3.1.
+   */
+  @Test
+  void marksEveryFieldOfTheStatusRequiredAndOnlyItsUnknownTimesNullable() throws Exception {
+    JsonNode schemas = contract().at("/components/schemas");
+    List<String> statusSchemas = List.of("StatusResponse", "ProviderStatusResponse");
+
+    assertThat(statusSchemas)
+        .allSatisfy(
+            name ->
+                assertThat(
+                        schemas.path(name).path("required").valueStream().map(JsonNode::asString))
+                    .containsExactlyInAnyOrderElementsOf(
+                        schemas.path(name).path("properties").propertyNames()));
+    assertThat(
+            statusSchemas.stream()
+                .flatMap(
+                    name ->
+                        schemas.path(name).path("properties").properties().stream()
+                            .filter(property -> isNullable(property.getValue()))
+                            .map(property -> name + "." + property.getKey())))
+        .containsExactlyInAnyOrder(
+            "StatusResponse.publishedAt",
+            "StatusResponse.nextIngestionAt",
+            "ProviderStatusResponse.newestQuotedAt");
+  }
+
   /** A bad parameter or cursor is an RFC 9457 problem (global constraints), and says so. */
   @Test
   void documentsTheProblemOfABadRequest() throws Exception {
@@ -160,7 +190,8 @@ class OpenApiContractTest {
     "/api/itineraries/{id}/reprice, post, 400",
     "/api/itineraries/{id}/reprice, post, 404",
     "/api/itineraries/{id}/reprice, post, 429",
-    "/api/itineraries/{id}/reprice, post, 503"
+    "/api/itineraries/{id}/reprice, post, 503",
+    "/api/admin/ingestions, post, 409"
   })
   void documentsEachProblemOnItsOperation(String path, String method, String status)
       throws Exception {

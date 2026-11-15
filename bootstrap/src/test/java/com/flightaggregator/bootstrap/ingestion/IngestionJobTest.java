@@ -32,8 +32,11 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import net.javacrumbs.shedlock.core.DefaultLockingTaskExecutor;
 import net.javacrumbs.shedlock.core.LockConfiguration;
@@ -210,7 +213,7 @@ class IngestionJobTest {
             event -> {
               assertThat(event.getLevel()).isEqualTo(Level.INFO);
               assertThat(event.getFormattedMessage())
-                  .isEqualTo("Skipped an ingestion run: another instance holds its lock");
+                  .isEqualTo("Skipped an ingestion run: another run holds its lock");
             });
     assertThat(meters.find("ingestion.runs").counters()).isEmpty();
   }
@@ -353,6 +356,117 @@ class IngestionJobTest {
     assertThat(((ThrowableProxy) log.list.getFirst().getThrowableProxy()).getThrowable())
         .isSameAs(databaseDown);
     assertThat(runs("NOTHING_TO_PUBLISH")).isEqualTo(1);
+  }
+
+  /**
+   * A run started on demand (§6.8, "Run ingestion now") takes the scheduled run's lock: the launch
+   * returns once the run holds it, the run goes on in the background on a virtual thread, as the
+   * scheduled run does, with its run id, and the lock is released when it ends. The test holds the
+   * run until it has checked the lock is still held, so nothing depends on timing.
+   */
+  @Test
+  void launchesARunUnderTheLock() throws InterruptedException {
+    List<String> locked = new ArrayList<>();
+    CountDownLatch unlocked = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    AtomicReference<Thread> runThread = new AtomicReference<>();
+    AtomicReference<String> runId = new AtomicReference<>();
+    IngestionJob job =
+        new IngestionJob(
+            () -> {
+              runThread.set(Thread.currentThread());
+              runId.set(MDC.get("correlation.id"));
+              await(release);
+              return unpublished(IngestionReport.Outcome.NOTHING_TO_PUBLISH, fresh(ALPHA));
+            },
+            metrics,
+            new DefaultLockingTaskExecutor(
+                configuration -> {
+                  locked.add(configuration.getName());
+                  return Optional.of(unlocked::countDown);
+                }),
+            () -> STARTED_AT);
+
+    assertThat(job.launch()).isTrue();
+
+    assertThat(locked).containsExactly("ingestion");
+    assertThat(unlocked.getCount()).as("the lock is held while the run goes on").isOne();
+    release.countDown();
+    assertThat(unlocked.await(10, TimeUnit.SECONDS)).as("the lock released at the end").isTrue();
+    assertThat(runThread.get().isVirtual()).isTrue();
+    assertThat(runThread.get()).isNotSameAs(Thread.currentThread());
+    assertThat(runId.get()).isNotNull();
+    assertThat(runs("NOTHING_TO_PUBLISH")).isEqualTo(1);
+  }
+
+  /**
+   * Another run holds the lock, a scheduled one or one on demand, on this instance or another: the
+   * launch answers {@code false} at once and runs nothing, and the skip is logged as a scheduled
+   * run's is.
+   */
+  @Test
+  void refusesToLaunchWhileTheLockIsHeld() {
+    AtomicBoolean ingested = new AtomicBoolean();
+    IngestionJob job =
+        new IngestionJob(
+            () -> {
+              ingested.set(true);
+              return unpublished(IngestionReport.Outcome.NOTHING_TO_PUBLISH);
+            },
+            metrics,
+            new DefaultLockingTaskExecutor(configuration -> Optional.empty()),
+            () -> STARTED_AT);
+
+    assertThat(job.launch()).isFalse();
+
+    assertThat(ingested).isFalse();
+    assertThat(log.list)
+        .singleElement()
+        .extracting(ILoggingEvent::getFormattedMessage)
+        .isEqualTo("Skipped an ingestion run: another run holds its lock");
+  }
+
+  /**
+   * A launch whose run cannot take the lock, PostgreSQL out of reach, is not "another run holds
+   * it": the launch fails, and the run is logged and counted as any failed run.
+   */
+  @Test
+  void failsALaunchWhoseRunCannotTakeTheLock() {
+    LockException unreachable =
+        new LockException(
+            "Unexpected exception when locking",
+            new CannotGetJdbcConnectionException("Failed to obtain JDBC Connection"));
+    IngestionJob job =
+        new IngestionJob(
+            () -> unpublished(IngestionReport.Outcome.NOTHING_TO_PUBLISH),
+            metrics,
+            new DefaultLockingTaskExecutor(
+                configuration -> {
+                  throw unreachable;
+                }),
+            () -> STARTED_AT);
+
+    assertThatThrownBy(job::launch).isInstanceOf(CompletionException.class);
+
+    assertThat(log.list)
+        .filteredOn(event -> event.getLevel() == Level.ERROR)
+        .singleElement()
+        .satisfies(
+            event ->
+                assertThat(((ThrowableProxy) event.getThrowableProxy()).getThrowable())
+                    .isSameAs(unreachable));
+    assertThat(runs("FAILED")).isEqualTo(1);
+  }
+
+  private static void await(CountDownLatch latch) {
+    try {
+      if (!latch.await(10, TimeUnit.SECONDS)) {
+        throw new IllegalStateException("The test never released the run");
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException(e);
+    }
   }
 
   /** The job over this ingestion, its lock always free. */

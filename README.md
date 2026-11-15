@@ -68,7 +68,7 @@ No latency may be negative, each minimum must not exceed its maximum, and both s
 
 Search and re-price are public. The admin side is OAuth2: the aggregator is a resource server that accepts JWTs signed by Keycloak (started by `docker compose up --build`, on `http://localhost:8180`, realm `flight-aggregator`, imported from [`deploy/keycloak/flight-aggregator-realm.json`](deploy/keycloak/flight-aggregator-realm.json)) and requires the realm role `ADMIN` in `realm_access.roles`. Public: `GET /api/itineraries`, `POST /api/itineraries/{id}/reprice`, `GET /v3/api-docs`, and `GET /actuator/health` (its status only; the components are shown to `ADMIN`). Everything else, `/api/admin/**` and the other Actuator endpoint (`/actuator/metrics`) included, needs `ADMIN`.
 
-The examples call `/actuator/metrics`, the only admin endpoint until plan 5 Task 12 adds `/api/admin/*`; that task replaces them with an admin endpoint of its own.
+The admin endpoints are `GET /api/admin/status` (the inventory's generation, when it was published and when the next run is due, and each provider's health, circuit breaker, newest quote, legs and discarded records) and `POST /api/admin/ingestions` (start a run now: `202 Accepted`, or `409 Conflict` while a run holds the ingestion's lock).
 
 **1. Wait until Keycloak is ready.** It takes 20 to 40 seconds after `docker compose up`; this polls the realm until it answers:
 
@@ -90,16 +90,17 @@ TOKEN=$(curl -s -X POST http://localhost:8180/realms/flight-aggregator/protocol/
 **3. Call an admin endpoint with it:**
 
 ```bash
-curl -i -H "Authorization: Bearer $TOKEN" http://localhost:8080/actuator/metrics
+curl -i -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/admin/status
+curl -i -X POST -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/admin/ingestions
 ```
 
 | Request | Answer |
 |---|---|
 | no `Authorization` header, or a token that is invalid, expired, signed with another key or issued by another realm | `401 Unauthorized` |
 | a valid token whose holder lacks the `ADMIN` role | `403 Forbidden` |
-| a valid token with the `ADMIN` role | `200 OK` |
+| a valid token with the `ADMIN` role | `200 OK` (the status), `202 Accepted` or `409 Conflict` (a run) |
 
-`curl -i http://localhost:8080/actuator/metrics` gives the 401. No account in the demo realm lacks `ADMIN`, so the 403 is proven by the tests (`SecurityTest`), not by a command.
+`curl -i http://localhost:8080/api/admin/status` gives the 401. No account in the demo realm lacks `ADMIN`, so the 403 is proven by the tests (`SecurityTest`), not by a command.
 
 **The client secret is a committed demo default on purpose**, the same deliberate exception as the provider keys and the database password (spec 6.6): the take-home must run with a single `docker compose up --build`, and a reviewer must be able to call the admin endpoints without the author. It protects only a Keycloak whose port is bound to the loopback interface. In production it would be a secret injected at deploy time. Override it with `ADMIN_SERVICE_CLIENT_SECRET` in the shell or a `.env` file. Keycloak keeps nothing between container creations (compose gives it no volume) and imports the realm each time it is created, so changing the variable and running `docker compose up -d keycloak` is enough: compose recreates the container, which imports the realm with the new secret. Do not use `docker compose down -v` for this: it also deletes the stored inventory in PostgreSQL. Keycloak has no administrator console account; the realm's `admin` user has the demo password `demo-admin-password`.
 

@@ -4,6 +4,38 @@
  */
 
 export interface paths {
+  '/api/admin/ingestions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['runIngestion'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/admin/status': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['status'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/itineraries': {
     parameters: {
       query?: never;
@@ -86,6 +118,22 @@ export interface components {
       /** Format: uri */
       type?: string;
     };
+    ProviderStatusResponse: {
+      /** @enum {string} */
+      breaker: 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+      discarded: {
+        [key: string]: number;
+      };
+      /** @enum {string} */
+      health: 'UP' | 'DEGRADED' | 'DOWN';
+      /** Format: int32 */
+      legs: number;
+      /** Format: date-time */
+      newestQuotedAt: string | null;
+      /** @enum {string} */
+      provider: 'ALPHA' | 'BETA' | 'GAMMA';
+      stale: boolean;
+    };
     RepriceResponse: {
       itinerary: components['schemas']['ItineraryResponse'];
       /** @description Why another itinerary is offered; only with ALTERNATIVE */
@@ -100,6 +148,15 @@ export interface components {
       itineraries: components['schemas']['ItineraryResponse'][];
       nextCursor: string | null;
     };
+    StatusResponse: {
+      /** Format: int64 */
+      generation: number;
+      /** Format: date-time */
+      nextIngestionAt: string | null;
+      providers: components['schemas']['ProviderStatusResponse'][];
+      /** Format: date-time */
+      publishedAt: string | null;
+    };
   };
   responses: never;
   parameters: never;
@@ -109,6 +166,53 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  runIngestion: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description A run started; it goes on in the background */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Another run is going on; try again once it ends */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['ProblemDetail'];
+        };
+      };
+    };
+  };
+  status: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The inventory's and each provider's status */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StatusResponse'];
+        };
+      };
+    };
+  };
   search: {
     parameters: {
       query?: {

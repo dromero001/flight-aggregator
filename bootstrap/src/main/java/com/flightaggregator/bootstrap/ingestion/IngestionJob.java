@@ -5,11 +5,13 @@ import com.flightaggregator.application.port.in.IngestionReport;
 import com.flightaggregator.application.port.in.ProviderReport;
 import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.FailureReason;
+import com.flightaggregator.application.port.out.IngestionLauncher;
 import com.flightaggregator.bootstrap.observability.CorrelationId;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import net.javacrumbs.shedlock.core.LockConfiguration;
 import net.javacrumbs.shedlock.core.LockingTaskExecutor;
 import net.javacrumbs.shedlock.core.LockingTaskExecutor.TaskResult;
@@ -20,15 +22,15 @@ import org.slf4j.spi.LoggingEventBuilder;
 import org.springframework.scheduling.annotation.Scheduled;
 
 /**
- * One ingestion run: it takes the ingestion's lock, ingests, then logs and meters the run's report
- * (§6.10). The report is one line, {@code INFO} for a run that published and {@code WARN} for any
- * other outcome, with each provider's fields under its name, and each provider whose last good
- * offers were kept is one {@code WARN} line with its reason and its failure's stack trace. Anything
- * a run throws, taking the lock included, fails that run alone: it is logged at {@code ERROR} and
- * counted. A runtime exception never escapes, so the next run still comes; an {@code Error} is
- * rethrown after that, to the scheduler.
+ * One ingestion run, scheduled or on demand ({@link #launch}): it takes the ingestion's lock,
+ * ingests, then logs and meters the run's report (§6.10). The report is one line, {@code INFO} for
+ * a run that published and {@code WARN} for any other outcome, with each provider's fields under
+ * its name, and each provider whose last good offers were kept is one {@code WARN} line with its
+ * reason and its failure's stack trace. Anything a run throws, taking the lock included, fails that
+ * run alone: it is logged at {@code ERROR} and counted. A runtime exception never escapes, so the
+ * next run still comes; an {@code Error} is rethrown after that, to the scheduler.
  */
-public final class IngestionJob {
+public final class IngestionJob implements IngestionLauncher {
 
   private static final Logger LOG = LoggerFactory.getLogger(IngestionJob.class);
 
@@ -63,17 +65,56 @@ public final class IngestionJob {
    */
   @Scheduled(initialDelay = 0, fixedDelayString = "${ingestion.interval}")
   public void run() {
+    runUnderTheLock(() -> {});
+  }
+
+  /**
+   * A run on demand (§6.8, "Run ingestion now"), the scheduled run's in all but its thread: it runs
+   * on a virtual thread of its own, and this returns once it holds the lock, or at once with {@code
+   * false} when another run holds it. A run that fails before it holds the lock, the database out
+   * of reach for instance, is logged and counted as any failed run, and this throws.
+   */
+  @Override
+  public boolean launch() {
+    CompletableFuture<Boolean> locked = new CompletableFuture<>();
+    Thread.ofVirtual()
+        .name("ingestion-on-demand")
+        .start(
+            () -> {
+              try {
+                if (runUnderTheLock(() -> locked.complete(true)) == Run.SKIPPED) {
+                  locked.complete(false);
+                }
+              } finally {
+                // A no-op once the run held the lock, or was skipped.
+                locked.completeExceptionally(
+                    new IllegalStateException("The ingestion run failed before it took its lock"));
+              }
+            });
+    return locked.join();
+  }
+
+  /**
+   * One run, if it gets the lock, {@code onceLocked} first; otherwise it logs at {@code INFO} that
+   * it skipped the run and returns at once (ShedLock's {@code TaskResult}).
+   */
+  private Run runUnderTheLock(Runnable onceLocked) {
     // Removed in the finally, after the catch, so that a failed run's ERROR line carries it too.
     MDC.put(CorrelationId.MDC_KEY, UUID.randomUUID().toString());
     Instant startedAt = clock.now();
     try {
       TaskResult<IngestionReport> run =
           locks.executeWithLock(
-              this::ingestOnce,
+              () -> {
+                onceLocked.run();
+                return ingestOnce();
+              },
               new LockConfiguration(startedAt, LOCK, LOCK_AT_MOST_FOR, LOCK_AT_LEAST_FOR));
       if (!run.wasExecuted()) {
-        LOG.info("Skipped an ingestion run: another instance holds its lock");
+        LOG.info("Skipped an ingestion run: another run holds its lock");
+        return Run.SKIPPED;
       }
+      return Run.EXECUTED;
     } catch (Throwable e) {
       // A runtime exception or an error: the run throws no checked exception, though ShedLock's
       // signature declares one.
@@ -83,9 +124,17 @@ public final class IngestionJob {
         // The JVM may be in trouble: counted and logged, then left to the scheduler, never kept.
         throw error;
       }
+      return Run.FAILED;
     } finally {
       MDC.remove(CorrelationId.MDC_KEY);
     }
+  }
+
+  /** How a run that tried to take the lock ended. */
+  private enum Run {
+    EXECUTED,
+    SKIPPED,
+    FAILED
   }
 
   private IngestionReport ingestOnce() {

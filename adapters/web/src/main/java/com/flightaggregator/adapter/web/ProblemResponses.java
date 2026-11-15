@@ -30,6 +30,12 @@ public final class ProblemResponses {
     return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
   }
 
+  /** A run on demand was asked for while another run holds the ingestion's lock. */
+  @ExceptionHandler(IngestionAlreadyRunningException.class)
+  ProblemDetail conflict(IngestionAlreadyRunningException exception) {
+    return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+  }
+
   /** The client may ask again after {@code Retry-After}, in seconds. */
   @ExceptionHandler(RetryLaterException.class)
   ResponseEntity<ProblemDetail> retryLater(RetryLaterException exception) {
