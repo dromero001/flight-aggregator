@@ -78,7 +78,11 @@ The user asked for a skill so that the prompts that added value are saved, trans
 - **The skill** ([`.claude/skills/prompt-log/`](../../../.claude/skills/prompt-log/SKILL.md)) is a recipe rather than a reminder: the next file change after a qualifying prompt is its entry in the session file, in a fixed shape, before the spec, the plan or any dispatch. It adds a table of what qualifies, translation rules, and the excuses for deferring. `CLAUDE.md` points to it, because sessions opened from the parent folder do not load project skills.
 - **With the skill**, same scenarios: two of two made the session entry their first file change, translated the prompt faithfully, and left the routine part out.
 
-## 7. Prompts that added value
+## 7. A gate missed during the overnight run
+
+During plan 4, the controller pushed every task as the continuity policy asks, but from Task 5's fix rounds on it stopped watching the CI run of each push, which `CLAUDE.md` requires. Three pushes in a row were red: a Task 5 test whose 500 ms request timeout a cold CI JVM exceeded, so the request was retried and the test saw two calls instead of one. Task 6 was then built on a red main. The code reviewer of Task 6 caught it by reading the CI runs. The fix went first in Task 6's fix round, and the run ledger records the correction. Lesson: a push without its CI result is not a finished step, however many other checks passed locally.
+
+## 8. Prompts that added value
 
 - *"I have always been working with Claude from the parent folder. Make sure you use every skill documented in the GitHub repository of flight-aggregator."*: exposed that the hook, two plugins and the reviewer subagents had never been active in these sessions, and led to the fixes in section 3.
 - *"Since the connection can be lost again at any moment, let's set a policy of creating an artifact for every finished task, or if you think that is too much, propose another frequency."*: turned an ad hoc handoff page into the continuity policy of section 4.
@@ -88,6 +92,6 @@ The user asked for a skill so that the prompts that added value are saved, trans
 - Paraphrased (an option the user chose in a question, not typed): asked whether to build the two small extras the reviews had proposed, the user chose to include both: E1, the mock refuses to start on a `MOCKGDS_PROVIDERS_*` environment variable that names no setting, because Spring Boot does not check the environment for unknown keys; and E2, the gate logs each refusal with its provider and path, never a key. Both were built test-first in plan 3's second fix round (`609f2ad`, `bc6d27a`).
 - The brief for the fix round (a subagent prompt): *"For the commits whose evidence was never recorded because the session was cut off, say so honestly and, where you can, re-establish evidence after the fact by mutation, labelled 'recorded after the fact by mutation'."*: kept the TDD record truthful instead of reconstructing it as if it had been recorded at the time.
 
-## 8. Lesson
+## 9. Lesson
 
 The cut itself was not the risk. The risk was state that lived only in the conversation: a design change without a recorded decision, and commits without evidence or review. The reviews caught it because the recovery treated the plan as open until the record proved otherwise.
