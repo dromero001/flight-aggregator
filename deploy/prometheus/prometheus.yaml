@@ -1,0 +1,10 @@
+# Prometheus in compose (spec 6.10): it scrapes the application and evaluates the alert rules, with
+# no notification channel; the alerts are read on its alerts page and in Grafana.
+global:
+  # Panels and alerts react within a minute (plan 7, Q4).
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Relative to this file: deploy/prometheus/rules/ in the repository.
+rule_files:
+  - rules/*.yaml

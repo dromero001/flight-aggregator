@@ -1,0 +1,29 @@
+# Loki in compose (spec 6.10): a single process that receives the logs from the Collector on its OTLP
+# endpoint (/otlp) and keeps them on the container's own disk, so they last while the container
+# does (plan 7, Q4: no volume). /loki is the image's directory for its non-root user.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h

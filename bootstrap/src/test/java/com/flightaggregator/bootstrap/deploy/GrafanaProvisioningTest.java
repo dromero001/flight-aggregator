@@ -1,0 +1,158 @@
+package com.flightaggregator.bootstrap.deploy;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.utility.MountableFile;
+import org.yaml.snakeyaml.Yaml;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * The Grafana compose runs, with compose's settings: the team opens it without an account, as
+ * anonymous Viewers (spec 6.6, the user's decision of 2026-11-15).
+ */
+class GrafanaProvisioningTest {
+
+  /**
+   * The tests run in the module's directory; compose.yaml and deploy/ are at the repository's root.
+   */
+  private static final Path COMPOSE = Path.of("..", "compose.yaml");
+
+  /** Mounted by compose as Grafana's provisioning directory. */
+  private static final String PROVISIONING = "../deploy/grafana/provisioning";
+
+  private static final JsonMapper JSON = JsonMapper.builder().build();
+
+  private static final HttpClient HTTP = HttpClient.newHttpClient();
+
+  @SuppressWarnings("resource")
+  private static final GenericContainer<?> GRAFANA =
+      new GenericContainer<>(ObservabilityImages.GRAFANA)
+          .withCopyFileToContainer(
+              MountableFile.forHostPath(PROVISIONING), "/etc/grafana/provisioning")
+          .withExposedPorts(3000)
+          .waitingFor(Wait.forHttp("/api/health").forPort(3000));
+
+  @BeforeAll
+  static void startGrafanaWithComposesSettings() throws IOException {
+    GRAFANA.withEnv(composeEnvironment("grafana")).start();
+  }
+
+  @AfterAll
+  static void stopGrafana() {
+    GRAFANA.stop();
+  }
+
+  /**
+   * {@code /api/user} answers 401 to an anonymous visitor; {@code /bootdata}, which Grafana's own
+   * pages read, says who the visitor is and with which role.
+   */
+  @Test
+  void opensToAnAnonymousViewer() throws IOException, InterruptedException {
+    HttpResponse<String> bootData = send(HttpRequest.newBuilder(uri("/bootdata")).GET());
+    HttpResponse<String> save =
+        send(
+            HttpRequest.newBuilder(uri("/api/dashboards/db"))
+                .header("Content-Type", "application/json")
+                .POST(
+                    HttpRequest.BodyPublishers.ofString(
+                        "{\"dashboard\":{\"title\":\"Saved by an anonymous Viewer\"}}")));
+
+    assertThat(JSON.readTree(bootData.body()).path("user").path("orgRole").asString())
+        .isEqualTo("Viewer");
+    assertThat(save.statusCode()).isEqualTo(403);
+  }
+
+  /**
+   * The jump from a log line to its trace happens in Explore, which Grafana closes to Viewers
+   * unless {@code viewers_can_edit} is on (plan 7, Q1-A). The setting is deprecated: this fails on
+   * the Grafana that stops honouring it.
+   */
+  @Test
+  void opensExploreToTheAnonymousViewer() throws IOException, InterruptedException {
+    HttpResponse<String> permissions =
+        send(HttpRequest.newBuilder(uri("/api/access-control/user/permissions")).GET());
+
+    assertThat(JSON.readTree(permissions.body()).propertyNames()).contains("datasources:explore");
+  }
+
+  /**
+   * No Grafana account is committed, so Grafana's built-in administrator keeps its default
+   * password; with the login form and basic authentication off, nobody can sign in with it (plan 7,
+   * "Decisions this plan takes").
+   */
+  @Test
+  void letsNoOneSignIn() throws IOException, InterruptedException {
+    String defaultCredentials =
+        Base64.getEncoder().encodeToString("admin:admin".getBytes(StandardCharsets.UTF_8));
+    HttpResponse<String> basic =
+        send(
+            HttpRequest.newBuilder(uri("/api/user"))
+                .header("Authorization", "Basic " + defaultCredentials)
+                .GET());
+    HttpResponse<String> form =
+        send(
+            HttpRequest.newBuilder(uri("/login"))
+                .header("Content-Type", "application/json")
+                .POST(
+                    HttpRequest.BodyPublishers.ofString(
+                        "{\"user\":\"admin\",\"password\":\"admin\"}")));
+
+    assertThat(basic.statusCode()).isEqualTo(401);
+    assertThat(form.statusCode()).isBetween(400, 499);
+  }
+
+  /**
+   * Read as the anonymous Viewer, as the team reads them: Grafana's open-source edition lets a
+   * Viewer list the datasources, so the test needs no administrator. A provisioned datasource is
+   * read-only unless its file says {@code editable: true}.
+   */
+  @Test
+  void provisionsTheThreeDatasources() throws IOException, InterruptedException {
+    JsonNode datasources =
+        JSON.readTree(send(HttpRequest.newBuilder(uri("/api/datasources")).GET()).body());
+
+    assertThat(datasources.valueStream().map(datasource -> datasource.path("uid").asString()))
+        .containsExactlyInAnyOrder("prometheus", "tempo", "loki");
+    assertThat(datasources.valueStream().map(datasource -> datasource.path("readOnly").asBoolean()))
+        .containsOnly(true);
+  }
+
+  private static URI uri(String path) {
+    return URI.create("http://" + GRAFANA.getHost() + ":" + GRAFANA.getMappedPort(3000) + path);
+  }
+
+  private static HttpResponse<String> send(HttpRequest.Builder request)
+      throws IOException, InterruptedException {
+    return HTTP.send(request.build(), HttpResponse.BodyHandlers.ofString());
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, String> composeEnvironment(String service) throws IOException {
+    Map<String, Map<String, Map<String, Object>>> compose =
+        new Yaml().load(Files.readString(COMPOSE));
+    Map<String, Object> definition = compose.get("services").get(service);
+    assertThat(definition).as("service %s in compose.yaml", service).isNotNull();
+    Map<String, Object> environment = (Map<String, Object>) definition.get("environment");
+    assertThat(environment).as("environment of %s in compose.yaml", service).isNotNull();
+    Map<String, String> asStrings = new LinkedHashMap<>();
+    environment.forEach((name, value) -> asStrings.put(name, String.valueOf(value)));
+    return asStrings;
+  }
+}

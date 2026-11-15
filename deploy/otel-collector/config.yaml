@@ -1,0 +1,26 @@
+# The application sends its traces and logs here over OTLP (spec 6.10); the Collector forwards the
+# traces to Tempo and the logs to Loki's OTLP endpoint. Reachable only on compose's network.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  otlp_grpc/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp_grpc/tempo]
+    logs:
+      receivers: [otlp]
+      exporters: [otlp_http/loki]
