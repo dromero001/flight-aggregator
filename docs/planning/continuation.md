@@ -4,7 +4,7 @@ The single place that says what is in flight, where it lives and what comes next
 
 **Rule:** the controller rewrites this file and pushes it at every checkpoint: a subagent dispatched or returned, a review verdict, a user decision, a task integrated (`CLAUDE.md`, "Continuity"). If something here contradicts `git log`, `git log` wins: say so and fix this file first.
 
-**Last updated:** 2026-11-15 18:05 CET, on the Mac, `main` at `72bce35` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
+**Last updated:** 2026-11-15 18:10 CET, on the Mac, `main` at `3a5399d` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
 
 ## Resume in five minutes
 
@@ -43,7 +43,7 @@ Every implementer below writes its report in its own worktree, at `.superpowers/
 | Plan 5 Task 6, the search use case | Implementation, dispatched 17:53; then its double review | `.claude/worktrees/agent-abf03d55db7511dc3`, `worktree-agent-abf03d55db7511dc3`, from `6db5049` | `wip/plan5-task-6` after its first commit |
 | Plan 5 Task 5, round 2 | Dispatched 17:53 (the brief is below); then its double review | `.claude/worktrees/agent-a3652a06ed07d9591`, `worktree-agent-a3652a06ed07d9591`, from `6db5049` | `wip/plan5-task-5-r2` after its first commit |
 | Approved extras (plan 5 Tasks 4 and 8, git guard) | Dispatched 17:53 (the brief is below); then its double review | `.claude/worktrees/agent-a47126e03777a95e1`, `worktree-agent-a47126e03777a95e1`, from `6db5049` | `wip/plan5-extras` after its first commit |
-| Plan 7 Task 1, telemetry backends in compose | Built (`f5e6520`, 724 tests green); the same implementer resumed ~17:40 for round 2 before any review (the brief is below) | `.claude/worktrees/agent-a380b01c59520a201`, `worktree-agent-a380b01c59520a201`, from `04586b6` | `wip/plan7-task-1` (at `f5e6520`) |
+| Plan 7 Task 1, telemetry backends in compose | Round 2 done (`42bc27f`, 729 tests green): the user's decisions and E8. Its first double review dispatched 18:10 | `.claude/worktrees/agent-a380b01c59520a201`, `worktree-agent-a380b01c59520a201`, from `04586b6` | `wip/plan7-task-1` (at `42bc27f`) |
 | Plan 7 Task 9, draft of `SOLUTION.md` | Steps 1–2 (draft and check), dispatched 18:10; figures that later tasks produce are left as visible `TODO(plan N Task M)` placeholders. Step 3 is the user's review | `.claude/worktrees/agent-ad45d58ed7874f3b3`, `worktree-agent-ad45d58ed7874f3b3` from `72bce35` | `wip/plan7-task-9` after its first commit |
 
 **Plan 5 Task 6:** the plan's Task 6 text, its Global Constraints, Q1–Q9 as decided, and the tests in the order its Step 1 lists. The refresh request must never delay or fail a search.
@@ -52,7 +52,7 @@ Every implementer below writes its report in its own worktree, at `.superpowers/
 
 **Approved extras:** a 2 s statement timeout on every search read (`SET LOCAL statement_timeout`, a setting in the `search:` block); defensive copies in `StoredPage` and `SearchPage`; a deterministic test for two re-prices of the same itinerary at once (the second answers `GONE`); the git guard limited to one simple command (not crossing `;`, `&&`, `||`, `|` or a newline), every existing case still blocked, with its new cases in `.claude/hooks/block-destructive-git.test.sh`.
 
-**Plan 7 Task 1, round 2** (plan 7 Task 1's "Decided by the user" line): the Collector keeps no health check, with the reason in `compose.yaml`; E8, a test that every compose image is pinned by tag and digest; the usage reports of Tempo, Loki and Grafana to Grafana Labs turned off, with a test; `ComposeFileTest` checks the published ports.
+**Plan 7 Task 1, round 2, done in `42bc27f`** (plan 7 Task 1's "Decided by the user" line): the Collector keeps no health check, with the reason in `compose.yaml`; E8, a test that every compose image is pinned by tag and digest; the usage reports of Tempo, Loki and Grafana to Grafana Labs turned off, with a test; `ComposeFileTest` checks the published ports.
 
 **Carried to later tasks:** Task 7 must forward `replaceThrough` through `CountedItineraryRepository`, reword the BUSY WARN and Javadoc to cover a refresh, and split `JdbcItineraryRepositoryTest` before adding tests. End-of-plan review: Task 8's CM1 (no test pins the SQLState comparison) and CM2 (an assertion that cannot fail), starvation wording in the progress report; Task 13 measures the probe's 1 s connect timeout on a network that drops packets.
 
