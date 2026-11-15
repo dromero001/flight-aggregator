@@ -35,7 +35,9 @@ class PrometheusConfigTest {
 
   /**
    * Promtool's unit tests for the rules (Task 3) sit beside them in {@code rules/}: Prometheus
-   * loads every rule file there, and none of the tests, which it cannot parse as rules.
+   * loads every rule file there, and none of the tests, which it cannot parse as rules. The example
+   * pair is the test's own, so the check does not depend on the repository's rule files: a glob
+   * that matches nothing leaves out the example's line, and one that takes the test fails promtool.
    */
   @Test
   void loadsTheRuleFilesButNotTheirPromtoolTests() {
@@ -54,9 +56,7 @@ class PrometheusConfigTest {
                 "/etc/prometheus/rules/example.rules.test.yaml")) {
 
       assertThatNoException().isThrownBy(promtool::start);
-      assertThat(promtool.getLogs())
-          .contains("SUCCESS: 1 rule files found")
-          .contains("Checking /etc/prometheus/rules/example.rules.yaml");
+      assertThat(promtool.getLogs()).contains("Checking /etc/prometheus/rules/example.rules.yaml");
     }
   }
 
