@@ -48,4 +48,20 @@ class ProviderTextTest {
         .isEqualTo("\"a\\u000d\\u000aERROR forged\"");
     assertThat(ProviderText.quoted("a".repeat(300))).isEqualTo("\"" + "a".repeat(200) + "\"");
   }
+
+  /** A double quote inside the value is escaped, so where the quoted value ends is unambiguous. */
+  @Test
+  void escapesADoubleQuoteInsideAQuotedValueOnly() {
+    assertThat(ProviderText.quoted("say \"hi\" now")).isEqualTo("\"say \\\"hi\\\" now\"");
+    assertThat(ProviderText.escaped("say \"hi\"")).isEqualTo("say \"hi\"");
+  }
+
+  /** Probe: a double quote across the limit is dropped whole, never cut to a lone backslash. */
+  @Test
+  void neverCutsInsideTheEscapeOfADoubleQuote() {
+    assertThat(ProviderText.quoted("a".repeat(199) + "\""))
+        .isEqualTo("\"" + "a".repeat(199) + "\"");
+    assertThat(ProviderText.quoted("a".repeat(198) + "\""))
+        .isEqualTo("\"" + "a".repeat(198) + "\\\"\"");
+  }
 }
