@@ -14,6 +14,7 @@ import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.OfferStore;
 import com.flightaggregator.application.port.out.Publication;
+import com.flightaggregator.application.port.out.RefreshScheduler;
 import com.flightaggregator.bootstrap.ingestion.IngestionJob;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Carrier;
@@ -92,6 +93,7 @@ class FlightAggregatorApplicationTest {
   @Autowired private DiscardedRecords discarded;
   @Autowired private JsonMapper json;
   @Autowired private ConfigurableEnvironment environment;
+  @Autowired private List<RefreshScheduler> refreshSchedulers;
 
   @Autowired
   @Qualifier("applicationTaskExecutor")
@@ -115,6 +117,17 @@ class FlightAggregatorApplicationTest {
             tuple("4", MigrationState.SUCCESS),
             tuple("5", MigrationState.SUCCESS),
             tuple("6", MigrationState.SUCCESS));
+  }
+
+  /**
+   * The application holds one refresh scheduler: until plan 5 Task 7, RefreshConfig's provisional
+   * one. Task 7's replaces it; the two side by side stop startup, and if either were marked {@code
+   * Primary} to out-vote the other, startup would go on, so this counts them (the user's decision
+   * of 2026-11-15: the provisional scheduler cannot linger).
+   */
+  @Test
+  void holdsOneRefreshScheduler() {
+    assertThat(refreshSchedulers).hasSize(1);
   }
 
   /**

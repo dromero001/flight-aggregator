@@ -14,6 +14,7 @@ import com.flightaggregator.application.port.in.SearchPage;
 import com.flightaggregator.application.port.in.SearchQuery;
 import com.flightaggregator.application.port.in.SeekPosition;
 import com.flightaggregator.application.port.in.SortOrder;
+import com.flightaggregator.application.port.out.AirportCatalogue;
 import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.SearchKey;
 import com.flightaggregator.application.service.fakes.InMemoryRefreshCoordination;
@@ -21,6 +22,7 @@ import com.flightaggregator.application.service.fakes.InMemorySearchCache;
 import com.flightaggregator.application.service.fakes.ScriptedItineraryReader;
 import com.flightaggregator.application.service.fakes.ScriptedItineraryReader.PageAsked;
 import com.flightaggregator.domain.Airport;
+import com.flightaggregator.domain.Carrier;
 import com.flightaggregator.domain.Itinerary;
 import com.flightaggregator.domain.Money;
 import java.time.Duration;
@@ -28,6 +30,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -86,6 +89,11 @@ class SearchItinerariesServiceTest {
       new ScriptedItineraryReader(GENERATION, NOW.minus(Duration.ofMinutes(1)));
 
   private final InMemorySearchCache cache = new InMemorySearchCache();
+
+  /** The airports the system knows. */
+  private final AirportCatalogue catalogue =
+      () -> Set.of(MADRID, new Airport("LHR"), new Airport("BCN"));
+
   private final InMemoryRefreshCoordination coordination = new InMemoryRefreshCoordination();
 
   /** Every origin whose refresh was requested, in order. */
@@ -95,11 +103,16 @@ class SearchItinerariesServiceTest {
 
   private SearchItinerariesService service() {
     return new SearchItinerariesService(
-        reader, cache, coordination, requested::add, clock, THRESHOLD);
+        reader, cache, catalogue, coordination, requested::add, clock, THRESHOLD);
   }
 
   private static Itinerary trip(int flightNumber) {
     return new Itinerary(List.of(leg(ALPHA, flightNumber, "MAD", "LHR")));
+  }
+
+  /** A direct flight from Madrid to London departing at that time (UTC), quoted then. */
+  private static Itinerary departingAt(int flightNumber, String departure, Instant quotedAt) {
+    return new Itinerary(List.of(leg(ALPHA, flightNumber, "MAD", "LHR", departure, quotedAt)));
   }
 
   private static SearchQuery firstPage(SearchCriteria criteria, int limit) {
@@ -124,6 +137,26 @@ class SearchItinerariesServiceTest {
                 false));
   }
 
+  /**
+   * The reader is asked for the query's four filters and sort order, for trips departing after now
+   * (§4.1), and for one row more than the page holds.
+   */
+  @Test
+  void asksTheReaderForTheQuerysFiltersAfterNowWithOneRowMore() {
+    SearchCriteria everyFilter =
+        new SearchCriteria(
+            Optional.of(MADRID),
+            Optional.of(new Airport("LHR")),
+            Optional.of(Money.euros("200.00")),
+            Optional.of(new Carrier("IB")),
+            SortOrder.DURATION);
+
+    service().search(firstPage(everyFilter, 2));
+
+    assertThat(reader.pagesAsked())
+        .containsExactly(new PageAsked(everyFilter, Optional.empty(), 3, NOW));
+  }
+
   /** A page that holds the last rows exactly has no next page to point to. */
   @Test
   void returnsNoCursorOnTheLastPage() {
@@ -136,7 +169,9 @@ class SearchItinerariesServiceTest {
 
   /**
    * Q1: a cursor of a replaced generation still seeks from its position, now in the active
-   * generation, and the page says the inventory changed; a cursor of the active one does not.
+   * generation, and the page says the inventory changed; a cursor of the active one does not. The
+   * comparison is with the generation the rows were read from: while a run publishes between the
+   * two reads, a cursor of the new generation is not flagged, since its rows are current.
    */
   @Test
   void flagsACursorOfAnotherGeneration() {
@@ -145,18 +180,24 @@ class SearchItinerariesServiceTest {
         new PageCursor(GENERATION - 1, SortOrder.PRICE, SeekPosition.of(FIRST));
     PageCursor ofThisGeneration =
         new PageCursor(GENERATION, SortOrder.PRICE, SeekPosition.of(FIRST));
+    PageCursor ofTheNextGeneration =
+        new PageCursor(GENERATION + 1, SortOrder.PRICE, SeekPosition.of(FIRST));
 
     SearchPage flagged =
         service().search(new SearchQuery(ANYWHERE, 2, Optional.of(ofTheLastGeneration)));
     SearchPage notFlagged =
         service().search(new SearchQuery(ANYWHERE, 2, Optional.of(ofThisGeneration)));
+    reader.readingPagesOf(GENERATION + 1);
+    SearchPage readWhileARunPublishes =
+        service().search(new SearchQuery(ANYWHERE, 2, Optional.of(ofTheNextGeneration)));
 
+    SearchPage rowsAfterFirst = new SearchPage(List.of(SECOND, THIRD), Optional.empty(), false);
     assertThat(flagged).isEqualTo(new SearchPage(List.of(SECOND, THIRD), Optional.empty(), true));
-    assertThat(notFlagged)
-        .isEqualTo(new SearchPage(List.of(SECOND, THIRD), Optional.empty(), false));
+    assertThat(notFlagged).isEqualTo(rowsAfterFirst);
+    assertThat(readWhileARunPublishes).isEqualTo(rowsAfterFirst);
     assertThat(reader.pagesAsked())
         .extracting(PageAsked::after)
-        .containsExactly(Optional.of(SeekPosition.of(FIRST)), Optional.of(SeekPosition.of(FIRST)));
+        .containsOnly(Optional.of(SeekPosition.of(FIRST)));
   }
 
   /** A cursor's position is in its search's sort order, so under another order it means nothing. */
@@ -188,6 +229,35 @@ class SearchItinerariesServiceTest {
 
     assertThat(page).isEqualTo(cached);
     assertThat(reader.pagesAsked()).isEmpty();
+  }
+
+  /**
+   * §4.1, the user's decision: a cached page keeps only what can still be sold now. A first page by
+   * departure cached a few minutes ago starts with a flight that has left since: it is served
+   * without it, one row short, and with its cursor as cached, which still seeks after its last row.
+   */
+  @Test
+  void dropsFromACachedPageWhatHasDepartedSince() {
+    Instant cachedAt = NOW.minus(Duration.ofMinutes(3));
+    Itinerary departed = departingAt(11, "2026-11-20T07:59:00Z", cachedAt);
+    Itinerary next = departingAt(12, "2026-11-20T08:30:00Z", cachedAt);
+    Itinerary later = departingAt(13, "2026-11-20T09:00:00Z", cachedAt);
+    SearchCriteria byDeparture =
+        new SearchCriteria(
+            Optional.of(MADRID),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            SortOrder.DEPARTURE);
+    Optional<PageCursor> afterLater =
+        Optional.of(new PageCursor(GENERATION, SortOrder.DEPARTURE, SeekPosition.of(later)));
+    cache.put(
+        new SearchKey(GENERATION, byDeparture, 3),
+        new SearchPage(List.of(departed, next, later), afterLater, false));
+
+    SearchPage page = service().search(firstPage(byDeparture, 3));
+
+    assertThat(page).isEqualTo(new SearchPage(List.of(next, later), afterLater, false));
   }
 
   /**
@@ -291,6 +361,29 @@ class SearchItinerariesServiceTest {
     refreshedAgo.ifPresent(ago -> coordination.refreshed(MADRID, NOW.minus(ago)));
 
     service().search(firstPage(criteria, 2));
+
+    assertThat(requested).isEmpty();
+    assertThat(coordination.claimed()).isEmpty();
+  }
+
+  /**
+   * The user's decision: only an origin the system knows is refreshed. A well-formed code outside
+   * the airport catalogue, searched 11 min after the run, claims nothing and asks for nothing, so a
+   * client cannot make the providers download made-up origins.
+   */
+  @Test
+  void doesNotRefreshAnOriginOutsideTheCatalogue() {
+    Airport unknown = new Airport("QQQ");
+    reader.published(GENERATION, NOW.minus(Duration.ofMinutes(11)));
+    SearchCriteria fromUnknown =
+        new SearchCriteria(
+            Optional.of(unknown),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            SortOrder.PRICE);
+
+    service().search(firstPage(fromUnknown, 2));
 
     assertThat(requested).isEmpty();
     assertThat(coordination.claimed()).isEmpty();

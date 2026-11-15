@@ -8,6 +8,7 @@ import com.flightaggregator.application.port.in.SearchPage;
 import com.flightaggregator.application.port.in.SearchQuery;
 import com.flightaggregator.application.port.in.SeekPosition;
 import com.flightaggregator.application.port.in.SortOrder;
+import com.flightaggregator.application.port.out.AirportCatalogue;
 import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.InventoryState;
 import com.flightaggregator.application.port.out.ItineraryReader;
@@ -25,6 +26,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -41,11 +44,26 @@ class SearchConfigTest {
   private static final Instant NOW = Instant.parse("2026-11-20T08:00:00Z");
   private static final Airport MADRID = new Airport("MAD");
 
+  /** The first page of every search from Madrid, by price. */
+  private static final SearchQuery FROM_MADRID =
+      new SearchQuery(
+          new SearchCriteria(
+              Optional.of(MADRID),
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty(),
+              SortOrder.PRICE),
+          20,
+          Optional.empty());
+
   /** When the inventory the reader serves was published. */
   private Instant publishedAt = NOW;
 
   /** Every origin whose refresh was requested, in order. */
   private final List<Airport> requested = new ArrayList<>();
+
+  /** How many times the airport catalogue was read. */
+  private final AtomicInteger catalogueReads = new AtomicInteger();
 
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
@@ -53,6 +71,13 @@ class SearchConfigTest {
           .withUserConfiguration(SearchConfig.class)
           .withBean(ItineraryReader.class, () -> new Published())
           .withBean(SearchCache.class, NothingCached::new)
+          .withBean(
+              AirportCatalogue.class,
+              () ->
+                  () -> {
+                    catalogueReads.incrementAndGet();
+                    return Set.of(MADRID);
+                  })
           .withBean(RefreshCoordination.class, EveryClaimGranted::new)
           .withBean("backgroundRefresh", RefreshScheduler.class, () -> requested::add)
           .withBean(Clock.class, () -> () -> NOW);
@@ -74,21 +99,29 @@ class SearchConfigTest {
   @CsvSource({"PT10M, 0", "PT10M1S, 1"})
   void asksToRefreshAnOriginOnlyOnceItIsMoreThanTenMinutesOld(Duration age, int refreshes) {
     publishedAt = NOW.minus(age);
-    SearchCriteria fromMadrid =
-        new SearchCriteria(
-            Optional.of(MADRID),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            SortOrder.PRICE);
 
     runner.run(
         context -> {
-          context
-              .getBean(SearchItineraries.class)
-              .search(new SearchQuery(fromMadrid, 20, Optional.empty()));
+          context.getBean(SearchItineraries.class).search(FROM_MADRID);
 
           assertThat(requested).hasSize(refreshes);
+        });
+  }
+
+  /**
+   * The catalogue is migration V2's fixed set of airports, and its store reads the table on every
+   * call, so the wired use case reads it once, not once per search with an origin.
+   */
+  @Test
+  void readsTheAirportCatalogueOnce() {
+    runner.run(
+        context -> {
+          SearchItineraries search = context.getBean(SearchItineraries.class);
+
+          search.search(FROM_MADRID);
+          search.search(FROM_MADRID);
+
+          assertThat(catalogueReads).hasValue(1);
         });
   }
 
