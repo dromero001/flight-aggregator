@@ -5,22 +5,29 @@ import com.flightaggregator.adapter.provider.ProviderEndpoint;
 import com.flightaggregator.adapter.provider.ProviderHttp;
 import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.FlightProvider;
+import com.flightaggregator.bootstrap.observability.CountedProviders;
 import com.flightaggregator.bootstrap.observability.CountedRetries;
 import com.flightaggregator.bootstrap.observability.LoggedBreakerTransitions;
 import com.flightaggregator.domain.Provider;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.micrometer.tagged.TaggedCircuitBreakerMetrics;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.resilience.annotation.EnableResilientMethods;
 
 /**
  * The three provider adapters, each built from its own endpoint, and their circuit breakers: one
- * per provider, named after it, in one registry with the production configuration (§6.5).
+ * per provider, named after it, in one registry with the production configuration (§6.5). Each
+ * adapter is proxied on its own for its {@code @ConcurrencyLimit}, so each provider has its own
+ * limit (Q9). The proxy is a class proxy, Boot's default: an interface proxy would read the limit
+ * of {@code FlightProvider}'s methods, not of the adapter's, and so would limit {@code provider()}.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(ProvidersProperties.class)
+@EnableResilientMethods
 class ProvidersConfig {
 
   /**
@@ -35,6 +42,12 @@ class ProvidersConfig {
     TaggedCircuitBreakerMetrics.ofCircuitBreakerRegistry(circuitBreakers).bindTo(meters);
     LoggedBreakerTransitions.of(circuitBreakers);
     return circuitBreakers;
+  }
+
+  /** Every provider call counted, after its limit's proxy (§6.10). */
+  @Bean
+  static CountedProviders countedProviders(ObjectProvider<MeterRegistry> meters) {
+    return new CountedProviders(meters);
   }
 
   @Bean

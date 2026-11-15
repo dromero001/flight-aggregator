@@ -20,6 +20,17 @@ flowchart LR
 4. **A download with no usable leg.** A download that arrives whole but leaves no leg once its records are parsed and checked against the airport catalogue (an empty list, or every record discarded) is a failed download too: the provider is `KEPT` with `EMPTY_DOWNLOAD`, its stored offers are untouched, its discarded records are still logged and counted, and it gets the same `WARN` line and count as any kept provider (§6.5: good data is never replaced by nothing). There is no rule on the share of records dropped.
 5. **Itineraries.** The stored offers of all three providers are deduplicated into one leg per flight, and `ItineraryBuilder` returns a lazy stream of every itinerary of one to three legs. The stream is consumed only with `forEach`, straight into `COPY` (push mode, R4), so the roughly one million itineraries are never held in memory. A provider that gives one flight two arrivals contradicts itself: all its offers of that flight take no part. They are reported as `CONFLICTING` discarded records, and counted, only by the run that downloaded them (the provider is `FRESH`); a kept provider's old conflicts are not reported again on every run that keeps them.
 
+## One origin, one flight, and the limit per provider
+
+Besides the whole download, each `PagedProvider` offers two more calls, for the search API (plan 5). Both use the mock's "Origin filter and quote" parameters ([Mock providers](README.md#origin-filter-and-quote)):
+
+- `downloadFrom(origin)` downloads one origin's legs, with the same pages, bounds and failures as the whole download.
+- `quote(flight)` asks for one flight. It is one request through the same HTTP client (breaker, retries, request timeout), at most one record on one page, and it is quoted at the response's arrival. The listing's empty page means the flight is no longer sold. A record of another flight, a discarded record or a second record fails the quote with `MALFORMED_PAGE`.
+
+The three calls of one provider share one limit, `providers.concurrency-limit` calls at once (4, Q9). It is set in `application.yaml`, because the annotation reads it from there. The limit is Spring's `@ConcurrencyLimit` on the `PagedProvider` class with the `REJECT` policy: a call over it fails at once with `InvocationRejectedException`, a `RejectedExecutionException`, and is never queued. `provider()` and `toString()` are exempt. Each provider bean is proxied on its own, so each provider has its own limit. The proxy is a class proxy (Boot's default), so `PagedProvider` is not `final`. An interface proxy would read the exemptions from `FlightProvider`'s methods and so would limit `provider()`.
+
+Every call of a provider is counted, as `provider.calls`, by `CountedFlightProvider`, which wraps the limited provider (`CountedProviders`, after the proxy), so a rejected call is counted too.
+
 ## The slots
 
 Search will read `itinerary_a` or `itinerary_b`, whichever `inventory_publication.active_slot` names (double buffering, §6.5). A run writes the other one, in a single transaction (`JdbcItineraryRepository.replaceInventory`):
@@ -68,7 +79,7 @@ Each run logs one line, `Ingestion run ended`, as ECS JSON: at `INFO` for `PUBLI
 
 Each state transition of a provider's circuit breaker is one `WARN` line, `A provider's circuit breaker changed state`, with `provider`, `from` and `to`.
 
-Metrics use low-cardinality tags only (`provider`, `reason`, `outcome`, `status`):
+Metrics use low-cardinality tags only (`provider`, `reason`, `outcome`, `status`, `operation`):
 
 | Meter | Meaning |
 |---|---|
@@ -77,6 +88,7 @@ Metrics use low-cardinality tags only (`provider`, `reason`, `outcome`, `status`
 | `ingestion.consecutive.failures` | Runs in a row that failed: published nothing, ended with an exception, or published with no provider `FRESH`. It goes back to 0 only on a run that publishes with at least one fresh provider |
 | `ingestion.provider.downloads{provider,status,reason}` | Downloads, `FRESH` or `KEPT`, with the `FailureReason` (`none` when fresh) |
 | `ingestion.provider.retries{provider}` | Retries of a provider's requests, not counting the first attempts |
+| `provider.calls{provider,operation,outcome}` | Every provider call, ingestion's or not: `operation` is `download`, `origin-download` or `quote`; `outcome` is `OK`, `NOT_SOLD` (a quote of a flight no longer sold), the `FailureReason`, or `REJECTED` (over the provider's concurrency limit) |
 | `ingestion.provider.last.fresh.seconds{provider}` | Age of the newest quote among the provider's stored offers, fresh or kept; restored by the first run after a restart, `NaN` while the provider has nothing stored |
 | `ingestion.records.discarded{provider,reason}` | Discarded records. `CONFLICTING` counts a fresh download's self-contradicting offers, once, on the run that downloaded them |
 | `resilience4j.circuitbreaker.*{name}` | Each provider's breaker (its state, calls and failure rate), named after the provider, by Resilience4j's Micrometer binding |

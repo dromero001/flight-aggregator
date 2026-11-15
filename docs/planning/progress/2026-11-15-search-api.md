@@ -136,3 +136,58 @@ Gates: `./gradlew build` green. Thermo-nuclear review of the diff (a test file a
 ### Extras for the user to decide
 
 None.
+
+## Task 2 — implementation (after the controller's ruling)
+
+Ruling (controller, recorded in the plan 5 ledger): option A. `@ConcurrencyLimit(limitString = "${providers.concurrency-limit}", policy = REJECT)` on the `PagedProvider` class, `@ConcurrencyLimit(-1)` on `provider()` and `toString()`; `PagedProvider` stays `final` with `@Proxyable(INTERFACES)` on each provider `@Bean`, unless a test shows that the interface proxy does not apply the class-level limit as needed, in which case `final` goes; `ProvidersConfigTest` loads `AopAutoConfiguration`.
+
+Step 1, page formats:
+
+- Design: the three formats differ only in their paging, so `PageFormat` keeps one abstract method, `page(ListingQuery, position, pageSize)`, and gains the brief's `at(origin, position, pageSize)` and `quoting(flight)` as default methods over it. `ListingQuery` (new, package-private) is the query every listing shares (mock-gds, "Origin filter and quote"): nothing, `origin`, or the five key parts with `departure` as `Instant.toString()`. Each page record holds its query and exposes its format as `FORMAT`; `PagedProvider.formatOf` returns it. A quote is the first page of one record (`limit=1`, `pageSize=1`), so a second record fails the page's existing bound.
+- `AlphaPageTest.requestsOnlyAnOriginsLegs`: red = `error: cannot find symbol` (`AlphaPage.FORMAT`); green = the origin passed to the format and carried in the request's query (`/alpha/legs?limit=100&cursor=b2Zm%2Bc2V0PTE%3D&origin=MAD`).
+- `AlphaPageTest.buildsTheQuotePath`: red = `error: cannot find symbol` (`quoting`); green = `ListingQuery` and the default `quoting`.
+- `BetaPageTest.requestsOnlyAnOriginsLegs`: red = `error: cannot find symbol` (`BetaPage.FORMAT`); green = `BetaPage` carries the query.
+- `BetaPageTest.buildsTheQuotePath`: passed on first run (shared `quoting`); red under the mutation "Beta's path drops the query" (both Beta tests failed, the quote's with `/beta/segments?page=1&pageSize=1`).
+- `GammaPageTest.requestsOnlyAnOriginsLegs`: red = `error: cannot find symbol` (`GammaPage.FORMAT`); green = `GammaPage` carries the query.
+- `GammaPageTest.buildsTheQuotePath`: passed on first run; red under the mutation "the departure written with its offset": the three quote tests failed, `but was: ".../departure=2026-11-20T08%3A15%2B01%3A00"`.
+
+Step 2, `PagedProvider` against WireMock:
+
+- `AlphaProviderTest.downloadsOnlyTheOriginsLegs`: red = `error: cannot find symbol` (`downloadFrom`); green = `FlightProvider.downloadFrom(Airport)`, and `PagedProvider.download()` and `downloadFrom` both through one `downloadOf(origin)` over `PagedDownload.download`, so the origin download keeps the whole one's bounds. `FakeFlightProvider` fakes `download()` only and throws `UnsupportedOperationException` on the new calls.
+- `AlphaProviderTest.quotesOneFlight`: red = `error: cannot find symbol` (`quote`); green = `FlightProvider.quote(LegKey)`, one request of `format.quoting(flight)` through `ProviderHttp.get`, `quotedAt` from `FetchedPage.receivedAt` (the clock's first arrival in the test).
+- `AlphaProviderTest.quotesNothingForAFlightNoLongerSold`: passed on first run; red under the mutation "the quote takes the first record unconditionally" (`java.util.NoSuchElementException`).
+- `AlphaProviderTest.failsAQuoteThatAnswersAnotherFlight`: red = `Expecting code to raise a throwable.`; green = a leg whose key is not the one asked for throws `PageMalformed`, which `quote` turns into `MALFORMED_PAGE` as `PagedDownload` does.
+- `AlphaProviderTest.failsAQuoteWithAMalformedRecord`: red = `Expecting code to raise a throwable.` (the discarded record read as "not sold"); green = a discarded record fails the quote the same way. More than one record already fails the page's bound of one.
+- Beta and Gamma, the same five tests each, written together because they drive no new code (the logic is `PagedProvider`'s, only the format differs): all passed on first run. Red under two mutations: "Beta's and Gamma's paths drop the query" (all ten failed) and "the quote's checks removed" (the two failure tests of each of the three providers failed).
+- Seen once while running `:application:test` and `:adapters:providers:test` together: `ProviderHttpTest.failsFastWithAnOpenBreaker` failed with `expected: CIRCUIT_OPEN but was: HTTP_ERROR`. That code is untouched by this task, and it passed in four isolated runs (`--rerun`) and in the next combined run, so it looks like a timing flake under load. Noted for the reviewer; not changed.
+
+Step 2, the limit (with `AopAutoConfiguration` in `ProvidersConfigTest`'s runner, as in the application):
+
+- `ProvidersPropertiesTest.readsTheConcurrencyLimit` (bound with Boot's `Binder`): red = `error: cannot find symbol` (`concurrencyLimit()`); green = `ProvidersProperties` gains `@DefaultValue("4") int concurrencyLimit`.
+- `ProvidersPropertiesTest.defaultsToFourConcurrentCallsPerProvider`: passed on first run (the default came with the field); red under the mutation "no `@DefaultValue`": `expected: 4 but was: 0`.
+- `ProvidersConfigTest.limitsConcurrentCallsPerProvider` (limit 2; Alpha answers after 1 s; a download and an origin download in flight, seen as 2 requests in WireMock's journal; then a quote): red = `Expecting code to raise a throwable.` (nothing limited the quote); green = `@ConcurrencyLimit(limitString = "${providers.concurrency-limit}", policy = REJECT)` on the `PagedProvider` class, `@EnableResilientMethods` on `ProvidersConfig`, `spring-context` in `adapters/providers`. The quote is rejected with `InvocationRejectedException`, a Beta quote meanwhile answers, and Alpha's journal holds the 2 requests only.
+- Found on the way: `@DefaultValue("4")` does not reach the annotation, whose placeholder reads the Environment, not `ProvidersProperties`. `buildsEachProviderFromItsOwnEndpoint` failed with `NumberFormatException: For input string: "${providers.concurrency-limit}"`, and every `FlightAggregatorApplicationTest` and `IngestionEndToEndTest` test with `Could not resolve placeholder 'providers.concurrency-limit'`. Green = `application.yaml` states `providers.concurrency-limit: 4` (Q9), with a comment saying why; the `ProvidersConfigTest` runner states it as the application does. `ProvidersProperties` keeps the field: with `ignoreUnknownFields = false` the property must be declared there.
+- `ProvidersConfigTest.answersItsProviderWhileItsLimitIsExhausted` (limit 1, one download in flight): red = `InvocationRejectedException: Concurrency limit reached: 1 - not allowed to enter ...PagedProvider` at `provider()`. `@ConcurrencyLimit(-1)` (`UNBOUNDED_CONCURRENCY`) on `provider()` alone did not turn it green: same failure. Cause, from `ConcurrencyLimitBeanPostProcessor`: the interceptor looks the annotation up on `invocation.getMethod()`, which under the interface proxy of `@Proxyable(INTERFACES)` is `FlightProvider.provider()`, so the exemption on `PagedProvider.provider()` is never seen. Per the ruling's fallback, `PagedProvider` is no longer `final` and the beans lose `@Proxyable`: Boot's class proxy invokes the adapter's own methods. Green. Mutation "`final` again": the `ProvidersConfigTest` contexts fail with `Cannot subclass final class com.flightaggregator.adapter.provider.PagedProvider`, so the runner now catches what the learning test found.
+- `ProvidersConfigTest.printsItselfWhileItsLimitIsExhausted`: red = `InvocationRejectedException ... PagedProvider` at `toString()` (the class limit covers it); green = `toString()` overridden (`PagedProvider[ALPHA]`) with `@ConcurrencyLimit(-1)`.
+
+Step 3, the call counter:
+
+- `CountedFlightProviderTest.countsEachOutcome` (OK, not sold, `TIMEOUT`, rejected): red = `error: cannot find symbol` (`CountedFlightProvider`); green = `CountedFlightProvider`, counting `provider.calls{provider, operation=download|origin-download|quote, outcome}` and passing the answer or the failure through. A rejection is caught as `RejectedExecutionException`, the JDK type `InvocationRejectedException` extends.
+- `CountedFlightProviderTest.countsAnyOtherFailureAsUnexpected`: red = `MeterNotFoundException: ... No meter with name 'provider.calls'`; green = any other `RuntimeException` counted as `UNEXPECTED`, so every call is counted (global constraints, metrics).
+- `ProvidersConfigTest.countsARejectedCall` (limit 1, one download in flight, a quote rejected): red = `MeterNotFoundException`; green = `CountedProviders`, a `BeanPostProcessor` declared `static` in `ProvidersConfig`, wrapping each `FlightProvider` bean. It is not `Ordered`, so it runs after the ordered resilience post-processor, around its proxy. Mutation "`CountedProviders` is `PriorityOrdered`": `countsARejectedCall` and `limitsConcurrentCallsPerProvider` failed with `Expecting code to raise a throwable.`, since a provider wrapped before the resilience post-processor is no longer proxied and loses its limit; the test pins the order.
+- `printsItselfWhileItsLimitIsExhausted` then failed with `"...CountedFlightProvider@6b7ded28" to contain "ALPHA"`; green = `CountedFlightProvider.toString()` prints the provider it counts.
+
+Docs: `docs/architecture/ingestion.md` gains "One origin, one flight, and the limit per provider" and the `provider.calls` row of the metrics table.
+
+Gates: `./gradlew build` green. Thermo-nuclear review of the diff, and what it changed:
+
+- The three page formats differed only in paging, so the query they share is one value (`ListingQuery`) and `PageFormat` one abstract method with `at` and `quoting` as defaults; no format repeats the five quote parameters.
+- The quote's failures go through the same `PageMalformed` → `MALFORMED_PAGE` path as a download's page; "more than one record" needs no code of its own (the page of one record already refuses a second).
+- Test duplication removed: the flight and the path expansion of the six provider tests are in `Fixtures`; the four limit tests share `limitedTo(limit)` and `inFlight(calls...)`.
+- Javadoc made true again: `ProviderUnavailableException` and `FailureReason` now say "download or quote"; `ProvidersProperties` says that `concurrency-limit` is declared for the binder while the annotation reads the environment; `PagedProvider` says why it is not `final`.
+- Nothing fails silently: every call is counted, an unexpected failure as `UNEXPECTED`, and the failure is rethrown unchanged. A missing `providers.concurrency-limit` fails startup of the application (it was seen failing every full-context test), and `ProvidersConfigTest` now loads Boot's AOP defaults, so a `final` adapter or a lost limit fails it.
+- Left as they are: `ProvidersProperties.concurrencyLimit` is bound but not read by production code (the brief's `@DefaultValue("4")`, needed by `ignoreUnknownFields = false`); the value 4 is stated twice, in the record and in `application.yaml`, and `defaultsToFourConcurrentCallsPerProvider` pins only the record's.
+
+### Extras for the user to decide
+
+- Refusing a `providers.concurrency-limit` below 1 at startup. Today 0 would fail every call (`IllegalStateException`, counted `UNEXPECTED`) and -1 would silently remove the limit. Cost: one check in `ProvidersProperties` and a test. Left out unless you approve.

@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
+import java.util.stream.Stream;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -17,25 +18,26 @@ import tools.jackson.databind.ObjectMapper;
  * One page of Alpha: a flat JSON list of legs, {@code limit} at most, paged by an opaque cursor
  * that is {@code null} on the last page. A record that is not valid is discarded alone.
  */
-record AlphaPage(int limit, Optional<String> cursor) implements PageRequest {
+record AlphaPage(ListingQuery query, int limit, Optional<String> cursor) implements PageRequest {
+
+  /** The page at a cursor, empty for the first page. */
+  static final PageFormat FORMAT =
+      (query, cursor, pageSize) -> new AlphaPage(query, pageSize, cursor);
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  /** The page at a cursor, empty for the first page. */
-  static AlphaPage at(Optional<String> cursor, int pageSize) {
-    return new AlphaPage(pageSize, cursor);
-  }
-
   @Override
   public String pathTemplate() {
-    return cursor.isEmpty()
-        ? "/alpha/legs?limit={limit}"
-        : "/alpha/legs?limit={limit}&cursor={cursor}";
+    return "/alpha/legs?limit={limit}"
+        + (cursor.isEmpty() ? "" : "&cursor={cursor}")
+        + query.template();
   }
 
   @Override
   public Object[] variables() {
-    return cursor.isEmpty() ? new Object[] {limit} : new Object[] {limit, cursor.get()};
+    return Stream.of(Stream.of(limit), cursor.stream(), query.variables().stream())
+        .flatMap(variables -> variables)
+        .toArray();
   }
 
   @Override

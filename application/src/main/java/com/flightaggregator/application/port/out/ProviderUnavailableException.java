@@ -4,7 +4,7 @@ import static java.util.Objects.requireNonNull;
 
 import com.flightaggregator.domain.Provider;
 
-/** A provider's download did not complete: no page of it may be used. */
+/** A provider's download or quote did not complete: no page of it may be used. */
 public class ProviderUnavailableException extends RuntimeException {
 
   private static final long serialVersionUID = 1L;

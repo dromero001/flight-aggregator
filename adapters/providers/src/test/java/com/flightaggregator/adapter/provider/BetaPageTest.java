@@ -1,5 +1,7 @@
 package com.flightaggregator.adapter.provider;
 
+import static com.flightaggregator.adapter.provider.Fixtures.FLIGHT;
+import static com.flightaggregator.adapter.provider.Fixtures.path;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.Optional;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -245,7 +248,9 @@ class BetaPageTest {
     String threeRecords = pageOf(1, 1, VALID_SEGMENT, "<Note/>", VALID_SEGMENT);
 
     assertThatThrownBy(
-            () -> new BetaPage(1, 2).parse(new FetchedPage(threeRecords, Provider.BETA, QUOTED_AT)))
+            () ->
+                new BetaPage(ListingQuery.from(Optional.empty()), 1, 2)
+                    .parse(new FetchedPage(threeRecords, Provider.BETA, QUOTED_AT)))
         .isInstanceOf(PageMalformed.class)
         .hasMessage("Asked for at most 2 records, got 3");
   }
@@ -305,6 +310,29 @@ class BetaPageTest {
     assertThat(page.next()).isEmpty();
   }
 
+  /** The origin joins the listing's query (Task 1), after the page number and size. */
+  @Test
+  void requestsOnlyAnOriginsLegs() {
+    PageRequest request =
+        BetaPage.FORMAT.at(Optional.of(new Airport("MAD")), Optional.of("3"), 100);
+
+    assertThat(path(request)).isEqualTo("/beta/segments?page=3&pageSize=100&origin=MAD");
+  }
+
+  /**
+   * A quote is the listing with the flight's five key parts (Task 1), the departure a UTC instant
+   * ending in {@code Z}, on the first page of one record: the most a quote may answer.
+   */
+  @Test
+  void buildsTheQuotePath() {
+    PageRequest request = BetaPage.FORMAT.quoting(FLIGHT);
+
+    assertThat(path(request))
+        .isEqualTo(
+            "/beta/segments?page=1&pageSize=1&carrier=IB&flightNumber=3170&origin=MAD"
+                + "&destination=LHR&departure=2026-11-20T07%3A15%3A00Z");
+  }
+
   private static String pageOf(int page, int totalPages, String... segments) {
     return "<SegmentsResponse page=\""
         + page
@@ -317,6 +345,7 @@ class BetaPageTest {
 
   /** Parses the Beta page of the requested number, at the production page size. */
   private static ParsedPage parse(String body, Instant quotedAt, int requestedPage) {
-    return new BetaPage(requestedPage, 1000).parse(new FetchedPage(body, Provider.BETA, quotedAt));
+    return new BetaPage(ListingQuery.from(Optional.empty()), requestedPage, 1000)
+        .parse(new FetchedPage(body, Provider.BETA, quotedAt));
   }
 }

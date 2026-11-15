@@ -1,7 +1,13 @@
 package com.flightaggregator.bootstrap.config;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.awaitility.Awaitility.await;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -12,24 +18,52 @@ import com.flightaggregator.adapter.provider.ProviderHttp;
 import com.flightaggregator.adapter.provider.ResilienceSettings;
 import com.flightaggregator.application.port.out.FlightProvider;
 import com.flightaggregator.bootstrap.observability.LoggedBreakerTransitions;
+import com.flightaggregator.domain.Airport;
+import com.flightaggregator.domain.Carrier;
+import com.flightaggregator.domain.LegKey;
 import com.flightaggregator.domain.Provider;
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.autoconfigure.aop.AopAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.ApplicationContext;
+import org.springframework.resilience.InvocationRejectedException;
 
 class ProvidersConfigTest {
 
+  private static final LegKey FLIGHT =
+      new LegKey(
+          new Carrier("IB"),
+          3170,
+          new Airport("MAD"),
+          new Airport("LHR"),
+          Instant.parse("2026-11-20T07:15:00Z"));
+
+  private static final String ALPHA_LAST_PAGE = "{\"legs\":[],\"nextCursor\":null}";
+
+  private static final String BETA_NONE =
+      "<SegmentsResponse page=\"1\" totalPages=\"1\"><Segments/></SegmentsResponse>";
+
+  /** Boot's AOP defaults, as in the application: they decide how the providers are proxied. */
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
+          .withConfiguration(AutoConfigurations.of(AopAutoConfiguration.class))
           .withUserConfiguration(ProvidersConfig.class, SystemClock.class)
           .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
           .withPropertyValues(
@@ -38,7 +72,22 @@ class ProvidersConfigTest {
               "providers.beta.base-url=http://beta.test/",
               "providers.beta.api-key=beta-key",
               "providers.gamma.base-url=http://gamma.test/",
-              "providers.gamma.api-key=gamma-key");
+              "providers.gamma.api-key=gamma-key",
+              // As application.yaml states it, for PagedProvider's @ConcurrencyLimit.
+              "providers.concurrency-limit=4");
+
+  private final WireMockServer server =
+      new WireMockServer(WireMockConfiguration.options().dynamicPort());
+
+  @BeforeEach
+  void startServer() {
+    server.start();
+  }
+
+  @AfterEach
+  void stopServer() {
+    server.stop();
+  }
 
   /**
    * Every provider of the closed set is wired, each from its own endpoint, which names it once: a
@@ -179,6 +228,125 @@ class ProvidersConfigTest {
         .containsExactly(
             tuple(Level.WARN, "provider=BETA from=CLOSED to=OPEN"),
             tuple(Level.WARN, "provider=BETA from=OPEN to=HALF_OPEN"));
+  }
+
+  /**
+   * Q9: at most {@code concurrency-limit} calls of a provider at once, its three operations sharing
+   * the limit; the call over it is rejected, not queued, and another provider's calls go on.
+   */
+  @Test
+  void limitsConcurrentCallsPerProvider() {
+    server.stubFor(
+        get(urlPathEqualTo("/beta/segments")).willReturn(aResponse().withBody(BETA_NONE)));
+    limitedTo(2)
+        .run(
+            context -> {
+              FlightProvider alpha = provider(context, Provider.ALPHA);
+              FlightProvider beta = provider(context, Provider.BETA);
+              List<CompletableFuture<Void>> held =
+                  inFlight(alpha::download, () -> alpha.downloadFrom(new Airport("MAD")));
+
+              assertThatThrownBy(() -> alpha.quote(FLIGHT))
+                  .isInstanceOf(InvocationRejectedException.class);
+              assertThat(beta.quote(FLIGHT)).isEmpty();
+
+              held.forEach(CompletableFuture::join);
+              assertThat(alphaRequests()).isEqualTo(2);
+            });
+  }
+
+  /** A caller finds a provider by {@code provider()}, so the limit must never reject it. */
+  @Test
+  void answersItsProviderWhileItsLimitIsExhausted() {
+    limitedTo(1)
+        .run(
+            context -> {
+              FlightProvider alpha = provider(context, Provider.ALPHA);
+              List<CompletableFuture<Void>> held = inFlight(alpha::download);
+
+              assertThat(alpha.provider()).isEqualTo(Provider.ALPHA);
+
+              held.forEach(CompletableFuture::join);
+            });
+  }
+
+  /** A provider printed in a log line or a message while its limit is exhausted. */
+  @Test
+  void printsItselfWhileItsLimitIsExhausted() {
+    limitedTo(1)
+        .run(
+            context -> {
+              FlightProvider alpha = provider(context, Provider.ALPHA);
+              List<CompletableFuture<Void>> held = inFlight(alpha::download);
+
+              assertThat(alpha.toString()).contains("ALPHA");
+
+              held.forEach(CompletableFuture::join);
+            });
+  }
+
+  /** The count wraps the limit, so a call the limit rejects is counted too (§6.10). */
+  @Test
+  void countsARejectedCall() {
+    limitedTo(1)
+        .run(
+            context -> {
+              FlightProvider alpha = provider(context, Provider.ALPHA);
+              List<CompletableFuture<Void>> held = inFlight(alpha::download);
+
+              assertThatThrownBy(() -> alpha.quote(FLIGHT))
+                  .isInstanceOf(InvocationRejectedException.class);
+              held.forEach(CompletableFuture::join);
+
+              MeterRegistry meters = context.getBean(MeterRegistry.class);
+              assertThat(calls(meters, "quote", "REJECTED")).isEqualTo(1);
+              assertThat(calls(meters, "download", "OK")).isEqualTo(1);
+            });
+  }
+
+  /**
+   * Every provider at the WireMock server, under a limit of {@code limit} calls each, Alpha
+   * answering every request after 1 s, so that each of its calls holds its share meanwhile.
+   */
+  private ApplicationContextRunner limitedTo(int limit) {
+    server.stubFor(
+        get(urlPathEqualTo("/alpha/legs"))
+            .willReturn(aResponse().withFixedDelay(1000).withBody(ALPHA_LAST_PAGE)));
+    return runner
+        .withPropertyValues(against(server))
+        .withPropertyValues("providers.concurrency-limit=" + limit);
+  }
+
+  /** Starts each call on its own thread and returns once Alpha has received all of them. */
+  private List<CompletableFuture<Void>> inFlight(Runnable... calls) {
+    List<CompletableFuture<Void>> started =
+        Stream.of(calls).map(CompletableFuture::runAsync).toList();
+    await().atMost(Duration.ofSeconds(5)).until(() -> alphaRequests() == calls.length);
+    return started;
+  }
+
+  private static double calls(MeterRegistry meters, String operation, String outcome) {
+    return meters
+        .get("provider.calls")
+        .tags("provider", "ALPHA", "operation", operation, "outcome", outcome)
+        .counter()
+        .count();
+  }
+
+  private int alphaRequests() {
+    return server.findAll(getRequestedFor(urlPathEqualTo("/alpha/legs"))).size();
+  }
+
+  /** Every provider at the WireMock server. */
+  private static String[] against(WireMockServer server) {
+    return Stream.of(Provider.values())
+        .map(provider -> "providers." + provider.name().toLowerCase(Locale.ROOT) + ".base-url=")
+        .map(property -> property + server.baseUrl())
+        .toArray(String[]::new);
+  }
+
+  private static FlightProvider provider(ApplicationContext context, Provider provider) {
+    return providers(context).get(provider.ordinal());
   }
 
   private static String fields(ILoggingEvent event) {

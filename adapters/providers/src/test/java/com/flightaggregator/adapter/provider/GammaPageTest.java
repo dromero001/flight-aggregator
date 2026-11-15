@@ -1,5 +1,7 @@
 package com.flightaggregator.adapter.provider;
 
+import static com.flightaggregator.adapter.provider.Fixtures.FLIGHT;
+import static com.flightaggregator.adapter.provider.Fixtures.path;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
@@ -14,6 +16,7 @@ import com.flightaggregator.domain.Money;
 import com.flightaggregator.domain.Provider;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class GammaPageTest {
@@ -235,8 +238,32 @@ class GammaPageTest {
                         "The header \"airline\\u0085,flight_number\" has no column airline"));
   }
 
+  /** The origin joins the listing's query (Task 1), after the offset and limit. */
+  @Test
+  void requestsOnlyAnOriginsLegs() {
+    PageRequest request =
+        GammaPage.FORMAT.at(Optional.of(new Airport("MAD")), Optional.of("200"), 100);
+
+    assertThat(path(request)).isEqualTo("/gamma/legs.csv?offset=200&limit=100&origin=MAD");
+  }
+
+  /**
+   * A quote is the listing with the flight's five key parts (Task 1), the departure a UTC instant
+   * ending in {@code Z}, at offset 0 with a limit of one record: the most a quote may answer.
+   */
+  @Test
+  void buildsTheQuotePath() {
+    PageRequest request = GammaPage.FORMAT.quoting(FLIGHT);
+
+    assertThat(path(request))
+        .isEqualTo(
+            "/gamma/legs.csv?offset=0&limit=1&carrier=IB&flightNumber=3170&origin=MAD"
+                + "&destination=LHR&departure=2026-11-20T07%3A15%3A00Z");
+  }
+
   /** Parses the Gamma page at the requested offset and limit. */
   private static ParsedPage parse(String body, Instant quotedAt, int offset, int limit) {
-    return new GammaPage(offset, limit).parse(new FetchedPage(body, Provider.GAMMA, quotedAt));
+    return new GammaPage(ListingQuery.from(Optional.empty()), offset, limit)
+        .parse(new FetchedPage(body, Provider.GAMMA, quotedAt));
   }
 }

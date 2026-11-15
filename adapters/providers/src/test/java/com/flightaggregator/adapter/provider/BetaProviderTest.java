@@ -1,5 +1,6 @@
 package com.flightaggregator.adapter.provider;
 
+import static com.flightaggregator.adapter.provider.Fixtures.FLIGHT;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
@@ -12,6 +13,7 @@ import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.ProviderDownload;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
+import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.Provider;
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -20,6 +22,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +32,10 @@ import org.springframework.core.retry.RetryListener;
 class BetaProviderTest {
 
   private static final Instant FIRST_ARRIVAL = Instant.parse("2026-11-15T10:00:00Z");
+
+  private static final String QUOTE =
+      "/beta/segments?page=1&pageSize=1&carrier=IB&flightNumber=3170&origin=MAD&destination=LHR"
+          + "&departure=2026-11-20T07%3A15%3A00Z";
 
   private WireMockServer server;
 
@@ -64,6 +71,70 @@ class BetaProviderTest {
             tuple(3171, FIRST_ARRIVAL.plusSeconds(1)),
             tuple(3172, FIRST_ARRIVAL.plusSeconds(2)));
     assertThat(download.discarded()).isEmpty();
+  }
+
+  @Test
+  void downloadsOnlyTheOriginsLegs() {
+    server.stubFor(
+        get(urlEqualTo("/beta/segments?page=1&pageSize=100&origin=MAD"))
+            .willReturn(aResponse().withBody(page(1, 2, 3170))));
+    server.stubFor(
+        get(urlEqualTo("/beta/segments?page=2&pageSize=100&origin=MAD"))
+            .willReturn(aResponse().withBody(page(2, 2, 3171))));
+
+    ProviderDownload download = provider().downloadFrom(new Airport("MAD"));
+
+    assertThat(download.legs()).extracting(Leg::flightNumber).containsExactly(3170, 3171);
+  }
+
+  @Test
+  void quotesOneFlight() {
+    server.stubFor(get(urlEqualTo(QUOTE)).willReturn(aResponse().withBody(page(1, 1, 3170))));
+
+    Optional<Leg> quote = provider().quote(FLIGHT);
+
+    assertThat(quote)
+        .get()
+        .extracting(Leg::key, Leg::quotedAt)
+        .containsExactly(FLIGHT, FIRST_ARRIVAL);
+  }
+
+  /** A flight no longer sold is the listing's own empty page, with status 200 (Task 1). */
+  @Test
+  void quotesNothingForAFlightNoLongerSold() {
+    server.stubFor(
+        get(urlEqualTo(QUOTE))
+            .willReturn(
+                aResponse()
+                    .withBody(
+                        "<SegmentsResponse page=\"1\" totalPages=\"1\"><Segments/>"
+                            + "</SegmentsResponse>")));
+
+    assertThat(provider().quote(FLIGHT)).isEmpty();
+  }
+
+  @Test
+  void failsAQuoteThatAnswersAnotherFlight() {
+    server.stubFor(get(urlEqualTo(QUOTE)).willReturn(aResponse().withBody(page(1, 1, 3171))));
+
+    assertThatThrownBy(() -> provider().quote(FLIGHT))
+        .isInstanceOfSatisfying(
+            ProviderUnavailableException.class,
+            e -> {
+              assertThat(e.provider()).isEqualTo(Provider.BETA);
+              assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
+            });
+  }
+
+  @Test
+  void failsAQuoteWithAMalformedRecord() {
+    String missingFlightNumber = page(1, 1, 3170).replace("<FlightNumber>3170</FlightNumber>", "");
+    server.stubFor(get(urlEqualTo(QUOTE)).willReturn(aResponse().withBody(missingFlightNumber)));
+
+    assertThatThrownBy(() -> provider().quote(FLIGHT))
+        .isInstanceOfSatisfying(
+            ProviderUnavailableException.class,
+            e -> assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE));
   }
 
   @Test

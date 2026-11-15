@@ -8,6 +8,7 @@ import com.flightaggregator.domain.Leg;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 /**
  * One page of Gamma: CSV with a header row, then one leg per line, with the columns read by name;
@@ -15,24 +16,24 @@ import java.util.Optional;
  * at {@code offset + limit}; a shorter page ends the download. A line that is not valid is
  * discarded alone; a page without a required column fails.
  */
-record GammaPage(int offset, int limit) implements PageRequest {
+record GammaPage(ListingQuery query, int offset, int limit) implements PageRequest {
+
+  /** The page at a position, an offset; empty for the first page. */
+  static final PageFormat FORMAT =
+      (query, position, pageSize) ->
+          new GammaPage(query, position.map(Integer::parseInt).orElse(0), pageSize);
 
   private static final String EOL = "\r\n";
   private static final String QUOTE = "\"";
 
-  /** The page at a position, an offset; empty for the first page. */
-  static GammaPage at(Optional<String> position, int pageSize) {
-    return new GammaPage(position.map(Integer::parseInt).orElse(0), pageSize);
-  }
-
   @Override
   public String pathTemplate() {
-    return "/gamma/legs.csv?offset={offset}&limit={limit}";
+    return "/gamma/legs.csv?offset={offset}&limit={limit}" + query.template();
   }
 
   @Override
   public Object[] variables() {
-    return new Object[] {offset, limit};
+    return Stream.concat(Stream.of(offset, limit), query.variables().stream()).toArray();
   }
 
   @Override

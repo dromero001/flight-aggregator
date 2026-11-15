@@ -1,5 +1,7 @@
 package com.flightaggregator.adapter.provider;
 
+import static com.flightaggregator.adapter.provider.Fixtures.FLIGHT;
+import static com.flightaggregator.adapter.provider.Fixtures.path;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
@@ -138,7 +140,7 @@ class AlphaPageTest {
 
     assertThatThrownBy(
             () ->
-                new AlphaPage(2, Optional.empty())
+                new AlphaPage(ListingQuery.from(Optional.empty()), 2, Optional.empty())
                     .parse(new FetchedPage(threeRecords, Provider.ALPHA, QUOTED_AT)))
         .isInstanceOf(PageMalformed.class)
         .hasMessage("Asked for at most 2 records, got 3");
@@ -176,13 +178,37 @@ class AlphaPageTest {
                             + ProviderText.quoted("[\"" + "a".repeat(500) + "\"]")));
   }
 
+  /** The origin joins the listing's query (Task 1), and the cursor is still one encoded value. */
+  @Test
+  void requestsOnlyAnOriginsLegs() {
+    PageRequest request =
+        AlphaPage.FORMAT.at(Optional.of(new Airport("MAD")), Optional.of("b2Zm+c2V0PTE="), 100);
+
+    assertThat(path(request))
+        .isEqualTo("/alpha/legs?limit=100&cursor=b2Zm%2Bc2V0PTE%3D&origin=MAD");
+  }
+
+  /**
+   * A quote is the listing with the flight's five key parts (Task 1), the departure a UTC instant
+   * ending in {@code Z}, and a page of one record: the most a quote may answer.
+   */
+  @Test
+  void buildsTheQuotePath() {
+    PageRequest request = AlphaPage.FORMAT.quoting(FLIGHT);
+
+    assertThat(path(request))
+        .isEqualTo(
+            "/alpha/legs?limit=1&carrier=IB&flightNumber=3170&origin=MAD&destination=LHR"
+                + "&departure=2026-11-20T07%3A15%3A00Z");
+  }
+
   private static String pageOf(String... records) {
     return "{\"legs\":[" + String.join(",", records) + "],\"nextCursor\":null}";
   }
 
   /** Parses an Alpha page of the first request, at the production page size. */
   private static ParsedPage parse(String body, Instant quotedAt) {
-    return new AlphaPage(1000, Optional.empty())
+    return new AlphaPage(ListingQuery.from(Optional.empty()), 1000, Optional.empty())
         .parse(new FetchedPage(body, Provider.ALPHA, quotedAt));
   }
 }

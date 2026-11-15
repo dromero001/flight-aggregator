@@ -28,6 +28,12 @@ spring:
           authorities-claim-expressions: "[realm_access][roles]"
           authority-prefix: ROLE_
 
+providers:
+  # At most this many calls of one provider at once, downloads and quotes together; one more is
+  # rejected, not queued (Q9). PagedProvider's @ConcurrencyLimit reads it from here, not from
+  # ProvidersProperties, so it must be stated here.
+  concurrency-limit: 4
+
 ingestion:
   # A run that would build more itineraries publishes nothing (R7).
   max-itineraries: 2000000

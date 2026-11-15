@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
@@ -26,7 +27,12 @@ import javax.xml.stream.XMLStreamReader;
  * not valid is discarded alone; a page that is not well formed, not of this shape, or of more than
  * {@code pageSize} items, fails.
  */
-record BetaPage(int page, int pageSize) implements PageRequest {
+record BetaPage(ListingQuery query, int page, int pageSize) implements PageRequest {
+
+  /** The page at a position, a page number; empty for the first page. */
+  static final PageFormat FORMAT =
+      (query, position, pageSize) ->
+          new BetaPage(query, position.map(Integer::parseInt).orElse(1), pageSize);
 
   private static final XMLInputFactory FACTORY = factory();
 
@@ -44,19 +50,14 @@ record BetaPage(int page, int pageSize) implements PageRequest {
     return factory;
   }
 
-  /** The page at a position, a page number; empty for the first page. */
-  static BetaPage at(Optional<String> position, int pageSize) {
-    return new BetaPage(position.map(Integer::parseInt).orElse(1), pageSize);
-  }
-
   @Override
   public String pathTemplate() {
-    return "/beta/segments?page={page}&pageSize={pageSize}";
+    return "/beta/segments?page={page}&pageSize={pageSize}" + query.template();
   }
 
   @Override
   public Object[] variables() {
-    return new Object[] {page, pageSize};
+    return Stream.concat(Stream.of(page, pageSize), query.variables().stream()).toArray();
   }
 
   @Override
