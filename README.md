@@ -28,18 +28,29 @@ curl -H "X-Api-Key: demo-alpha-key" "http://localhost:8081/alpha/legs?limit=2"
 
 **The demo keys are committed on purpose**: the take-home must run with a single `docker compose up --build`. They protect only these local mocks. In a real production environment they would be secrets, injected at deploy time and never committed. Change one with `ALPHA_API_KEY`, `BETA_API_KEY` or `GAMMA_API_KEY` in the shell or a `.env` file.
 
-By default each request waits a random 100 to 5000 ms and fails with HTTP 500 for 5% of the requests. Both settings are per provider. Override them with a `compose.override.yaml` next to `compose.yaml`, which `docker compose` merges on its own. This one makes Beta fail every request and Alpha answer at once:
+By default the latency has a long tail, as a real GDS's does: 90% of the requests wait a random 100 to 1000 ms, and the slow 10% wait 1000 to 5000 ms. After its wait, 5% of the requests fail with HTTP 500. Every setting is per provider. Override them with a `compose.override.yaml` next to `compose.yaml`, which `docker compose` merges on its own. This one makes Beta fail every request and Alpha answer without waiting:
 
 ```yaml
 services:
   mock-gds:
     environment:
       MOCKGDS_PROVIDERS_BETA_ERRORRATE: "1"
-      MOCKGDS_PROVIDERS_ALPHA_LATENCYMIN: 0ms
-      MOCKGDS_PROVIDERS_ALPHA_LATENCYMAX: 0ms
+      MOCKGDS_PROVIDERS_ALPHA_FASTLATENCYMIN: 0ms
+      MOCKGDS_PROVIDERS_ALPHA_FASTLATENCYMAX: 0ms
+      MOCKGDS_PROVIDERS_ALPHA_SLOWSHARE: "0"
 ```
 
-The names follow `MOCKGDS_PROVIDERS_<ALPHA|BETA|GAMMA>_<APIKEY|LATENCYMIN|LATENCYMAX|ERRORRATE>`. The [architecture overview](docs/architecture/README.md#mock-providers) describes the formats.
+The names follow `MOCKGDS_PROVIDERS_<ALPHA|BETA|GAMMA>_<SETTING>`:
+
+| Setting | Default | What it sets |
+|---|---|---|
+| `APIKEY` | none (`compose.yaml` sets the demo key) | the key the provider asks for |
+| `FASTLATENCYMIN`, `FASTLATENCYMAX` | `100ms`, `1000ms` | the wait of most requests |
+| `SLOWLATENCYMIN`, `SLOWLATENCYMAX` | `1000ms`, `5000ms` | the wait of the slow requests |
+| `SLOWSHARE` | `0.1` | the share of requests that wait in the slow range |
+| `ERRORRATE` | `0.05` | the share of requests that fail with HTTP 500 |
+
+No latency may be negative, each minimum must not exceed its maximum, and both shares go from 0 to 1. A value outside these rules stops the mock at startup with a message that names the setting. A misspelt variable does not: Spring Boot rejects an unknown setting in a properties file or a command-line argument, but ignores one in the environment, so check the names against this table. The [architecture overview](docs/architecture/README.md#mock-providers) describes the formats.
 
 ## Documentation
 

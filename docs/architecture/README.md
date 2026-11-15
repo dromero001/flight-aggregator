@@ -101,7 +101,7 @@ Glossary:
 
 ## Mock providers
 
-`mock-gds` is a Spring Boot application, independent of the other modules (§6), that serves one generated inventory through three legacy formats. It runs in Docker (`mock-gds/Dockerfile`, `compose.yaml`), on port 8081 of the host. Every provider serves the same inventory of legs, each one priced at the request instant, in the dataset's order.
+`mock-gds` is a Spring Boot application, independent of the other modules (§6), that serves one generated inventory through three legacy formats. It runs in Docker (`mock-gds/Dockerfile`, `compose.yaml`), on port 8081 of the host's loopback interface only, because the demo keys are public. Every provider serves the same inventory of legs, each one priced at the request instant, in the dataset's order.
 
 | Provider | Endpoint | Format | Pagination | End of the data |
 |---|---|---|---|---|
@@ -143,4 +143,4 @@ AF,1079,CDG,JFK,2026-11-15T09:00:00+01:00,2026-11-15T10:50:00-05:00,377.28
 
 **Keys.** Each provider needs its own key in the `X-Api-Key` header; a missing or wrong one answers `401`. Keys come from environment variables (`MOCKGDS_PROVIDERS_<PROVIDER>_APIKEY`), the application does not start without them, and none is ever logged. `compose.yaml` commits demo keys as overridable defaults so that the project runs with one command (§6.6); the [README](../../README.md#run-the-mock-providers) says why that is safe here and why it would not be in production.
 
-**Latency and errors.** Each request waits a random time between `LATENCYMIN` and `LATENCYMAX` (100 to 5000 ms by default) and fails with HTTP 500 at the `ERRORRATE` (5% by default), per provider. The tests set both to zero. The `images` job in CI builds the image on every push, without publishing it, and Dependabot watches its base images.
+**Latency and errors.** Per provider, the latency has a long tail: each request waits a random time between `FASTLATENCYMIN` and `FASTLATENCYMAX` (100 to 1000 ms by default), except the `SLOWSHARE` of them (10%), which waits between `SLOWLATENCYMIN` and `SLOWLATENCYMAX` (1000 to 5000 ms). After its wait, a request fails with HTTP 500 at the `ERRORRATE` (5%). The [README](../../README.md#run-the-mock-providers) lists the settings and their rules. A bad value stops startup, and so does an unknown setting, except in an environment variable, which Spring Boot does not check. The tests set every latency and the error rate to zero. The `images` job in CI builds the image on every push, without publishing it, and Dependabot watches its base images, leaving a major version (Java 26 is not an LTS) to a decision.
