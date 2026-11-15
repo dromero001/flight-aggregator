@@ -37,6 +37,10 @@
   font-size: 0.875rem;
 }
 
+.error:empty {
+  margin: 0;
+}
+
 .submit {
   align-self: flex-end;
   padding: var(--space-2) var(--space-4);

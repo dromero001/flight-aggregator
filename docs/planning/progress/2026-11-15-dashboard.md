@@ -150,3 +150,13 @@ Worktree branch `worktree-agent-a156d29a52ec86545`, from `main` at `4096c26`. Pa
 
 ### Extras for the user to decide
 - None found in this task.
+
+## Task 3 — fix round 1
+
+Review: functional and code CHANGES REQUESTED (`task-3-review.md`). F-1 and C-1 fixed; the minors (F-2 to F-5, C-2 to C-5) are deferred to the end-of-plan review.
+
+- F-1, `'restores the previous sort on back'`: passed on first run (the sort already pushes), so shown red by mutation: `setParams(..., { replace: true })` in `sortBy` gives `expect(element).toHaveTextContent()` failing (Back stays on `?origin=MAD&sort=duration`); restored, green.
+- C-1 focus, `'keeps the focus in the form after a search changes the URL'`: red `expect(element).toHaveFocus()` (the re-keyed form remounted, focus on `BODY`). Green: the `key` is gone; `FilterBar` holds the four inputs as controlled drafts and resets the draft during render when the URL's filters change (Back, Forward, a normalised value such as `mad` to `MAD`); a sort change does not touch the URL's filters, so unsent typing stays. `'restores the previous search on back'` stays green.
+- C-1 announcement, `'announces an error that appears after a submit'`: red `expected null not to be null` (the message was a plain `<p>` added after the submit). Green: each field has an `aria-live="polite"` region that is always in the page, with the message inside when there is one; `aria-invalid` and `aria-describedby` are unchanged (describedby points at the region only while invalid). `.error:empty` has no margin so empty regions take no space.
+- Checks: `npm run verify` green (typecheck, ESLint, Prettier, 14 tests in 5 files), `npm run build` green, `./gradlew build` BUILD SUCCESSFUL.
+- Self-review (thermo-nuclear): the draft state is the one copy of unsent typing and the URL stays the only source of the search; no field list was added (the draft is built from the same four fields). C-2's double build in `search()` was not touched (the key's string is gone). Not tested: that a sort change keeps unsent typing (it follows from the render-time sync comparing only the filters).

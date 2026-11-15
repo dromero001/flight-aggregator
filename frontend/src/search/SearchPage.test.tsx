@@ -47,6 +47,40 @@ test('restores the previous search on back', async () => {
   expect(screen.getByRole('radio', { name: 'Departure' })).toBeChecked();
 });
 
+test('restores the previous sort on back', async () => {
+  const user = userEvent.setup();
+  renderAt('/?origin=MAD');
+
+  await user.click(screen.getByRole('radio', { name: 'Duration' }));
+  expect(screen.getByLabelText('location')).toHaveTextContent('?origin=MAD&sort=duration');
+
+  await user.click(screen.getByRole('button', { name: 'Back' }));
+
+  expect(screen.getByLabelText('location')).toHaveTextContent(/^\?origin=MAD$/);
+  expect(screen.getByRole('radio', { name: 'Price' })).toBeChecked();
+});
+
+test('keeps the focus in the form after a search changes the URL', async () => {
+  const user = userEvent.setup();
+  renderAt('/');
+
+  await user.type(screen.getByLabelText('From'), 'mad{Enter}');
+
+  expect(screen.getByLabelText('location')).toHaveTextContent('?origin=MAD');
+  expect(screen.getByLabelText('From')).toHaveFocus();
+  expect(screen.getByLabelText('From')).toHaveValue('MAD');
+});
+
+test('announces an error that appears after a submit', async () => {
+  const user = userEvent.setup();
+  renderAt('/');
+
+  await user.type(screen.getByLabelText('From'), 'madr{Enter}');
+
+  const message = screen.getByText('Enter a 3-letter airport code, like MAD');
+  expect(message.closest('[aria-live="polite"]')).not.toBeNull();
+});
+
 test('shows invalid URL values as field errors', () => {
   renderAt('/?origin=MADR&maxPrice=-1&sort=best');
 

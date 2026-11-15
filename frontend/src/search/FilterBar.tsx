@@ -1,4 +1,4 @@
-import type { SubmitEvent } from 'react';
+import { useState, type SubmitEvent } from 'react';
 import styles from './FilterBar.module.css';
 import type { FieldErrors, FilterField, SearchCriteria, SearchFilters } from './searchParams';
 
@@ -15,16 +15,31 @@ interface FilterBarProps {
   onSubmit: (filters: SearchFilters) => void;
 }
 
+type Draft = Record<FilterField, string>;
+
+function draftFrom(criteria: SearchCriteria): Draft {
+  return {
+    origin: criteria.origin ?? '',
+    destination: criteria.destination ?? '',
+    carrier: criteria.carrier ?? '',
+    maxPrice: criteria.maxPrice ?? '',
+  };
+}
+
 export function FilterBar({ criteria, errors, onSubmit }: FilterBarProps) {
+  const fromUrl = draftFrom(criteria);
+  const urlKey = JSON.stringify(fromUrl);
+  const [draft, setDraft] = useState(fromUrl);
+  const [shownKey, setShownKey] = useState(urlKey);
+  // The inputs follow the URL (Back, Forward, a normalised search) without remounting the form, which would drop the focus. A sort change leaves the URL's filters alone, so unsent typing stays.
+  if (shownKey !== urlKey) {
+    setShownKey(urlKey);
+    setDraft(fromUrl);
+  }
+
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const filters: SearchFilters = {};
-    for (const { field } of CONTROLS) {
-      const value = data.get(field);
-      if (typeof value === 'string') filters[field] = value;
-    }
-    onSubmit(filters);
+    onSubmit(draft);
   }
 
   return (
@@ -41,16 +56,18 @@ export function FilterBar({ criteria, errors, onSubmit }: FilterBarProps) {
                 name={field}
                 type="text"
                 inputMode={inputMode}
-                defaultValue={criteria[field]}
+                value={draft[field]}
+                onChange={(event) => {
+                  setDraft({ ...draft, [field]: event.target.value });
+                }}
                 aria-invalid={error ? true : undefined}
                 aria-describedby={error ? errorId : undefined}
               />
             </label>
-            {error && (
-              <p id={errorId} className={styles.error}>
-                {error}
-              </p>
-            )}
+            {/* The region is always in the page, so a message added after a submit is announced. */}
+            <div id={errorId} className={styles.error} aria-live="polite">
+              {error}
+            </div>
           </div>
         );
       })}

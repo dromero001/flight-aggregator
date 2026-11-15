@@ -22,13 +22,7 @@ export function SearchPage() {
   return (
     <div className={styles.page}>
       <h1>Find flights</h1>
-      {/* The inputs are uncontrolled: a new key per filter set remounts them with the URL's values (back, forward), but a sort change leaves unsent typing alone. */}
-      <FilterBar
-        key={toSearchParams({ ...criteria, sort: 'price' }).toString()}
-        criteria={criteria}
-        errors={errors}
-        onSubmit={search}
-      />
+      <FilterBar criteria={criteria} errors={errors} onSubmit={search} />
       <SortTabs value={criteria.sort} onChange={sortBy} />
     </div>
   );
