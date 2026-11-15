@@ -1,17 +1,11 @@
-package com.flightaggregator.adapter.provider.beta;
+package com.flightaggregator.adapter.provider;
 
-import com.flightaggregator.adapter.provider.ParsedPage;
-import com.flightaggregator.adapter.provider.RecordFields;
-import com.flightaggregator.adapter.provider.RecordRejected;
+import com.flightaggregator.adapter.provider.ProviderHttp.FetchedPage;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
-import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.ProviderText;
-import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Leg;
-import com.flightaggregator.domain.Provider;
 import java.io.StringReader;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -27,11 +21,11 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
 /**
- * Parses one page of Beta's nested XML: {@code SegmentsResponse} with its {@code page} and {@code
- * totalPages}, around a list of {@code Segment}s. A segment that is not valid is discarded alone; a
- * page that is not well formed, or not of this shape, fails.
+ * One page of Beta: nested XML, {@code SegmentsResponse} with its {@code page} and {@code
+ * totalPages}, around a list of {@code Segment}s, paged by page number from 1. A segment that is
+ * not valid is discarded alone; a page that is not well formed, or not of this shape, fails.
  */
-final class BetaPageParser {
+record BetaPage(int page, int pageSize) implements PageRequest {
 
   private static final XMLInputFactory FACTORY = factory();
 
@@ -41,8 +35,6 @@ final class BetaPageParser {
   private static final Set<String> FIELD_ELEMENTS =
       Set.of("Carrier", "FlightNumber", "Departure", "Arrival", "PriceCents");
 
-  private BetaPageParser() {}
-
   /** No DTD and no external entities: a provider's page is data, and reads nothing of ours. */
   private static XMLInputFactory factory() {
     XMLInputFactory factory = XMLInputFactory.newFactory();
@@ -51,25 +43,40 @@ final class BetaPageParser {
     return factory;
   }
 
-  static ParsedPage parse(String body, Instant quotedAt, int requestedPage) {
+  /** The page at a position, a page number; empty for the first page. */
+  static BetaPage at(Optional<String> position, int pageSize) {
+    return new BetaPage(position.map(Integer::parseInt).orElse(1), pageSize);
+  }
+
+  @Override
+  public String pathTemplate() {
+    return "/beta/segments?page={page}&pageSize={pageSize}";
+  }
+
+  @Override
+  public Object[] variables() {
+    return new Object[] {page, pageSize};
+  }
+
+  @Override
+  public ParsedPage parse(FetchedPage fetched) {
     try {
-      XMLStreamReader xml = FACTORY.createXMLStreamReader(new StringReader(body));
+      XMLStreamReader xml = FACTORY.createXMLStreamReader(new StringReader(fetched.body()));
       try {
-        return page(xml, quotedAt, requestedPage);
+        return read(xml, fetched);
       } finally {
         xml.close();
       }
     } catch (XMLStreamException e) {
-      throw malformed(e);
+      throw new PageMalformed("The page is not well-formed XML", e);
     }
   }
 
-  private static ParsedPage page(XMLStreamReader xml, Instant quotedAt, int requestedPage)
-      throws XMLStreamException {
+  private ParsedPage read(XMLStreamReader xml, FetchedPage fetched) throws XMLStreamException {
     expectStart(xml, "SegmentsResponse");
-    int page = positiveInteger(xml, "page");
-    if (page != requestedPage) {
-      throw new XMLStreamException("Asked for page " + requestedPage + ", got page " + page);
+    int received = positiveInteger(xml, "page");
+    if (received != page) {
+      throw new PageMalformed("Asked for page " + page + ", got page " + received);
     }
     int totalPages = positiveInteger(xml, "totalPages");
     expectStart(xml, "Segments");
@@ -83,7 +90,7 @@ final class BetaPageParser {
       }
       SegmentFields segment = readSegment(xml);
       try {
-        legs.add(leg(segment, quotedAt));
+        legs.add(leg(segment, fetched));
       } catch (RecordRejected rejected) {
         discarded.add(new DiscardedRecord(rejected.reason(), segment.excerpt()));
       }
@@ -93,28 +100,26 @@ final class BetaPageParser {
       xml.next(); // the parser refuses whatever well-formedness the rest of the body lacks
     }
     Optional<String> next =
-        requestedPage < totalPages
-            ? Optional.of(Integer.toString(requestedPage + 1))
-            : Optional.empty();
+        page < totalPages ? Optional.of(Integer.toString(page + 1)) : Optional.empty();
     return new ParsedPage(legs, discarded, next, Optional.of(totalPages));
   }
 
   private static void expectStart(XMLStreamReader xml, String name) throws XMLStreamException {
     if (xml.nextTag() != XMLStreamConstants.START_ELEMENT) {
-      throw new XMLStreamException("Expected <" + name + ">");
+      throw new PageMalformed("Expected <" + name + ">");
     }
     expectName(xml, name);
   }
 
   private static void expectEnd(XMLStreamReader xml, String name) throws XMLStreamException {
     if (xml.nextTag() != XMLStreamConstants.END_ELEMENT || !xml.getLocalName().equals(name)) {
-      throw new XMLStreamException("Expected </" + name + ">");
+      throw new PageMalformed("Expected </" + name + ">");
     }
   }
 
   private static void expectName(XMLStreamReader xml, String name) throws XMLStreamException {
     if (!xml.getLocalName().equals(name)) {
-      throw new XMLStreamException(
+      throw new PageMalformed(
           "Expected <" + name + ">, not the element " + ProviderText.quoted(xml.getLocalName()));
     }
   }
@@ -123,13 +128,9 @@ final class BetaPageParser {
       throws XMLStreamException {
     String text = xml.getAttributeValue(null, attribute);
     if (text == null || !POSITIVE_INTEGER.matcher(text).matches()) {
-      throw new XMLStreamException("The attribute " + attribute + " is not a positive integer");
+      throw new PageMalformed("The attribute " + attribute + " is not a positive integer");
     }
     return Integer.parseInt(text);
-  }
-
-  private static ProviderUnavailableException malformed(Throwable cause) {
-    return new ProviderUnavailableException(Provider.BETA, FailureReason.MALFORMED_PAGE, cause);
   }
 
   /**
@@ -228,7 +229,7 @@ final class BetaPageParser {
     return new Content(text.toString(), leaf);
   }
 
-  private static Leg leg(SegmentFields segment, Instant quotedAt) {
+  private static Leg leg(SegmentFields segment, FetchedPage fetched) {
     if (!segment.wellShaped()) {
       throw new RecordRejected(DiscardReason.SHAPE);
     }
@@ -241,7 +242,7 @@ final class BetaPageParser {
         RecordFields.time(fields.get("departureTime")),
         RecordFields.time(fields.get("arrivalTime")),
         RecordFields.centsPrice(fields.get("price")),
-        Provider.BETA,
-        quotedAt);
+        fetched.provider(),
+        fetched.receivedAt());
   }
 }

@@ -1,20 +1,18 @@
 package com.flightaggregator.bootstrap.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
-import com.flightaggregator.adapter.provider.PagedDownload;
-import com.flightaggregator.adapter.provider.ParsedPage;
+import com.flightaggregator.adapter.provider.ProviderEndpoint;
+import com.flightaggregator.adapter.provider.ProviderHttp;
 import com.flightaggregator.adapter.provider.ResilienceSettings;
-import com.flightaggregator.application.port.out.FailureReason;
-import com.flightaggregator.application.port.out.ProviderUnavailableException;
+import com.flightaggregator.application.port.out.FlightProvider;
 import com.flightaggregator.domain.Provider;
-import io.github.resilience4j.timelimiter.TimeLimiterConfig;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.ApplicationContext;
@@ -33,33 +31,25 @@ class ProvidersConfigTest {
               "providers.gamma.api-key=gamma-key");
 
   /**
-   * Every provider of the closed set is wired, and one factory method derives every part from the
-   * provider, so no part of one provider can be wired to another's: a mis-wired provider's failures
-   * would be reported under another name.
+   * Every provider of the closed set is wired, each from its own endpoint, which names it once: a
+   * mis-wired provider's failures would be reported under another name.
    */
   @Test
-  void buildsEachProviderFromItsOwnSettings() {
-    runner
-        .withPropertyValues("providers.download-timeout=45s")
-        .run(
-            context -> {
-              List<WiredProvider> wired = wiredProviders(context);
-
-              assertThat(wired)
-                  .extracting(provider -> provider.adapter().provider())
-                  .containsExactly(Provider.values());
-              for (WiredProvider provider : wired) {
-                Provider name = provider.adapter().provider();
-                String lower = name.name().toLowerCase(Locale.ROOT);
-                assertThat(provider.endpoint().provider()).isEqualTo(name);
-                assertThat(provider.endpoint().baseUrl()).hasToString("http://" + lower + ".test/");
-                assertThat(provider.endpoint().apiKey()).isEqualTo(lower + "-key");
-                assertThat(providerOf(provider.download())).isEqualTo(name);
-                TimeLimiterConfig budget = provider.timeLimiter().getTimeLimiterConfig();
-                assertThat(budget.getTimeoutDuration()).isEqualTo(Duration.ofSeconds(45));
-                assertThat(budget.shouldCancelRunningFuture()).isTrue();
-              }
-            });
+  void buildsEachProviderFromItsOwnEndpoint() {
+    runner.run(
+        context -> {
+          assertThat(providers(context))
+              .extracting(FlightProvider::provider)
+              .containsExactly(Provider.values());
+          ProvidersProperties properties = context.getBean(ProvidersProperties.class);
+          for (Provider provider : Provider.values()) {
+            String lower = provider.name().toLowerCase(Locale.ROOT);
+            ProviderEndpoint endpoint = properties.endpoint(provider);
+            assertThat(endpoint.provider()).isEqualTo(provider);
+            assertThat(endpoint.baseUrl()).hasToString("http://" + lower + ".test/");
+            assertThat(endpoint.apiKey()).isEqualTo(lower + "-key");
+          }
+        });
   }
 
   @Test
@@ -73,9 +63,8 @@ class ProvidersConfigTest {
             "providers.max-pages=50")
         .run(
             context ->
-                assertThat(wiredProviders(context))
-                    .extracting(WiredProvider::settings)
-                    .containsOnly(
+                assertThat(context.getBean(ProvidersProperties.class).resilience())
+                    .isEqualTo(
                         new ResilienceSettings(
                             Duration.ofMillis(1500),
                             Duration.ofSeconds(45),
@@ -91,9 +80,8 @@ class ProvidersConfigTest {
   void defaultsToTheProductionResilienceSettings() {
     runner.run(
         context ->
-            assertThat(wiredProviders(context))
-                .extracting(WiredProvider::settings)
-                .containsOnly(
+            assertThat(context.getBean(ProvidersProperties.class).resilience())
+                .isEqualTo(
                     new ResilienceSettings(
                         Duration.ofMillis(2500),
                         Duration.ofSeconds(60),
@@ -104,34 +92,29 @@ class ProvidersConfigTest {
                         8 * 1024 * 1024)));
   }
 
-  /** Each provider's calls open only its own breaker, named after the provider. */
+  /**
+   * Each provider's calls open only its own breaker, named after the provider, with the production
+   * configuration.
+   */
   @Test
   void givesEachProviderItsOwnBreakerNamedAfterIt() {
     runner.run(
-        context ->
-            assertThat(wiredProviders(context))
-                .allSatisfy(
-                    provider ->
-                        assertThat(provider.circuitBreaker().getName())
-                            .isEqualTo(provider.adapter().provider().name())));
+        context -> {
+          List<CircuitBreaker> breakers =
+              List.copyOf(context.getBean(CircuitBreakerRegistry.class).getAllCircuitBreakers());
+          assertThat(breakers)
+              .extracting(CircuitBreaker::getName)
+              .containsExactlyInAnyOrder("ALPHA", "BETA", "GAMMA");
+          assertThat(breakers)
+              .extracting(CircuitBreaker::getCircuitBreakerConfig)
+              .containsOnly(ProviderHttp.circuitBreakerConfig());
+        });
   }
 
   /** The wired providers, in {@code Provider} order. */
-  private static List<WiredProvider> wiredProviders(ApplicationContext context) {
-    return context.getBeansOfType(WiredProvider.class).values().stream()
-        .sorted(Comparator.comparing(provider -> provider.adapter().provider()))
+  private static List<FlightProvider> providers(ApplicationContext context) {
+    return context.getBeansOfType(FlightProvider.class).values().stream()
+        .sorted(Comparator.comparing(FlightProvider::provider))
         .toList();
-  }
-
-  /** The provider a download names in its failures: a position that repeats fails it at once. */
-  private static Provider providerOf(PagedDownload download) {
-    ProviderUnavailableException failure =
-        catchThrowableOfType(
-            ProviderUnavailableException.class,
-            () ->
-                download.download(
-                    position -> new ParsedPage(List.of(), List.of(), Optional.of("same"))));
-    assertThat(failure.reason()).isEqualTo(FailureReason.PAGINATION_LIMIT);
-    return failure.provider();
   }
 }

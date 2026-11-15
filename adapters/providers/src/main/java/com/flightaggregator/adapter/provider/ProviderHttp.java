@@ -8,6 +8,7 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig.SlidingWindowType;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -40,8 +41,8 @@ public final class ProviderHttp {
           .ignoreException(Predicate.not(ProviderHttp::isTransient))
           .build();
 
-  /** One page's body and the instant its response arrived. */
-  public record FetchedPage(String body, Instant receivedAt) {}
+  /** One page's body, the provider that sent it and the instant its response arrived. */
+  record FetchedPage(String body, Provider provider, Instant receivedAt) {}
 
   private final RestClient client;
   private final Provider provider;
@@ -51,10 +52,11 @@ public final class ProviderHttp {
   private final int maxBodyBytes;
   private final Clock clock;
 
-  public ProviderHttp(
+  /** Its breaker is the registry's one named after the endpoint's provider. */
+  ProviderHttp(
       ProviderEndpoint endpoint,
       ResilienceSettings settings,
-      CircuitBreaker circuitBreaker,
+      CircuitBreakerRegistry circuitBreakers,
       Clock clock) {
     JdkClientHttpRequestFactory requests = new JdkClientHttpRequestFactory();
     requests.setReadTimeout(settings.requestTimeout());
@@ -65,7 +67,7 @@ public final class ProviderHttp {
             .defaultHeader("X-Api-Key", endpoint.apiKey())
             .build();
     this.provider = endpoint.provider();
-    this.circuitBreaker = circuitBreaker;
+    this.circuitBreaker = circuitBreakers.circuitBreaker(provider.name());
     this.retry =
         new RetryTemplate(
             RetryPolicy.builder()
@@ -80,12 +82,12 @@ public final class ProviderHttp {
   }
 
   /**
-   * The breaker for a provider's calls (plan 4): over its last 10 calls, it opens at 50% failures,
-   * stays open 60 s, then lets 3 trial calls through. It counts only the transient failures, the
-   * ones the retry repeats, and ignores every other failure.
+   * The configuration of every provider's breaker (plan 4): over its last 10 calls, it opens at 50%
+   * failures, stays open 60 s, then lets 3 trial calls through. It counts only the transient
+   * failures, the ones the retry repeats, and ignores every other failure.
    */
-  public static CircuitBreaker circuitBreakerFor(Provider provider) {
-    return CircuitBreaker.of(provider.name(), BREAKER);
+  public static CircuitBreakerConfig circuitBreakerConfig() {
+    return BREAKER;
   }
 
   /**
@@ -103,7 +105,7 @@ public final class ProviderHttp {
    * Gets a page. The path is a URI template and each variable is encoded into it, so a cursor with
    * {@code +}, {@code &} or {@code #} reaches the provider as one value.
    */
-  public FetchedPage get(String pathTemplate, Object... variables) {
+  FetchedPage get(String pathTemplate, Object... variables) {
     String body;
     try {
       body =
@@ -112,7 +114,7 @@ public final class ProviderHttp {
     } catch (RetryException e) {
       throw unavailable(e);
     }
-    return new FetchedPage(body, clock.now().truncatedTo(ChronoUnit.MICROS));
+    return new FetchedPage(body, provider, clock.now().truncatedTo(ChronoUnit.MICROS));
   }
 
   /**

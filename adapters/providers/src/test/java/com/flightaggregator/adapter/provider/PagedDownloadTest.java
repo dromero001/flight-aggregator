@@ -8,8 +8,6 @@ import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.ProviderText;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Provider;
-import io.github.resilience4j.timelimiter.TimeLimiter;
-import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -60,6 +58,27 @@ class PagedDownloadTest {
                         "The position " + ProviderText.quoted(hostile) + " came back after 2 pages")
                     .doesNotContain("\r", "\n")
                     .hasSizeLessThan(260));
+  }
+
+  /** A page format knows nothing of its provider: the download names it, once. */
+  @Test
+  void failsAMalformedPageUnderItsProvider() {
+    PagedDownload download = downloadOf(10, Duration.ofSeconds(5));
+    PageMalformed malformed = new PageMalformed("The page has no \"legs\" array");
+
+    assertThatThrownBy(
+            () ->
+                download.download(
+                    position -> {
+                      throw malformed;
+                    }))
+        .isInstanceOfSatisfying(
+            ProviderUnavailableException.class,
+            e -> {
+              assertThat(e.provider()).isEqualTo(Provider.ALPHA);
+              assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
+              assertThat(e.getCause()).isSameAs(malformed);
+            });
   }
 
   @Test
@@ -192,26 +211,6 @@ class PagedDownloadTest {
     assertThat(pages.requested()).isEqualTo(atTheInterrupt);
   }
 
-  @Test
-  void buildsItsTimeLimiterFromTheDownloadBudget() {
-    TimeLimiterConfig config =
-        PagedDownload.timeLimiterFor(settings(Duration.ofSeconds(60))).getTimeLimiterConfig();
-
-    assertThat(config.getTimeoutDuration()).isEqualTo(Duration.ofSeconds(60));
-    assertThat(config.shouldCancelRunningFuture()).isTrue();
-  }
-
-  @Test
-  void rejectsATimeLimiterWhoseBudgetIsNotTheDownloadTimeout() {
-    ResilienceSettings settings = settings(Duration.ofSeconds(60));
-    TimeLimiter other = PagedDownload.timeLimiterFor(settings(Duration.ofSeconds(30)));
-
-    assertThatThrownBy(() -> new PagedDownload(Provider.ALPHA, settings, other))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("PT30S")
-        .hasMessageContaining("PT1M");
-  }
-
   /** A page source that takes a fixed time per page and has a fixed number of pages. */
   private static final class SlowPages implements PagedDownload.PageSource {
 
@@ -244,11 +243,7 @@ class PagedDownloadTest {
 
   private static PagedDownload downloadOf(int maxPages, Duration budget) {
     ResilienceSettings settings = settings(budget, maxPages);
-    return new PagedDownload(Provider.ALPHA, settings, PagedDownload.timeLimiterFor(settings));
-  }
-
-  private static ResilienceSettings settings(Duration budget) {
-    return settings(budget, 10);
+    return new PagedDownload(Provider.ALPHA, settings);
   }
 
   private static ResilienceSettings settings(Duration budget, int maxPages) {

@@ -12,7 +12,7 @@ import java.util.Optional;
  * position of the next page, empty on the last one. A provider that announces how many pages it has
  * (Beta) gives the count in {@code announcedPages}, empty for one that does not.
  */
-public record ParsedPage(
+record ParsedPage(
     List<Leg> legs,
     List<DiscardedRecord> discarded,
     Optional<String> next,
@@ -26,7 +26,7 @@ public record ParsedPage(
   }
 
   /** A page of a provider that does not announce its page count. */
-  public ParsedPage(List<Leg> legs, List<DiscardedRecord> discarded, Optional<String> next) {
+  ParsedPage(List<Leg> legs, List<DiscardedRecord> discarded, Optional<String> next) {
     this(legs, discarded, next, Optional.empty());
   }
 }

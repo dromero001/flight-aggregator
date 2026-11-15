@@ -23,6 +23,7 @@ import com.github.tomakehurst.wiremock.stubbing.Scenario;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig.SlidingWindowType;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
@@ -103,7 +104,7 @@ class ProviderHttpTest {
   void doublesTheBackoffBetweenAttempts() {
     server.stubFor(get(urlEqualTo("/flights")).willReturn(aResponse().withStatus(500)));
 
-    failureOf(http(CircuitBreaker.ofDefaults("alpha"), Duration.ofMillis(100)), "/flights");
+    failureOf(http(productionBreakers(), Duration.ofMillis(100)), "/flights");
 
     List<Instant> arrivals =
         server.getAllServeEvents().stream()
@@ -186,16 +187,15 @@ class ProviderHttpTest {
   @Test
   void failsFastWithAnOpenBreaker() {
     server.stubFor(get(urlEqualTo("/flights")).willReturn(aResponse().withStatus(500)));
-    CircuitBreaker breaker =
-        CircuitBreaker.of(
-            "alpha",
+    CircuitBreakerRegistry breakers =
+        CircuitBreakerRegistry.of(
             CircuitBreakerConfig.custom()
                 .slidingWindowType(SlidingWindowType.COUNT_BASED)
                 .slidingWindowSize(3)
                 .minimumNumberOfCalls(3)
                 .failureRateThreshold(50)
                 .build());
-    ProviderHttp http = http(breaker);
+    ProviderHttp http = http(breakers);
     assertThat(failureOf(http, "/flights")).isEqualTo(FailureReason.HTTP_ERROR);
 
     assertThat(failureOf(http, "/flights")).isEqualTo(FailureReason.CIRCUIT_OPEN);
@@ -244,12 +244,18 @@ class ProviderHttpTest {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
-  /** The plan's window: the last 10 calls, open at 50% failures for 60 s, then 3 trial calls. */
+  /**
+   * The plan's window: the last 10 calls, open at 50% failures for 60 s, then 3 trial calls. Each
+   * provider's calls go through its own breaker of the registry, named after the provider.
+   */
   @Test
   void buildsEachProvidersBreakerWithTheProductionWindow() {
-    CircuitBreaker breaker = ProviderHttp.circuitBreakerFor(Provider.BETA);
+    CircuitBreakerRegistry breakers = productionBreakers();
+    http(Provider.BETA, breakers, Duration.ofMillis(10), Duration.ofSeconds(5));
 
+    CircuitBreaker breaker = breakers.getAllCircuitBreakers().stream().findFirst().orElseThrow();
     CircuitBreakerConfig config = breaker.getCircuitBreakerConfig();
+    assertThat(breakers.getAllCircuitBreakers()).hasSize(1);
     assertThat(breaker.getName()).isEqualTo("BETA");
     assertThat(config.getSlidingWindowType()).isEqualTo(SlidingWindowType.COUNT_BASED);
     assertThat(config.getSlidingWindowSize()).isEqualTo(10);
@@ -270,10 +276,11 @@ class ProviderHttpTest {
   void countsAgainstTheBreakerOnlyAFailureAWaitMayHeal(
       String failure, ResponseDefinitionBuilder response, int failed, int ignored) {
     server.stubFor(get(urlEqualTo("/flights")).willReturn(response));
-    CircuitBreaker breaker = ProviderHttp.circuitBreakerFor(Provider.ALPHA);
+    CircuitBreakerRegistry breakers = productionBreakers();
+    CircuitBreaker breaker = breakers.circuitBreaker(Provider.ALPHA.name());
     AtomicInteger ignoredCalls = ignoredCallsOf(breaker);
 
-    failure(http(breaker, Duration.ofMillis(10), Duration.ofMillis(500)), "/flights");
+    failure(http(breakers, Duration.ofMillis(10), Duration.ofMillis(500)), "/flights");
 
     assertThat(breaker.getMetrics().getNumberOfFailedCalls()).isEqualTo(failed);
     assertThat(breaker.getMetrics().getNumberOfSuccessfulCalls()).isZero();
@@ -296,9 +303,10 @@ class ProviderHttpTest {
   /** A failure of no attempt, such as a template without its variable, is no provider's fault. */
   @Test
   void ignoresAnUnexpectedFailureInTheBreaker() {
-    CircuitBreaker breaker = ProviderHttp.circuitBreakerFor(Provider.ALPHA);
+    CircuitBreakerRegistry breakers = productionBreakers();
+    CircuitBreaker breaker = breakers.circuitBreaker(Provider.ALPHA.name());
     AtomicInteger ignoredCalls = ignoredCallsOf(breaker);
-    ProviderHttp http = http(breaker);
+    ProviderHttp http = http(breakers);
 
     assertThatThrownBy(() -> http.get("/flights/{missing}"))
         .isInstanceOf(IllegalArgumentException.class);
@@ -323,31 +331,43 @@ class ProviderHttpTest {
     assertThat(endpoint.toString()).doesNotContain(KEY).contains("apiKey=***");
   }
 
-  private ProviderHttp http() {
-    return http(CircuitBreaker.ofDefaults("alpha"));
+  /** The breakers as production builds them. */
+  private static CircuitBreakerRegistry productionBreakers() {
+    return CircuitBreakerRegistry.of(ProviderHttp.circuitBreakerConfig());
   }
 
-  private ProviderHttp http(CircuitBreaker breaker) {
-    return http(breaker, Duration.ofMillis(10));
+  private ProviderHttp http() {
+    return http(productionBreakers());
+  }
+
+  private ProviderHttp http(CircuitBreakerRegistry breakers) {
+    return http(breakers, Duration.ofMillis(10));
   }
 
   /** A cold JVM can take seconds for a first request, so only the timeout tests use a short one. */
   private ProviderHttp httpWithShortTimeout() {
-    return http(CircuitBreaker.ofDefaults("alpha"), Duration.ofMillis(10), Duration.ofMillis(500));
+    return http(productionBreakers(), Duration.ofMillis(10), Duration.ofMillis(500));
   }
 
-  private ProviderHttp http(CircuitBreaker breaker, Duration firstBackoff) {
-    return http(breaker, firstBackoff, Duration.ofSeconds(5));
+  private ProviderHttp http(CircuitBreakerRegistry breakers, Duration firstBackoff) {
+    return http(breakers, firstBackoff, Duration.ofSeconds(5));
   }
 
   private ProviderHttp http(
-      CircuitBreaker breaker, Duration firstBackoff, Duration requestTimeout) {
-    ProviderEndpoint endpoint =
-        new ProviderEndpoint(Provider.ALPHA, URI.create(server.baseUrl()), KEY);
+      CircuitBreakerRegistry breakers, Duration firstBackoff, Duration requestTimeout) {
+    return http(Provider.ALPHA, breakers, firstBackoff, requestTimeout);
+  }
+
+  private ProviderHttp http(
+      Provider provider,
+      CircuitBreakerRegistry breakers,
+      Duration firstBackoff,
+      Duration requestTimeout) {
+    ProviderEndpoint endpoint = new ProviderEndpoint(provider, URI.create(server.baseUrl()), KEY);
     ResilienceSettings settings =
         new ResilienceSettings(
             requestTimeout, Duration.ofSeconds(60), 3, firstBackoff, 1000, 200, 1024);
-    return new ProviderHttp(endpoint, settings, breaker, clock);
+    return new ProviderHttp(endpoint, settings, breakers, clock);
   }
 
   private FailureReason failureOf(String pathAndQuery) {

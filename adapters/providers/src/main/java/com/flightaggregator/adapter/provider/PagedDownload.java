@@ -11,7 +11,6 @@ import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.Provider;
 import io.github.resilience4j.timelimiter.TimeLimiter;
 import io.github.resilience4j.timelimiter.TimeLimiterConfig;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -23,17 +22,17 @@ import java.util.concurrent.TimeoutException;
 /**
  * Drives a provider's pages one after another, in order, and bounds the download: a position that
  * repeats, a page count announced past the maximum, or going past the maximum of pages fails it
- * with {@code PAGINATION_LIMIT}, and the time budget fails it with {@code TIMEOUT} (§6.1). The
- * budget is the {@link TimeLimiter}'s, built by {@link #timeLimiterFor} from the provider's {@code
- * downloadTimeout}; the constructor refuses a limiter with any other budget. The page loop runs on
- * a virtual thread under the limiter, which interrupts it past the budget; the page in flight is
- * bounded by its own request timeout, and no further page is requested.
+ * with {@code PAGINATION_LIMIT}; a page that is not of its format fails it with {@code
+ * MALFORMED_PAGE}; and the time budget, {@code downloadTimeout}, fails it with {@code TIMEOUT}
+ * (§6.1). The page loop runs on a virtual thread under a {@link TimeLimiter} of that budget, which
+ * interrupts it past the budget; the page in flight is bounded by its own request timeout, and no
+ * further page is requested.
  */
-public final class PagedDownload {
+final class PagedDownload {
 
   /** Fetches and parses the page at a position, empty for the first page. */
   @FunctionalInterface
-  public interface PageSource {
+  interface PageSource {
     ParsedPage page(Optional<String> position);
   }
 
@@ -41,27 +40,15 @@ public final class PagedDownload {
   private final ResilienceSettings settings;
   private final TimeLimiter timeLimiter;
 
-  /** The limiter for a provider's download: its budget is {@code downloadTimeout} (§6.1). */
-  public static TimeLimiter timeLimiterFor(ResilienceSettings settings) {
-    return TimeLimiter.of(
-        TimeLimiterConfig.custom()
-            .timeoutDuration(settings.downloadTimeout())
-            .cancelRunningFuture(true)
-            .build());
-  }
-
-  public PagedDownload(Provider provider, ResilienceSettings settings, TimeLimiter timeLimiter) {
+  PagedDownload(Provider provider, ResilienceSettings settings) {
     this.provider = requireNonNull(provider, "provider");
     this.settings = requireNonNull(settings, "settings");
-    this.timeLimiter = requireNonNull(timeLimiter, "timeLimiter");
-    Duration budget = timeLimiter.getTimeLimiterConfig().getTimeoutDuration();
-    if (!budget.equals(settings.downloadTimeout())) {
-      throw new IllegalArgumentException(
-          "The time limiter's budget "
-              + budget
-              + " is not the download timeout "
-              + settings.downloadTimeout());
-    }
+    this.timeLimiter =
+        TimeLimiter.of(
+            TimeLimiterConfig.custom()
+                .timeoutDuration(settings.downloadTimeout())
+                .cancelRunningFuture(true)
+                .build());
   }
 
   /**
@@ -69,11 +56,13 @@ public final class PagedDownload {
    *
    * @throws ProviderUnavailableException when a page fails, or the pagination does not end
    */
-  public ProviderDownload download(PageSource source) {
+  ProviderDownload download(PageSource source) {
     FutureTask<ProviderDownload> task = new FutureTask<>(() -> pages(source));
     Thread.ofVirtual().start(task);
     try {
       return timeLimiter.executeFutureSupplier(() -> task);
+    } catch (PageMalformed e) {
+      throw new ProviderUnavailableException(provider, FailureReason.MALFORMED_PAGE, e);
     } catch (TimeoutException e) {
       throw new ProviderUnavailableException(provider, FailureReason.TIMEOUT, e);
     } catch (InterruptedException e) {

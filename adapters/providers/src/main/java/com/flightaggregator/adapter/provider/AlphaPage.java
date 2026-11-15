@@ -1,16 +1,10 @@
-package com.flightaggregator.adapter.provider.alpha;
+package com.flightaggregator.adapter.provider;
 
-import com.flightaggregator.adapter.provider.ParsedPage;
-import com.flightaggregator.adapter.provider.RecordFields;
-import com.flightaggregator.adapter.provider.RecordRejected;
+import com.flightaggregator.adapter.provider.ProviderHttp.FetchedPage;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
-import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.ProviderText;
-import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Leg;
-import com.flightaggregator.domain.Provider;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -19,24 +13,43 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** Parses one page of Alpha's flat JSON list; a record that is not valid is discarded alone. */
-final class AlphaPageParser {
+/**
+ * One page of Alpha: a flat JSON list of legs, {@code limit} at most, paged by an opaque cursor
+ * that is {@code null} on the last page. A record that is not valid is discarded alone.
+ */
+record AlphaPage(int limit, Optional<String> cursor) implements PageRequest {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  private AlphaPageParser() {}
+  /** The page at a cursor, empty for the first page. */
+  static AlphaPage at(Optional<String> cursor, int pageSize) {
+    return new AlphaPage(pageSize, cursor);
+  }
 
-  static ParsedPage parse(String body, Instant quotedAt) {
-    JsonNode page = readPage(body);
+  @Override
+  public String pathTemplate() {
+    return cursor.isEmpty()
+        ? "/alpha/legs?limit={limit}"
+        : "/alpha/legs?limit={limit}&cursor={cursor}";
+  }
+
+  @Override
+  public Object[] variables() {
+    return cursor.isEmpty() ? new Object[] {limit} : new Object[] {limit, cursor.get()};
+  }
+
+  @Override
+  public ParsedPage parse(FetchedPage fetched) {
+    JsonNode page = readPage(fetched.body());
     JsonNode records = page.path("legs");
     if (!records.isArray()) {
-      throw malformed(new IllegalStateException("The page has no \"legs\" array"));
+      throw new PageMalformed("The page has no \"legs\" array");
     }
     List<Leg> legs = new ArrayList<>();
     List<DiscardedRecord> discarded = new ArrayList<>();
     for (JsonNode record : records) {
       try {
-        legs.add(leg(record, quotedAt));
+        legs.add(leg(record, fetched));
       } catch (RecordRejected rejected) {
         discarded.add(new DiscardedRecord(rejected.reason(), record.toString()));
       }
@@ -48,7 +61,7 @@ final class AlphaPageParser {
     try {
       return MAPPER.readTree(body);
     } catch (JacksonException e) {
-      throw malformed(e);
+      throw new PageMalformed("The page is not JSON", e);
     }
   }
 
@@ -58,19 +71,14 @@ final class AlphaPageParser {
       return Optional.empty();
     }
     if (!cursor.isString()) {
-      throw malformed(
-          new IllegalStateException(
-              "The page's nextCursor is neither a string nor null: "
-                  + ProviderText.quoted(cursor.toString())));
+      throw new PageMalformed(
+          "The page's nextCursor is neither a string nor null: "
+              + ProviderText.quoted(cursor.toString()));
     }
     return Optional.of(cursor.asString());
   }
 
-  private static ProviderUnavailableException malformed(Throwable cause) {
-    return new ProviderUnavailableException(Provider.ALPHA, FailureReason.MALFORMED_PAGE, cause);
-  }
-
-  private static Leg leg(JsonNode record, Instant quotedAt) {
+  private static Leg leg(JsonNode record, FetchedPage fetched) {
     if (!record.isObject()) {
       throw new RecordRejected(DiscardReason.SHAPE);
     }
@@ -82,8 +90,8 @@ final class AlphaPageParser {
         RecordFields.time(text(record, "departureTime")),
         RecordFields.time(text(record, "arrivalTime")),
         RecordFields.decimalPrice(text(record, "price")),
-        Provider.ALPHA,
-        quotedAt);
+        fetched.provider(),
+        fetched.receivedAt());
   }
 
   /**

@@ -1,16 +1,14 @@
-package com.flightaggregator.adapter.provider.alpha;
+package com.flightaggregator.adapter.provider;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
-import com.flightaggregator.adapter.provider.ParsedPage;
+import com.flightaggregator.adapter.provider.ProviderHttp.FetchedPage;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
-import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.ProviderText;
-import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Carrier;
 import com.flightaggregator.domain.Leg;
@@ -18,6 +16,7 @@ import com.flightaggregator.domain.Money;
 import com.flightaggregator.domain.Provider;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.Optional;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -25,7 +24,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
-class AlphaPageParserTest {
+class AlphaPageTest {
 
   private static final Instant QUOTED_AT = Instant.parse("2026-11-15T10:00:00Z");
 
@@ -36,8 +35,7 @@ class AlphaPageParserTest {
 
   @Test
   void parsesAValidLeg() {
-    ParsedPage page =
-        AlphaPageParser.parse("{\"legs\":[" + VALID_LEG + "],\"nextCursor\":null}", QUOTED_AT);
+    ParsedPage page = parse("{\"legs\":[" + VALID_LEG + "],\"nextCursor\":null}", QUOTED_AT);
 
     assertThat(page.legs())
         .containsExactly(
@@ -72,7 +70,7 @@ class AlphaPageParserTest {
                 VALID_LEG)
             + "],\"nextCursor\":null}";
 
-    ParsedPage page = AlphaPageParser.parse(body, QUOTED_AT);
+    ParsedPage page = parse(body, QUOTED_AT);
 
     assertThat(page.legs())
         .extracting(Leg::flightNumber, leg -> leg.destination().code())
@@ -88,7 +86,7 @@ class AlphaPageParserTest {
   void discardsANumericPrice() {
     String numericPrice = VALID_LEG.replace("\"129.90\"", "129.9");
 
-    ParsedPage page = AlphaPageParser.parse(pageOf(numericPrice), QUOTED_AT);
+    ParsedPage page = parse(pageOf(numericPrice), QUOTED_AT);
 
     assertThat(page.legs()).isEmpty();
     assertThat(page.discarded())
@@ -98,7 +96,7 @@ class AlphaPageParserTest {
   @ParameterizedTest
   @ValueSource(strings = {"\"IB3170\"", "7", "null", "[]", "true"})
   void discardsANonObjectRecord(String record) {
-    ParsedPage page = AlphaPageParser.parse(pageOf(VALID_LEG, record), QUOTED_AT);
+    ParsedPage page = parse(pageOf(VALID_LEG, record), QUOTED_AT);
 
     assertThat(page.legs()).hasSize(1);
     assertThat(page.discarded()).containsExactly(new DiscardedRecord(DiscardReason.SHAPE, record));
@@ -110,7 +108,7 @@ class AlphaPageParserTest {
     String record =
         VALID_LEG.replaceAll("\"" + field + "\":(\"[^\"]*\"|[0-9]+)", "\"" + field + "\":" + wrong);
 
-    ParsedPage page = AlphaPageParser.parse(pageOf(record), QUOTED_AT);
+    ParsedPage page = parse(pageOf(record), QUOTED_AT);
 
     assertThat(page.legs()).isEmpty();
     assertThat(page.discarded()).containsExactly(new DiscardedRecord(reason, record));
@@ -130,35 +128,24 @@ class AlphaPageParserTest {
   @ParameterizedTest
   @ValueSource(strings = {"not json", "", "[]", "null", "{}", "{\"legs\":5}"})
   void failsAPageThatIsNotJsonOrNotAlphasShape(String body) {
-    assertThatThrownBy(() -> AlphaPageParser.parse(body, QUOTED_AT))
-        .isInstanceOfSatisfying(
-            ProviderUnavailableException.class,
-            e -> {
-              assertThat(e.provider()).isEqualTo(Provider.ALPHA);
-              assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
-              assertThat(e.getCause()).isNotNull();
-            });
+    assertThatThrownBy(() -> parse(body, QUOTED_AT)).isInstanceOf(PageMalformed.class);
   }
 
   @Test
   void readsTheNextCursorAndTheEnd() {
-    assertThat(
-            AlphaPageParser.parse("{\"legs\":[],\"nextCursor\":\"b2Zmc2V0PTE=\"}", QUOTED_AT)
-                .next())
+    assertThat(parse("{\"legs\":[],\"nextCursor\":\"b2Zmc2V0PTE=\"}", QUOTED_AT).next())
         .contains("b2Zmc2V0PTE=");
-    assertThat(AlphaPageParser.parse("{\"legs\":[],\"nextCursor\":null}", QUOTED_AT).next())
-        .isEmpty();
+    assertThat(parse("{\"legs\":[],\"nextCursor\":null}", QUOTED_AT).next()).isEmpty();
   }
 
   @ParameterizedTest
   @ValueSource(strings = {"{\"legs\":[]}", "{\"legs\":[],\"nextCursor\":7}"})
   void failsAPageWhoseCursorIsNeitherAStringNorNull(String body) {
-    assertThatThrownBy(() -> AlphaPageParser.parse(body, QUOTED_AT))
+    assertThatThrownBy(() -> parse(body, QUOTED_AT))
         .isInstanceOfSatisfying(
-            ProviderUnavailableException.class,
+            PageMalformed.class,
             e -> {
-              assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
-              assertThat(e.getCause()).hasMessageContaining("nextCursor");
+              assertThat(e).hasMessageContaining("nextCursor");
             });
   }
 
@@ -166,11 +153,11 @@ class AlphaPageParserTest {
   void cutsAHugeCursorInTheFailureMessage() {
     String body = "{\"legs\":[],\"nextCursor\":[\"" + "a".repeat(500) + "\"]}";
 
-    assertThatThrownBy(() -> AlphaPageParser.parse(body, QUOTED_AT))
+    assertThatThrownBy(() -> parse(body, QUOTED_AT))
         .isInstanceOfSatisfying(
-            ProviderUnavailableException.class,
+            PageMalformed.class,
             e ->
-                assertThat(e.getCause().getMessage())
+                assertThat(e.getMessage())
                     .isEqualTo(
                         "The page's nextCursor is neither a string nor null: "
                             + ProviderText.quoted("[\"" + "a".repeat(500) + "\"]")));
@@ -178,5 +165,11 @@ class AlphaPageParserTest {
 
   private static String pageOf(String... records) {
     return "{\"legs\":[" + String.join(",", records) + "],\"nextCursor\":null}";
+  }
+
+  /** Parses an Alpha page of the first request, at the production page size. */
+  private static ParsedPage parse(String body, Instant quotedAt) {
+    return new AlphaPage(1000, Optional.empty())
+        .parse(new FetchedPage(body, Provider.ALPHA, quotedAt));
   }
 }

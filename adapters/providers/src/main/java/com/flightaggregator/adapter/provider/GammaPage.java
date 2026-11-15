@@ -1,45 +1,53 @@
-package com.flightaggregator.adapter.provider.gamma;
+package com.flightaggregator.adapter.provider;
 
-import com.flightaggregator.adapter.provider.ParsedPage;
-import com.flightaggregator.adapter.provider.RecordFields;
-import com.flightaggregator.adapter.provider.RecordRejected;
+import com.flightaggregator.adapter.provider.ProviderHttp.FetchedPage;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
-import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.ProviderText;
-import com.flightaggregator.application.port.out.ProviderUnavailableException;
 import com.flightaggregator.domain.Leg;
-import com.flightaggregator.domain.Provider;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * Parses one page of Gamma's CSV: a header row, then one leg per line, with the columns read by
- * name. A page with {@code limit} lines, valid or not, is followed by the page at {@code offset +
- * limit}, computed from the requested values; a shorter page ends the download. A line that is not
- * valid is discarded alone; a page without a required column fails.
+ * One page of Gamma: CSV with a header row, then one leg per line, with the columns read by name;
+ * paged by offset and limit. A page with {@code limit} lines, valid or not, is followed by the page
+ * at {@code offset + limit}; a shorter page ends the download. A line that is not valid is
+ * discarded alone; a page without a required column fails.
  */
-final class GammaPageParser {
+record GammaPage(int offset, int limit) implements PageRequest {
 
   private static final String EOL = "\r\n";
   private static final String QUOTE = "\"";
 
-  private GammaPageParser() {}
+  /** The page at a position, an offset; empty for the first page. */
+  static GammaPage at(Optional<String> position, int pageSize) {
+    return new GammaPage(position.map(Integer::parseInt).orElse(0), pageSize);
+  }
 
-  static ParsedPage parse(String body, Instant quotedAt, int offset, int limit) {
-    String[] lines = lines(body);
+  @Override
+  public String pathTemplate() {
+    return "/gamma/legs.csv?offset={offset}&limit={limit}";
+  }
+
+  @Override
+  public Object[] variables() {
+    return new Object[] {offset, limit};
+  }
+
+  @Override
+  public ParsedPage parse(FetchedPage fetched) {
+    String[] lines = lines(fetched.body());
     Columns columns = Columns.of(lines[0]);
     int rows = lines.length - 1;
     if (rows > limit) {
-      throw malformed("Asked for at most " + limit + " rows, got " + rows);
+      throw new PageMalformed("Asked for at most " + limit + " rows, got " + rows);
     }
     List<Leg> legs = new ArrayList<>();
     List<DiscardedRecord> discarded = new ArrayList<>();
     for (int i = 1; i < lines.length; i++) {
       try {
-        legs.add(leg(columns, lines[i], quotedAt));
+        legs.add(leg(columns, lines[i], fetched));
       } catch (RecordRejected rejected) {
         discarded.add(new DiscardedRecord(rejected.reason(), lines[i]));
       }
@@ -49,24 +57,20 @@ final class GammaPageParser {
     return new ParsedPage(legs, discarded, next);
   }
 
-  private static ProviderUnavailableException malformed(String detail) {
-    return new ProviderUnavailableException(
-        Provider.GAMMA, FailureReason.MALFORMED_PAGE, new IllegalArgumentException(detail));
-  }
-
   /** Exactly one final line end closes the last line; every other line counts, a blank one too. */
   private static String[] lines(String body) {
     String closed = body.endsWith(EOL) ? body.substring(0, body.length() - EOL.length()) : body;
     String[] lines = closed.split(EOL, -1);
     for (String line : lines) {
       if (line.indexOf('\r') >= 0 || line.indexOf('\n') >= 0) {
-        throw malformed("A line break that is not CRLF, so the records cannot be told apart");
+        throw new PageMalformed(
+            "A line break that is not CRLF, so the records cannot be told apart");
       }
     }
     return lines;
   }
 
-  private static Leg leg(Columns columns, String line, Instant quotedAt) {
+  private static Leg leg(Columns columns, String line, FetchedPage fetched) {
     List<String> cells = List.of(line.split(",", -1));
     if (cells.size() != columns.count() || line.contains(QUOTE)) {
       throw new RecordRejected(DiscardReason.SHAPE);
@@ -79,8 +83,8 @@ final class GammaPageParser {
         RecordFields.time(cells.get(columns.departsAt())),
         RecordFields.time(cells.get(columns.arrivesAt())),
         RecordFields.decimalPrice(cells.get(columns.priceEur())),
-        Provider.GAMMA,
-        quotedAt);
+        fetched.provider(),
+        fetched.receivedAt());
   }
 
   /** Where each required column sits in the header, and how many columns it has. */
@@ -110,10 +114,12 @@ final class GammaPageParser {
     private static int required(String line, List<String> header, String name) {
       int index = header.indexOf(name);
       if (index < 0) {
-        throw malformed("The header " + ProviderText.quoted(line) + " has no column " + name);
+        throw new PageMalformed(
+            "The header " + ProviderText.quoted(line) + " has no column " + name);
       }
       if (index != header.lastIndexOf(name)) {
-        throw malformed("The header " + ProviderText.quoted(line) + " repeats the column " + name);
+        throw new PageMalformed(
+            "The header " + ProviderText.quoted(line) + " repeats the column " + name);
       }
       return index;
     }

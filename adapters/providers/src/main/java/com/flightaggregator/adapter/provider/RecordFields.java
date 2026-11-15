@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
  * Strict, per-field parsing of a provider record: a field that is missing ({@code null}) or not
  * exact is rejected with that field's own reason.
  */
-public final class RecordFields {
+final class RecordFields {
 
   private static final Pattern DECIMAL_PRICE = Pattern.compile("^[0-9]{1,9}(\\.[0-9]{1,6})?$");
 
@@ -31,21 +31,21 @@ public final class RecordFields {
 
   private RecordFields() {}
 
-  public static Money decimalPrice(String text) {
+  static Money decimalPrice(String text) {
     if (text == null || !DECIMAL_PRICE.matcher(text).matches()) {
       throw new RecordRejected(DiscardReason.PRICE);
     }
     return money(new BigDecimal(text));
   }
 
-  public static Money centsPrice(String text) {
+  static Money centsPrice(String text) {
     if (text == null || !CENTS_PRICE.matcher(text).matches()) {
       throw new RecordRejected(DiscardReason.PRICE);
     }
     return money(BigDecimal.valueOf(Long.parseLong(text), 2));
   }
 
-  public static OffsetDateTime time(String text) {
+  static OffsetDateTime time(String text) {
     if (text == null || !TIME.matcher(text).matches()) {
       throw new RecordRejected(DiscardReason.TIME);
     }
@@ -56,14 +56,14 @@ public final class RecordFields {
     }
   }
 
-  public static int flightNumber(String text) {
+  static int flightNumber(String text) {
     if (text == null || !FLIGHT_NUMBER.matcher(text).matches()) {
       throw new RecordRejected(DiscardReason.FLIGHT_NUMBER);
     }
     return Integer.parseInt(text);
   }
 
-  public static Carrier carrier(String text) {
+  static Carrier carrier(String text) {
     if (text == null) {
       throw new RecordRejected(DiscardReason.CARRIER);
     }
@@ -74,7 +74,7 @@ public final class RecordFields {
     }
   }
 
-  public static Airport airport(String text) {
+  static Airport airport(String text) {
     if (text == null) {
       throw new RecordRejected(DiscardReason.AIRPORT);
     }
@@ -86,7 +86,7 @@ public final class RecordFields {
   }
 
   /** Builds the leg, turning the domain's refusal of it into a rejected record. */
-  public static Leg leg(
+  static Leg leg(
       Carrier carrier,
       int flightNumber,
       Airport origin,

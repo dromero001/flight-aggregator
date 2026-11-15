@@ -14,10 +14,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.bootstrap.PostgresContainers;
-import com.flightaggregator.bootstrap.config.ProviderBreakers;
 import com.flightaggregator.domain.Provider;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -38,7 +39,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
-import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -90,7 +90,7 @@ class IngestionEndToEndTest {
   @Autowired private IngestionJob job;
   @Autowired private JdbcClient jdbc;
   @Autowired private MeterRegistry meters;
-  @Autowired private ApplicationContext context;
+  @Autowired private CircuitBreakerRegistry breakers;
   @Autowired private LockProvider locks;
 
   /** The counters as each test found them: the context, and its meters, outlive a test. */
@@ -100,7 +100,8 @@ class IngestionEndToEndTest {
   void startFromAnEmptyInventoryWithEveryProviderUp() {
     PostgresContainers.emptyTheInventory(jdbc);
     letTheLockLapse();
-    ProviderBreakers.closeAll(context);
+    // The failures one test provokes must not open a breaker for the next.
+    breakers.getAllCircuitBreakers().forEach(CircuitBreaker::reset);
     for (Meter meter : meters.getMeters()) {
       if (meter instanceof Counter counter) {
         countsBefore.put(counter.getId(), counter.count());
