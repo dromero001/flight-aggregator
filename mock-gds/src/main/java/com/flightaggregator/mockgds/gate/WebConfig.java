@@ -4,7 +4,6 @@ import com.flightaggregator.mockgds.model.Provider;
 import java.util.Locale;
 import java.util.Random;
 import java.util.random.RandomGenerator;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -12,7 +11,6 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /** Puts one {@link ProviderGate} in front of each provider's paths, and nothing else. */
 @Configuration
-@EnableConfigurationProperties(ProviderSettings.class)
 class WebConfig implements WebMvcConfigurer {
 
   private final ProviderSettings settings;

@@ -9,8 +9,9 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * Per-provider gate settings, bound from {@code mockgds.providers.<provider>.*}. An unknown key in
  * a properties file or a command-line argument stops startup, so a misspelt or outdated setting
  * there cannot silently leave its default on. Boot does not check environment variables or JVM
- * system properties this way. Boot's report of an unknown setting prints its value, so an API key
- * given under a misspelt name ({@code api-kye}) is printed at startup.
+ * system properties this way; {@link SettingsConfig} checks the environment's {@code
+ * MOCKGDS_PROVIDERS_} variables. Boot's report of an unknown setting prints its value, so an API
+ * key given under a misspelt name ({@code api-kye}) is printed at startup.
  */
 @ConfigurationProperties(prefix = "mockgds.providers", ignoreUnknownFields = false)
 public record ProviderSettings(Entry alpha, Entry beta, Entry gamma) {

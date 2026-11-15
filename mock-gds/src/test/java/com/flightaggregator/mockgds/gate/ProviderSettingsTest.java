@@ -5,22 +5,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.flightaggregator.mockgds.model.Provider;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.ApplicationContextInitializer;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
 
 class ProviderSettingsTest {
 
   private final ApplicationContextRunner runner =
-      new ApplicationContextRunner().withUserConfiguration(Settings.class);
-
-  @EnableConfigurationProperties(ProviderSettings.class)
-  static class Settings {}
+      new ApplicationContextRunner().withUserConfiguration(SettingsConfig.class);
 
   private static final String[] KEYS = {
     "mockgds.providers.alpha.api-key=a",
@@ -145,31 +145,66 @@ class ProviderSettingsTest {
   /**
    * Boot leaves the system environment out of the unknown-key check (its
    * UnboundElementsSourceFilter holds the source benign, since it carries every variable of the
-   * machine), so a misspelt variable is ignored while a known one binds. Pinned, so the docs never
-   * promise otherwise.
+   * machine), so the mock checks the variables under its prefix itself. The failure names them,
+   * never their values.
    */
   @Test
-  void ignoresAnUnknownEnvironmentVariable() {
-    var environment =
-        new SystemEnvironmentPropertySource(
-            StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
-            Map.of(
-                "MOCKGDS_PROVIDERS_ALPHA_LATENCYMIN", "0ms",
-                "MOCKGDS_PROVIDERS_ALPHA_ERRORRATE", "1"));
+  void failsToStartOnAnUnknownEnvironmentVariableNamingItButNotItsValue() {
     runner
         .withPropertyValues(KEYS)
         .withInitializer(
+            withEnvironment(
+                Map.of(
+                    "MOCKGDS_PROVIDERS_ALPHA_LATENCYMIN", "0ms",
+                    "MOCKGDS_PROVIDERS_BETA_APIKYE", "secret-beta")))
+        .run(
             context ->
-                context
-                    .getEnvironment()
-                    .getPropertySources()
-                    .replace(environment.getName(), environment))
+                assertThat(context)
+                    .getFailure()
+                    .rootCause()
+                    .hasMessage(
+                        "Environment variables that name no provider setting:"
+                            + " [MOCKGDS_PROVIDERS_ALPHA_LATENCYMIN, MOCKGDS_PROVIDERS_BETA_APIKYE]"));
+  }
+
+  /** The names the README documents, one per setting and provider, all bind. */
+  @Test
+  void startsWithEveryDocumentedEnvironmentVariable() {
+    var values =
+        Map.of(
+            "APIKEY", "k",
+            "FASTLATENCYMIN", "0ms",
+            "FASTLATENCYMAX", "0ms",
+            "SLOWLATENCYMIN", "0ms",
+            "SLOWLATENCYMAX", "0ms",
+            "SLOWSHARE", "0",
+            "ERRORRATE", "0");
+    var variables = new HashMap<String, Object>();
+    for (var provider : List.of("ALPHA", "BETA", "GAMMA")) {
+      values.forEach(
+          (setting, value) ->
+              variables.put("MOCKGDS_PROVIDERS_" + provider + "_" + setting, value));
+    }
+    runner
+        .withInitializer(withEnvironment(variables))
         .run(
             context -> {
               assertThat(context).hasNotFailed();
-              assertThat(context.getBean(ProviderSettings.class).alpha().errorRate())
-                  .isEqualTo(1.0);
+              var settings = context.getBean(ProviderSettings.class);
+              for (var provider : Provider.values()) {
+                assertThat(settings.forProvider(provider).errorRate()).isZero();
+              }
             });
+  }
+
+  /** Replaces the machine's environment with these variables, under the real source's name. */
+  private static ApplicationContextInitializer<ConfigurableApplicationContext> withEnvironment(
+      Map<String, Object> variables) {
+    var environment =
+        new SystemEnvironmentPropertySource(
+            StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, variables);
+    return context ->
+        context.getEnvironment().getPropertySources().replace(environment.getName(), environment);
   }
 
   @Test

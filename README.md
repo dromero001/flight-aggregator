@@ -50,7 +50,7 @@ The names follow `MOCKGDS_PROVIDERS_<ALPHA|BETA|GAMMA>_<SETTING>`:
 | `SLOWSHARE` | `0.1` | the share of requests that wait in the slow range |
 | `ERRORRATE` | `0.05` | the share of requests that fail with HTTP 500 |
 
-No latency may be negative, each minimum must not exceed its maximum, and both shares go from 0 to 1. A value outside these rules stops the mock at startup with a message that names the setting. A misspelt variable does not: Spring Boot rejects an unknown setting in a properties file or a command-line argument, but ignores one in the environment or in a JVM system property, so check the names against this table. The [architecture overview](docs/architecture/README.md#mock-providers) describes the formats.
+No latency may be negative, each minimum must not exceed its maximum, and both shares go from 0 to 1. A value outside these rules stops the mock at startup with a message that names the setting. So does a `MOCKGDS_PROVIDERS_` variable that is not in this table, such as a misspelt or outdated name: the message names the variable, never its value. Only the spellings in the table are accepted. Outside the environment, Spring Boot itself rejects an unknown setting in a properties file or a command-line argument, and its report prints the value, but it ignores one in a JVM system property. The [architecture overview](docs/architecture/README.md#mock-providers) describes the formats.
 
 ## Documentation
 
