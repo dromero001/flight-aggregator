@@ -13,6 +13,13 @@ spring:
       data-source-properties:
         socketTimeout: 120
         tcpKeepAlive: true
+  data:
+    redis:
+      # Valkey (spec 6.2), at Boot's localhost:6379 unless the environment says otherwise. Q9: a
+      # command waits 250 ms at most and a connection 1 s, instead of Lettuce's 60 s and 10 s, so a
+      # Valkey outage costs a search little; ValkeyConfig rejects commands while disconnected.
+      timeout: 250ms
+      connect-timeout: 1s
   security:
     oauth2:
       resourceserver:
@@ -33,6 +40,15 @@ providers:
   # rejected, not queued (Q9). Required: see ProvidersProperties.
   concurrency-limit: 4
 
+search:
+  # A cached page lives less than the freshness threshold, so the cache never extends staleness
+  # (spec 6.4). Required: see SearchProperties.
+  cache-ttl: PT5M
+  # A search on an origin refreshed longer ago than this asks for its background refresh (spec 6.4).
+  freshness-threshold: PT10M
+  # A refresh claim (SET NX) holds this long, longer than one refresh takes (Q9).
+  refresh-claim-ttl: PT2M
+
 ingestion:
   # A run that would build more itineraries publishes nothing (R7).
   max-itineraries: 2000000
@@ -49,6 +65,11 @@ logging:
       console: ecs
 
 management:
+  health:
+    redis:
+      # Valkey down makes search slower, not broken (spec 6.2), so Boot's indicator, which would
+      # turn the whole health DOWN, is off; Valkey is reported as DEGRADED instead (plan 5, Q8).
+      enabled: false
   endpoints:
     web:
       exposure:

@@ -70,23 +70,28 @@ final class LegsJson {
   static String write(List<Leg> legs, JsonFactory json) {
     StringWriter text = new StringWriter();
     try (JsonGenerator generator = json.createGenerator(ObjectWriteContext.empty(), text)) {
-      generator.writeStartArray();
-      for (Leg leg : legs) {
-        generator.writeStartObject();
-        generator.writeStringProperty(CARRIER, leg.carrier().code());
-        generator.writeNumberProperty(FLIGHT_NUMBER, leg.flightNumber());
-        generator.writeStringProperty(ORIGIN, leg.origin().code());
-        generator.writeStringProperty(DESTINATION, leg.destination().code());
-        generator.writeStringProperty(DEPARTURE, LOCAL_TIME.format(leg.departure()));
-        generator.writeStringProperty(ARRIVAL, LOCAL_TIME.format(leg.arrival()));
-        generator.writeStringProperty(PRICE, leg.price().amount().toPlainString());
-        generator.writeStringProperty(PROVIDER, leg.provider().name());
-        generator.writeStringProperty(QUOTED_AT, leg.quotedAt().toString());
-        generator.writeEndObject();
-      }
-      generator.writeEndArray();
+      write(legs, generator);
     }
     return text.toString();
+  }
+
+  /** Writes the legs as the array {@link #write(List, JsonFactory)} gives, inside a document. */
+  static void write(List<Leg> legs, JsonGenerator generator) {
+    generator.writeStartArray();
+    for (Leg leg : legs) {
+      generator.writeStartObject();
+      generator.writeStringProperty(CARRIER, leg.carrier().code());
+      generator.writeNumberProperty(FLIGHT_NUMBER, leg.flightNumber());
+      generator.writeStringProperty(ORIGIN, leg.origin().code());
+      generator.writeStringProperty(DESTINATION, leg.destination().code());
+      generator.writeStringProperty(DEPARTURE, LOCAL_TIME.format(leg.departure()));
+      generator.writeStringProperty(ARRIVAL, LOCAL_TIME.format(leg.arrival()));
+      generator.writeStringProperty(PRICE, leg.price().amount().toPlainString());
+      generator.writeStringProperty(PROVIDER, leg.provider().name());
+      generator.writeStringProperty(QUOTED_AT, leg.quotedAt().toString());
+      generator.writeEndObject();
+    }
+    generator.writeEndArray();
   }
 
   /**
@@ -97,13 +102,27 @@ final class LegsJson {
    */
   static List<Leg> read(String document, JsonFactory json) {
     try (JsonParser parser = json.createParser(ObjectReadContext.empty(), document)) {
-      expect(parser.nextToken(), JsonToken.START_ARRAY);
+      parser.nextToken();
+      List<Leg> legs = read(parser);
+      expect(parser.nextToken(), null);
+      return legs;
+    } catch (JacksonException e) {
+      throw notLegs(e);
+    }
+  }
+
+  /**
+   * The legs of the array the parser is at, read as {@link #read(String, JsonFactory)} reads them,
+   * inside a document; the parser is left at the array's end.
+   */
+  static List<Leg> read(JsonParser parser) {
+    try {
+      expect(parser.currentToken(), JsonToken.START_ARRAY);
       List<Leg> legs = new ArrayList<>();
       while (parser.nextToken() == JsonToken.START_OBJECT) {
         legs.add(leg(properties(parser)));
       }
       expect(parser.currentToken(), JsonToken.END_ARRAY);
-      expect(parser.nextToken(), null);
       return List.copyOf(legs);
     } catch (JacksonException | IllegalArgumentException | DateTimeException e) {
       throw notLegs(e);
