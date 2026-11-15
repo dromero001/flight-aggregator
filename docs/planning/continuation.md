@@ -4,7 +4,7 @@ The single place that says what is in flight, where it lives and what comes next
 
 **Rule:** the controller rewrites this file and pushes it at every checkpoint: a subagent dispatched or returned, a review verdict, a user decision, a task integrated (`CLAUDE.md`, "Continuity"). If something here contradicts `git log`, `git log` wins: say so and fix this file first.
 
-**Last updated:** 2026-11-15 17:05 CET, on the Mac, `main` at `04586b6` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
+**Last updated:** 2026-11-15 17:21 CET, on the Mac, `main` at `d67b16b` plus the commit that changes this file. The Windows PC's session ("PC de casa") was told the state at 17:00 and not to start any in-flight task unless the Mac is down.
 
 ## Resume in five minutes
 
@@ -39,7 +39,7 @@ The single place that says what is in flight, where it lives and what comes next
 | Task | State | Worktree (Mac) and branch | Pushed as |
 |---|---|---|---|
 | Plan 5 Task 5, Valkey | Fix round 1, re-dispatched 16:45 after the drop; then its re-review | `.claude/worktrees/agent-a8dc11a74aba5a730`, `worktree-agent-a8dc11a74aba5a730`, on `dd899d3` over `d307687` | `wip/plan5-task-5` |
-| Plan 5 Task 8, re-price | Fix round 1, re-dispatched 16:45 after the drop; then its re-review | `.claude/worktrees/agent-aa031dfa12b4cd6b5`, `worktree-agent-aa031dfa12b4cd6b5`, on `9cc2489` over `d307687` | `wip/plan5-task-8` |
+| Plan 5 Task 8, re-price | Fix round 1 done (`f3cb3cc`, 749 tests green); its re-review dispatched 17:20 | `.claude/worktrees/agent-aa031dfa12b4cd6b5`, `worktree-agent-aa031dfa12b4cd6b5`, on `f3cb3cc` over `d307687` | `wip/plan5-task-8` (at `f3cb3cc`) |
 | Plan 7 Task 1, telemetry backends in compose | Implementation, dispatched 17:05; then its double review | `.claude/worktrees/agent-a380b01c59520a201`, `worktree-agent-a380b01c59520a201`, from `04586b6` | `wip/plan7-task-1` after its first commit |
 
 **Plan 7 Task 1** (no review yet): the brief is the plan's Task 1 text with its Global Constraints and the user's answers (Q1–Q4 A; extras as decided); progress report `docs/planning/progress/2026-11-15-observability-and-delivery.md` (new, indexed in `README.md`); its compose runs use their own project name (`-p plan7-task1`) so they never stop another agent's containers.
@@ -54,6 +54,8 @@ The single place that says what is in flight, where it lives and what comes next
 - F2: pin Q9's values (3 alternatives, 10 s budget) with a test, as the 37-day horizon is pinned.
 - C1: the update gets its `StatementTimeout`.
 - Same note on the lost evidence as Task 5. Deferred to the end-of-plan review: F3, C2–C5.
+- **Done in `f3cb3cc`.** Departures from the brief, for the re-review to judge: the WARN and `reprice.store{outcome}` live in a bootstrap decorator, `CountedItineraryRepository`, not in the service (the application module has no logging or metrics library); the old lock guarantee is replaced by "a run starting during an update waits for it" (`keepsTheSlotAnUpdateReadActiveUntilItCommits`); busy is detected by SQLState `55P03`. Concerns carried: two re-prices of the same itinerary at once give the second `GONE` (documented, untested); Task 7 must forward `replaceThrough` through the decorator. Re-review output: `.superpowers/sdd/2026-11-15-search-api/task-8-rereview-1.md` (Mac only).
+- Lesson for every brief: a subagent overwrote another's mutation script in the shared session scratchpad; each subagent uses a private scratch folder of its own.
 
 ## Next steps
 
