@@ -316,7 +316,7 @@ Failure messages are AssertJ's, which quote promtool's output (`exp` is the expe
 - **Each alert whose gauge can be unknown has two rules under one name:** one for its value (`for: 0m`) and one for the stale gauge (`for: 15m`). A rule has a single `for`, and Q4 gives the two conditions different waits.
 - **The 15 minutes are a `for`, not a range such as `absent_over_time(x[15m])`.** A range reads the time before Prometheus started as missing, so every `docker compose up` would fire the stale alerts before the first scrape. A `for` needs 15 minutes of evaluations. Prometheus keeps its data on tmpfs, so a Prometheus restart also starts the wait again.
 - **`IngestionFailing`'s stale rule covers a missing gauge only,** as its interface says. The count is an `AtomicInteger` and reads 0 from the start, never NaN.
-- **`ProviderDataStale` with no series at all carries no `provider` label,** because with no series no provider can be named. Its summary says "any provider". Naming each provider would mean one rule per provider, which the rules would have to be changed for whenever a provider is added. Cost if wrong: the alert list shows one `ProviderDataStale` without a provider when the app is not scraped, beside `IngestionFailing`'s.
+- **`ProviderDataStale` with no series at all carries no `provider` label,** because with no series no provider can be named. Its summary says "any provider". (Reason corrected in fix round 1.) One rule could still name each provider, `absent(x{provider="ALPHA"}) or absent(x{provider="BETA"}) or ...`, but it would have to list the provider enum. Nothing is lost without it: `IngestionMetrics` registers every provider's gauge together, so one provider's series is never missing alone, and naming each would turn one cause into three more alerts. Cost if wrong: the alert list shows one `ProviderDataStale` without a provider when the app is not scraped, beside `IngestionFailing`'s.
 - **Three cases the plan's list does not name,** each for its interface or Review Focus 2:
   - case 7, `PartitionHorizonShort` with no instance reporting ("or missing", in its interface line);
   - case 12, GAMMA's NaN on a restarted instance beside a healthy one (Review Focus 2: one restarted instance beside a healthy one must not fire);
@@ -396,3 +396,60 @@ The user chose B for the pending decision above. The stale-gauge rules carry the
 - Nothing passes silently that failed before: a lint error now fails the build (shown above).
 
 **Gates.** `./gradlew build`: `BUILD SUCCESSFUL` (exit 0). `bootstrap:test` and the coverage verification ran again: 826 tests, none failed or skipped. The test count is unchanged, since the label and the merge are checked inside `AlertRulesTest`'s promtool run.
+
+## Task 3 — fix round 1
+
+The double review answered: functional CHANGES REQUESTED (F1 Important; F2, F3 Minor), code APPROVED (C1–C3 Minor). The controller asked for F1, F2 (as ruled) and C1. C2 joins Task 1's deferred C4. C3 stays, as the plan requires. F3 is a note for the user and the end-of-plan review, with no change here.
+
+### F1: the value rules' combining of instances is pinned
+
+- **The gap.** The reviewer's sweep left six aggregation mutations alive: `PartitionHorizonShort` `max` to `min`, `avg` or `sum`; `IngestionFailing` and `RowsInDefaultPartition` `max` to `sum`; `ProviderDataStale` `min by` to `avg by`.
+  - No case put two numbers on either side of a threshold for the horizon.
+  - No case put a NaN beside a value past a threshold. That is the one input that separates max and min, which skip a NaN, from sum and avg, which return NaN and go quiet.
+- **Five cases, added one at a time.** Each passed on its first run, since the rules were right, and was then shown red by the mutation it targets, restored after each run:
+  1. **`IngestionFailing` stays quiet with one instance at 2 failed runs in a row and another at 1.** `sum`: `time: 5m, exp:[], got:[{alertname="IngestionFailing"} "Ingestion has failed 3 runs in a row"]`.
+  2. **`PartitionHorizonShort` stays quiet with one instance at 37 and another at 33.** `min`: `time: 5m, exp:[], got:[{alertname="PartitionHorizonShort"} "The partitions reach only 33 days ahead"]`.
+  3. **`PartitionHorizonShort` fires at 33 on one instance beside a restarted one at NaN.** `avg` and `sum`: `time: 5m, exp:[{alertname="PartitionHorizonShort"} ...], got:[]`.
+  4. **`RowsInDefaultPartition` fires at one row on one instance beside a restarted one at NaN.** `sum`: `time: 5m, exp:[{alertname="RowsInDefaultPartition"} ...], got:[]`.
+  5. **`ProviderDataStale` fires for BETA at 5,401 s on one instance beside a restarted one at NaN.** `avg by (provider)`: `time: 5m, exp:[{alertname="ProviderDataStale", provider="BETA"} ...], got:[]`.
+- **The whole sweep, run again after the five cases:** each value rule's aggregation replaced by every other one, 12 mutations, one run each. All 12 failed:
+
+| Rule | Mutation | Case that failed |
+|---|---|---|
+| `IngestionFailing` | `min`, `avg` | fires with one instance at 3 and another at 0 |
+| `IngestionFailing` | `sum` | quiet at 2 and 1 (new) |
+| `PartitionHorizonShort` | `min` | quiet at 37 and 33 (new) |
+| `PartitionHorizonShort` | `avg`, `sum` | fires at 33 beside NaN (new) |
+| `RowsInDefaultPartition` | `min` | fires at one row on any instance |
+| `RowsInDefaultPartition` | `avg` | fires at one row on any instance, and fires at one row beside NaN (new) |
+| `RowsInDefaultPartition` | `sum` | fires at one row beside NaN (new) |
+| `ProviderDataStale` | `max by`, `sum by` | quiet when another instance has BETA at 60 s (`sum by` also: BETA beside NaN) |
+| `ProviderDataStale` | `avg by` | BETA beside NaN (new) |
+
+- **Correction.** The implementer's report said that every aggregation went red under a mutation. That was not true before this round: `PartitionHorizonShort` had no aggregation mutation, and the six above survived. The report now says so, and the table above is the record.
+
+### C1: `IngestionFailing`'s stale rule treats NaN like the others
+
+- **`IngestionFailing` fires after 15 minutes of NaN on every instance, not after 14** (two instances at NaN; expected `{alertname="IngestionFailing", gauge="unknown"}`). Red with `absent(ingestion_consecutive_failures)`: `time: 15m, exp:[{alertname="IngestionFailing", gauge="unknown"}], got:[]`.
+- Green: `absent(ingestion_consecutive_failures == ingestion_consecutive_failures)`, the same shape as `PartitionHorizonShort`'s.
+  - The special-case comment ("the count is never NaN") is gone.
+  - The rule file's header, "a gauge that reads NaN or is missing counts as stale", now holds for every alert.
+  - All other cases stayed green, and so did `PrometheusConfigTest`'s three tests (`check config --lint-fatal`).
+- Today's count reads 0 from the start, so nothing changes now. If a later change published it as NaN until an instance's first run, both of `IngestionFailing`'s rules would have stayed quiet (the reviewer's S4).
+
+### F2: the reason for `ProviderDataStale`'s unlabelled no-series alert, corrected
+
+- The controller's ruling: keep the alert without a `provider` label.
+- The reason recorded under "Deviations" was inaccurate ("one rule per provider"). One rule, `absent(x{provider="ALPHA"}) or absent(x{provider="BETA"}) or ...`, could name each provider, but it would have to list the provider enum. The real reason the outcome is sound:
+  - `IngestionMetrics` registers every provider's gauge together, so one provider's series is never missing alone;
+  - naming each provider would turn one cause into three more alerts.
+- The deviation's line is corrected in place, marked "corrected in fix round 1". The rule's comment says the same.
+
+### Gates
+
+- `./gradlew build`: `BUILD SUCCESSFUL` (exit 0). `bootstrap:test` and the coverage verification ran again: 826 tests, none failed or skipped. The new promtool cases run inside `AlertRulesTest`.
+- Self-review (thermo-nuclear):
+  - The rule file changes by one expression and two comments.
+  - The test file grows from 13 to 19 cases (312 lines). Each new case is the smallest input that separates one aggregation from another, and the cases sit with their alert's group.
+  - No new mechanism.
+  - Nothing passes silently that the review found: every aggregation and the NaN failure count now fail a case when changed.
