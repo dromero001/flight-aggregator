@@ -24,7 +24,7 @@ Success means that:
 - Search API with optional, combinable filters (Origin, Destination, Max Price, Carrier) and keyset pagination over up to 1M rows.
 - Live re-price on selection, with a "price changed" notice (§6.3).
 - Frontend dashboard to search as an end customer.
-- PostgreSQL + Redis, authentication, observability, CI.
+- PostgreSQL + Redis (built with Valkey, its protocol-compatible fork: §6.1), authentication, observability, CI.
 - Unit, integration and end-to-end tests, written test-first. Failure tests for 1, 2 and 3 providers down.
 - `SOLUTION.md`: architecture, AI usage (linking `docs/ai/sessions/`), modelling, pagination at 1M, assumptions, limitations.
 
@@ -303,7 +303,7 @@ Modules (Gradle subprojects). Gradle enforces the direction between modules; Arc
 | `domain` | Leg, Itinerary, Money, Airport, Carrier; `ItineraryBuilder`, `ConnectionRules`, `LegDeduplicator`, `PricingPolicy` (markup). Pure Java, no frameworks | — |
 | `application` | Inbound ports (`port.in`, one interface per use case): `IngestInventory`, `RefreshStaleRoute`, `SearchItineraries`, `RepriceItinerary`. Outbound ports (`port.out`): `FlightProvider`, `ItineraryRepository`, `SearchCache`, `Clock`. Services (`service`) implement the inbound ports | `domain` |
 | `adapters/providers` | Alpha (JSON), Beta (XML), Gamma (CSV) HTTP clients + parsers + mapping to `Leg`; Resilience4j (circuit breaker, time limiter); the request timeout in the HTTP client; retry and the per-provider concurrency limit through Spring 7 (§6.1), the limit from plan 5, when re-price and the refresh call providers while ingestion runs | `application` |
-| `adapters/persistence` | PostgreSQL (Flyway, keyset queries, indexes), Redis (cache) | `application` |
+| `adapters/persistence` | PostgreSQL (Flyway, keyset queries, indexes), Valkey (cache, refresh claims, rate-limit counters) | `application` |
 | `adapters/web` | REST search API, cursor encoding, validation, auth, OpenAPI | `application` |
 | `bootstrap` | Spring Boot app, wiring, scheduler, configuration, observability | all |
 | `mock-gds` | One deployable serving the three mock providers, with a seeded dataset, configurable latency and 500 rate | — |
@@ -327,7 +327,7 @@ Legend: 👤 = with the user (design decisions), 🌙 = autonomous overnight wor
 
 - **TDD everywhere.** Red → green → refactor; no production code without a failing test first.
 - **Unit (domain/application):** connection rules (every dead-leg and invalid-connection case), deduplication, pricing and rounding, itinerary building up to 2 stops, cursor encoding. Fast, no Spring.
-- **Integration:** each provider adapter against WireMock (happy path, malformed payload, timeout, 500); persistence against PostgreSQL/Redis with Testcontainers (keyset correctness at page boundaries, ties, filters); ingestion with 1, 2 and 3 providers failing.
+- **Integration:** each provider adapter against WireMock (happy path, malformed payload, timeout, 500); persistence against PostgreSQL and Valkey with Testcontainers (keyset correctness at page boundaries, ties, filters); ingestion with 1, 2 and 3 providers failing.
 - **Architecture:** ArchUnit rules for the dependency direction.
 - **End-to-end:** the full stack via docker compose; search flows through the API and the dashboard (tool to be decided with the frontend stack).
 - **Gate:** the full suite runs before every commit and in CI.
