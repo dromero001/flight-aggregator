@@ -185,11 +185,12 @@ export async function alertRules(since: Date): Promise<AlertRule[]> {
   });
 }
 
-/** A panel of a provisioned dashboard, with the queries it runs. */
+/** A panel of a provisioned dashboard, with the queries it runs; an alert list runs none. */
 export interface Panel {
+  id: number;
   title: string;
-  datasource: { uid: string };
-  targets: ({ refId: string } & Record<string, unknown>)[];
+  datasource?: { uid: string };
+  targets?: ({ refId: string } & Record<string, unknown>)[];
 }
 
 /** The panels of a dashboard, as Grafana serves it to the anonymous Viewer. */
@@ -198,6 +199,11 @@ export async function dashboardPanels(uid: string): Promise<Panel[]> {
     `/api/dashboards/uid/${uid}`,
   );
   return dashboard.panels;
+}
+
+/** One panel of a dashboard, alone on the page, as its "View" menu item shows it. */
+export function panelUrl(dashboardUid: string, panelId: number): string {
+  return `${GRAFANA_URL}/d/${dashboardUid}?orgId=1&viewPanel=panel-${String(panelId)}`;
 }
 
 /** Grafana's answer to `/api/ds/query`: data frames, each column's values in an array. */

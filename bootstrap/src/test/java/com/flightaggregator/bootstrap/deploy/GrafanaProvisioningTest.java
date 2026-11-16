@@ -224,6 +224,7 @@ class GrafanaProvisioningTest {
             "Cache hit ratio",
             "Discarded records",
             "Partitions",
+            "Alerts",
             "Logs");
   }
 
@@ -267,6 +268,25 @@ class GrafanaProvisioningTest {
     assertThat(logs.at("/datasource/uid").asString()).isEqualTo("loki");
     assertThat(logs.path("targets").valueStream().map(target -> target.path("expr").asString()))
         .containsExactly("{service_name=\"flight-aggregator\"}");
+  }
+
+  /**
+   * The alerts one click from the dashboard (plan 7 extra E4): Grafana's alert list, which reads
+   * Prometheus's rules, shows every rule in every state, so a healthy stack lists its rules as
+   * normal instead of an empty panel, as Prometheus's alerts page does. A rule that is not firing
+   * has no alert instance, and the list hides such rules unless told to show them.
+   */
+  @Test
+  void listsTheAlertRulesInEveryState() throws IOException, InterruptedException {
+    JsonNode alerts = panel("Alerts");
+
+    assertThat(alerts.path("type").asString()).isEqualTo("alertlist");
+    JsonNode states = alerts.at("/options/stateFilter");
+    assertThat(List.of("firing", "pending", "normal", "error", "noData"))
+        .allSatisfy(state -> assertThat(states.path(state).asBoolean()).as(state).isTrue());
+    assertThat(alerts.at("/options/showInactiveAlerts").asBoolean())
+        .as("rules with no instance shown")
+        .isTrue();
   }
 
   /**

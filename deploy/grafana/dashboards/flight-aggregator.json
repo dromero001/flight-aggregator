@@ -284,11 +284,35 @@
       ]
     },
     {
+      "id": 9,
+      "type": "alertlist",
+      "title": "Alerts",
+      "description": "Prometheus's alert rules and their state: Normal, Pending or Firing (deploy/prometheus/rules). Each alert has two rules of the same name: one on its value, and one, labelled gauge: unknown, that fires when the gauge has read NaN or been missing on every instance for 15 minutes. No notification is sent.",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 10 },
+      "options": {
+        "viewMode": "list",
+        "groupMode": "default",
+        "maxItems": 20,
+        "sortOrder": 1,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "",
+        "showInactiveAlerts": true,
+        "stateFilter": {
+          "firing": true,
+          "pending": true,
+          "normal": true,
+          "error": true,
+          "noData": true
+        }
+      }
+    },
+    {
       "id": 8,
       "type": "logs",
       "title": "Logs",
       "description": "The application's log lines from Loki, newest first. Click a line for its details: its level, its key-value pairs, and View trace, which opens the line's trace in Tempo.",
-      "gridPos": { "x": 0, "y": 32, "w": 24, "h": 10 },
+      "gridPos": { "x": 0, "y": 34, "w": 24, "h": 10 },
       "datasource": { "type": "loki", "uid": "loki" },
       "options": {
         "showTime": true,

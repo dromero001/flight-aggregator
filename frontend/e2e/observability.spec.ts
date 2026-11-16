@@ -8,6 +8,7 @@ import {
   lokiExploreUrl,
   lokiLabels,
   lokiLines,
+  panelUrl,
   tempoExploreUrl,
   tempoTrace,
 } from './telemetry.js';
@@ -24,6 +25,14 @@ const APP_LOGS = '{service_name="flight-aggregator"}';
  * a second stack beside this one (plan 7 Task 7's run).
  */
 const RUN_PUBLISHED_WITHIN_MS = 240_000;
+
+/** The alerts of deploy/prometheus/rules, in alphabetical order. */
+const ALERTS = [
+  'IngestionFailing',
+  'PartitionHorizonShort',
+  'ProviderDataStale',
+  'RowsInDefaultPartition',
+];
 
 /** The search's server span (Spring's HTTP server observation). */
 const SEARCH_SPAN = 'http get /api/itineraries';
@@ -102,12 +111,7 @@ test('loads the alert rules, none firing on a healthy stack', async () => {
   const rules = await alertRules(new Date());
 
   // Each alert has a rule on its value and one on an unknown gauge (deploy/prometheus/rules).
-  expect([...new Set(rules.map((rule) => rule.name))].sort()).toEqual([
-    'IngestionFailing',
-    'PartitionHorizonShort',
-    'ProviderDataStale',
-    'RowsInDefaultPartition',
-  ]);
+  expect([...new Set(rules.map((rule) => rule.name))].sort()).toEqual(ALERTS);
   expect(rules.filter((rule) => rule.health !== 'ok')).toEqual([]);
   expect(rules.filter((rule) => rule.state === 'firing')).toEqual([]);
 });
@@ -118,13 +122,14 @@ test('feeds every dashboard panel', async ({ request }) => {
     expect((await request.get('/api/itineraries?limit=1&sort=duration')).status()).toBe(200);
   }
 
-  const panels = await dashboardPanels('flight-aggregator');
-  expect(panels.length, 'panels of the dashboard').toBeGreaterThan(0);
+  // The alert list runs no query of its own; the next test reads it.
+  const panels = (await dashboardPanels('flight-aggregator')).filter((panel) => panel.targets);
+  expect(panels.length, 'panels of the dashboard with queries').toBeGreaterThan(0);
   // Every query of every panel at once, so a minute's wait covers them all.
-  const queries = panels.flatMap((panel) =>
-    panel.targets.map((target) => ({
-      name: `${panel.title}/${target.refId}`,
-      answer: grafanaQuery(panel.datasource.uid, target),
+  const queries = panels.flatMap(({ title, datasource, targets = [] }) =>
+    targets.map((target) => ({
+      name: `${title}/${target.refId}`,
+      answer: grafanaQuery(datasource?.uid ?? '', target),
     })),
   );
   const answers = await Promise.allSettled(queries.map(({ answer }) => answer));
@@ -132,6 +137,18 @@ test('feeds every dashboard panel', async ({ request }) => {
     answer.status === 'rejected' ? [`${queries[index].name}: ${String(answer.reason)}`] : [],
   );
   expect(withoutData).toEqual([]);
+});
+
+test('lists the alert rules on the dashboard', async ({ page }) => {
+  const panels = await dashboardPanels('flight-aggregator');
+  const alerts = panels.find((panel) => panel.title === 'Alerts');
+  expect(alerts, 'the alert list').toBeDefined();
+
+  // No sign-in: the panel lists Prometheus's rules, healthy ones included, as Normal.
+  await page.goto(panelUrl('flight-aggregator', alerts?.id ?? 0));
+  for (const rule of ALERTS) {
+    await expect(page.getByText(rule, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  }
 });
 
 /**
