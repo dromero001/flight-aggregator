@@ -15,10 +15,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
+import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 /**
- * Q9's rate limits, read from what the use case RateLimitConfig declares admits, over a counter the
- * test holds: one count per bucket, and the window each request asked for.
+ * Q9's rate limits, read from what the use case RateLimitConfig declares admits, with the
+ * application's own settings, over a counter the test holds: one count per bucket, and the window
+ * each request asked for.
  */
 class RateLimitConfigTest {
 
@@ -33,21 +37,68 @@ class RateLimitConfigTest {
         return new WindowCount(counts.merge(bucket, 1L, Long::sum), window);
       };
 
-  private final AdmitRequest admitRequest = new RateLimitConfig().admitRequest(counter);
+  private final ApplicationContextRunner runner =
+      new ApplicationContextRunner()
+          .withInitializer(new ConfigDataApplicationContextInitializer())
+          .withUserConfiguration(RateLimitConfig.class)
+          .withBean(RequestCounter.class, () -> counter);
 
   @Test
   void admitsSixtySearchesAMinuteFromOneAddress() {
-    assertThat(answersTo(RateLimitedAction.SEARCH, 61)).isEqualTo(admittedThenRejected(60));
-    assertThat(windows).containsOnly(Duration.ofMinutes(1));
+    runner.run(
+        context -> {
+          assertThat(answersTo(context, RateLimitedAction.SEARCH, 61))
+              .isEqualTo(admittedThenRejected(60));
+          assertThat(windows).containsOnly(Duration.ofMinutes(1));
+        });
   }
 
   @Test
   void admitsTenRepricesAMinuteFromOneAddress() {
-    assertThat(answersTo(RateLimitedAction.REPRICE, 11)).isEqualTo(admittedThenRejected(10));
-    assertThat(windows).containsOnly(Duration.ofMinutes(1));
+    runner.run(
+        context -> {
+          assertThat(answersTo(context, RateLimitedAction.REPRICE, 11))
+              .isEqualTo(admittedThenRejected(10));
+          assertThat(windows).containsOnly(Duration.ofMinutes(1));
+        });
   }
 
-  private List<String> answersTo(RateLimitedAction action, int requests) {
+  /** The limits are settings, so an operator tunes them without a build (G1, 2026-11-16). */
+  @Test
+  void readsEachLimitFromTheSettings() {
+    runner
+        .withPropertyValues(
+            "rate-limit.actions.search.requests=3", "rate-limit.actions.search.window=PT10S")
+        .run(
+            context -> {
+              assertThat(answersTo(context, RateLimitedAction.SEARCH, 4))
+                  .isEqualTo(admittedThenRejected(3));
+              assertThat(windows).containsOnly(Duration.ofSeconds(10));
+            });
+  }
+
+  /**
+   * Without a limit for every action, the application does not start, and says which action has
+   * none, instead of failing that action's first request.
+   */
+  @Test
+  void stopsStartupWithoutALimitForEachAction() {
+    new ApplicationContextRunner()
+        .withUserConfiguration(RateLimitConfig.class)
+        .withBean(RequestCounter.class, () -> counter)
+        .run(
+            context ->
+                assertThat(context)
+                    .getFailure()
+                    .rootCause()
+                    .hasMessage(
+                        "Every rate-limited action needs a limit; none is set for [SEARCH,"
+                            + " REPRICE]"));
+  }
+
+  private static List<String> answersTo(
+      AssertableApplicationContext context, RateLimitedAction action, int requests) {
+    AdmitRequest admitRequest = context.getBean(AdmitRequest.class);
     return IntStream.range(0, requests)
         .mapToObj(
             i ->

@@ -84,6 +84,19 @@ search:
   # 2026-11-15).
   valkey-skip: PT10S
 
+rate-limit:
+  # Each public action's limit per client address, in fixed windows (spec 6.6). Q9: a person paging
+  # and changing filters stays well under 60 searches a minute; each re-price calls the providers
+  # (the look-to-book cost, spec 6.2), so it has 10 a minute, on its own counter. Every action needs
+  # a limit of at least 1 request in a window of at least 1 ms: see RateLimitProperties.
+  actions:
+    search:
+      requests: 60
+      window: PT1M
+    reprice:
+      requests: 10
+      window: PT1M
+
 ingestion:
   # A run that would build more itineraries publishes nothing (R7).
   max-itineraries: 2000000
