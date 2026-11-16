@@ -4,26 +4,34 @@ Extras the implementers and reviewers proposed while plans 5 and 6 were built, a
 
 Extras that a review turned into a finding are not here: they are fixed in the closing rounds of their plan.
 
+## Built on 2026-11-16 (G1)
+
+The user decided on 2026-11-16, about 15:05, to build these before delivery; they left the tables below. Each is described where it now lives: [Search API](../architecture/search-api.md), the [OpenAPI contract](../architecture/openapi.json) and the [README](../../README.md); the red → green evidence is in [the day's progress report](progress/2026-11-15-observability-and-delivery.md#g1--evidence).
+
+- Refuse unknown query parameters on the search: a `400` problem naming each one and listing the parameters it takes (plan 5 Task 9).
+- Problem details for every error Spring MVC answers itself, `spring.mvc.problemdetails.enabled` (Task 9).
+- An exact `ProblemDetail` schema: `title`, `status`, `detail` and `instance` (a URI reference), all required (Task 9).
+- Contract metadata: title, version, description and one relative server, `/` (Task 9).
+- `currency` as the enum `["EUR"]` (Task 9).
+- The rate limits as configuration properties, `rate-limit.actions.<action>.requests` and `.window`, validated (Task 10).
+- A startup check that every rate-limited action has a limit (Task 10).
+- A README sentence naming the rate limits (Task 10).
+- A README line on Swagger UI's "Authorize" button (E2).
+- `503` with `Retry-After` when no pooled database connection frees within the wait, by the existing mapping of a read cut at 2 s (plan 5 closing round 1; the wait is 2 s since the re-review, not the row's 1 s).
+
+Also built in G1, though not a backlog row: an anonymous `HEAD /api/itineraries` is answered as the public search it is (spec §6.6), where it was a `401`. The row "E3, airport and airline suggestions" is gone from plan 6's table: E3 was built on 2026-11-16.
+
 ## Plan 5, search API
 
 | Extra | Proposed by | Value | Cost |
 |---|---|---|---|
-| Refuse unknown query parameters (a misspelt `orign=MAD` gives an unfiltered search today) | Task 9 | a client's typo is caught | one check, tests |
-| Problem details for every framework error (`spring.mvc.problemdetails.enabled`) | Task 9 | one error format everywhere | a property, tests |
-| An exact `ProblemDetail` schema (the contract lists a `properties` member Spring never writes) | Task 9 | a truthful contract | a springdoc customizer |
-| Contract metadata: title and server (today springdoc's default and `http://localhost`) | Task 9 | a readable contract | a few lines |
-| `currency` as the enum `["EUR"]` | Task 9 | a stricter contract | one annotation |
 | A `oneOf` re-price contract with a discriminator on `outcome` | Task 10 | a true union type in the dashboard | a springdoc customizer, regenerated types |
-| The rate limits as configuration properties instead of constants in `WebConfig` | Task 10 | tunable without a build | properties, validation |
-| A startup check that every rate-limited action has a limit | Task 10 | fails at start, not on the first request | one check |
-| A README sentence naming the rate limits | Task 10 | documented limits | one line |
 | A `NOTHING_FRESH` refresh logged at WARN, as an empty run is | Task 7 | visible degraded refreshes | one line, one test |
 | Each kept provider's failure reason in a refresh's report | Task 7 | easier diagnosis | report field, log |
 | Refresh metrics (count by outcome, duration) | Task 7 | observability of refreshes | meters, tests |
 | Reschedule the next run from the last run, manual or not | Task 12 | `nextIngestionAt` matches the scheduler | scheduler change |
 | A health other than `UP` before the first run ends | Task 12 | honest health at start | indicator change |
 | Valkey with `--save ""`, so the cache writes no snapshots (the image declares no volume) | Task 13 | no disk writes for a cache | one compose flag |
-| A README line on Swagger UI's "Authorize" button | E2 | admin calls tried from the UI | one line |
 
 ## Plan 6, dashboard
 
@@ -35,7 +43,6 @@ Extras that a review turned into a finding are not here: they are fixed in the c
 | Cache Playwright's browsers in the CI `e2e` job | Task 10 | faster CI | a cache step |
 | Choose the end-to-end browsers with an environment variable (`E2E_BROWSERS`), so `npm run e2e` works where a browser does not start (Firefox on macOS 27) | Task 10 | local runs on any Mac | config, docs |
 | Keep screenshots and traces of failed end-to-end tests | Task 10 | easier diagnosis of CI failures | config, artefacts |
-| E3, airport and airline suggestions in the filters (approved, but needs a catalogue endpoint no task builds) | plan 6 | no IATA codes to know | an endpoint, a combobox, accessibility tests |
 
 **Built on 2026-11-16 (G2)**, by the user's decision of about 15:05, and so out of this table: the focus on the first new card after "Load more"; "+1" on each leg in the open card; the caption on an alternative's legs ("Alternative legs"); "Loading…" on the first status read; no polling after a 403; hours in "Next ingestion in …". The same decision added three points that were not rows here: no immediate retry of a failure with `Retry-After`, the decimal comma read only when there is no dot, and "Ingestion in progress" on the admin screen (`ingestionRunning` in `GET /api/admin/status`). What each does: [`dashboard.md`](../architecture/dashboard.md).
 
@@ -52,7 +59,6 @@ Extras that a review turned into a finding are not here: they are fixed in the c
 | Extra | Proposed by | Value | Cost |
 |---|---|---|---|
 | Order ties of the chosen sort by departure (today by id, so dates jump among equal prices or durations) | plan 6 Task 11 | results read in time order | a second key in the API's ordering, both slots' indexes, the cursor, plan 5's tests |
-| Answer 503 with `Retry-After` when no pooled database connection frees within the 1 s wait (today 500) | plan 5 closing round 1 | an overload reads as "try later", not as a bug | one exception mapping, one test |
 | A counter of refreshes skipped because another one runs | plan 5 closing round 1 | visible refresh pressure | one meter, one test |
 | Register `provider.calls`, `ingestion.runs` and `ingestion.records.discarded` at zero at startup, so `rate` and `increase` see the first run and the Grafana panels drop their `unless … offset 1h` term | plan 7 Task 6 (E-T6-1) | the startup run's provider calls show on the dashboard | production code in three classes, a test each |
 | The log level as a Loki stream label (today only `service_name` is a label; the level is structured metadata, `severity_text` and Loki's `detected_level`, filtered with `\| detected_level="warn"`). Loki promotes only resource attributes to labels, so it needs the Collector's contrib distribution (a `transform` processor) or a resource attribute per level | plan 7 Task 5 | `{service_name="flight-aggregator", level="WARN"}` as a stream selector | a contrib Collector image or extra pipeline config, a test |
