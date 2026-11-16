@@ -838,3 +838,48 @@ The main checkout's stack was left running; a throwaway project `p7t5` ran `app`
 ## Task 5 — the user's answer
 
 The appender's version ("For the user" above): **accepted** by the user on 2026-11-16, `2.28.1-alpha`, recorded as an exception in the plan's Global Constraints.
+
+## Task 7 — evidence
+
+The observability proven end to end against compose, and documented. Branch `worktree-agent-ad7b69291fd00b999`, on `main` `d27071f`. No per-task review (the user's decision of 2026-11-16, about 10:02): the group review covers it.
+
+- **Files:** `frontend/e2e/observability.spec.ts` (six tests) and `frontend/e2e/telemetry.ts` (reads Tempo, Loki and dashboard queries through Grafana's API with no credentials, Prometheus's rules on its own API, and the admin token from Keycloak; each read polls up to 60 s); `frontend/playwright.config.ts` gains the project `observability`, once, in Chromium, after every browser's admin project and before `rate-limit`. Docs: `docs/architecture/observability.md` (new), README "Observability" and its index, `docs/architecture/README.md`, one sentence in `dashboard.md` (the projects' order), spec §6.10 (Q1-A and Q2-A with their rejected options).
+- **The live stack:** a throwaway compose project `p7t7` from this worktree, every published port moved by a scratch override (`ports: !override`; Grafana `33001`, Prometheus `39090`, Keycloak `38180`, frontend `33000`), so the user's running stack was never stopped, restarted or rebuilt. The specs ran against it through a scratch Playwright config that imports the repository's and changes only `baseURL` and paths, plus `GRAFANA_URL`, `PROMETHEUS_URL`, `KEYCLOAK_URL`; `--project observability --no-deps`. Each mutation below changed `app`'s environment through a second override, or a file of this worktree that `p7t7` mounts (never the main checkout's), and was undone with `git checkout` and a restart or recreation.
+
+### Red by mutation, one test at a time
+
+Every test runs over code that already exists, so each was written, run green, then shown red by a mutation of the running stack and green again once restored (plan 7 Global Constraints).
+
+1. **`'shows a search as one trace'`** (a search through nginx with a `traceparent` the test draws at random; Tempo holds the server span `http get /api/itineraries` of `flight-aggregator`, its parent the test's span id).
+   - The plan's mutation, sampling 0 (`MANAGEMENT_TRACING_SAMPLING_PROBABILITY=0`), **left it green**: Boot's sampler is parent-based, so a caller's sampled `traceparent` is recorded whatever the ratio.
+   - Mutation M1b, B3 propagation only (`MANAGEMENT_TRACING_PROPAGATION_TYPE=B3`): red, `Error: No trace 32387cbb4ee8deef69c5c5b7bb85f406 in Tempo after 60 s`. Restored: green.
+2. **`'shows a manual run as one trace with every provider request'`** (`POST /api/admin/ingestions` with the README's client-credentials token, waiting out a 409; the status's generation + 1 is the run's; Loki's `{service_name="flight-aggregator"} |= "Ingestion run ended" | generation = "<n>"` gives the line's `trace_id`; Tempo's trace holds `ingestion.run` and `http get` spans whose `uri` starts with `/alpha/`, `/beta/` and `/gamma/`).
+   - Mutation M1, sampling 0: the run's own trace is not sampled; its line reaches Loki with a trace id Tempo never receives. Red: `Error: No trace 59bbe955087c73110768f5adaa2709d7 in Tempo after 60 s`. Restored: green.
+   - Two failures on the way, neither about the behaviour: recreating `app` mid-run left its ShedLock row locked for 29 minutes (`LOCK_AT_MOST_FOR`, as designed; released in the throwaway database, and `app` recreated only with no run in flight from then on); and a run took 2 min 36 s on this Mac with two stacks up, so the test waits up to 240 s for a run (CI runs one stack, about half a minute).
+   - A real flaw found and fixed: the trace was read before its parent span arrived (`Expected value: "ingestion.run"`, `Received array: ["http get", …]`); spans reach Tempo in batches as they end. `tempoTrace(traceId, holding)` polls until the trace holds the named span, which ends after the spans under it.
+3. **`'jumps from a log line to its trace in Grafana'`** (Chromium, no sign-in: Explore on Loki, the run's line, its "View trace" link, the trace view shows `ingestion.run`). Mutation M2, the plan's: the derived field's `datasourceUid` → `no-such-tempo`, Grafana restarted. Red: `expect(locator).toBeVisible() failed`, `getByText('ingestion.run')`, `element(s) not found`. Restored: green.
+4. **`'keeps ids out of Loki's labels'`** (Loki's labels, read once `service_name` is among them, hold none of `trace_id`, `span_id`, `correlation_id`). Mutation M3: Loki's `limits_config.otlp_config.log_attributes` indexes `correlation.id` as a label; after a manual run the labels were `["correlation_id","service_name"]`. Red: `+ Array [ "correlation_id" ]`. Restored, Loki recreated (its index kept the label for the stored logs): labels `["service_name"]`, green.
+5. **`'loads the alert rules, none firing on a healthy stack'`** (the rule names are exactly `IngestionFailing`, `PartitionHorizonShort`, `ProviderDataStale`, `RowsInDefaultPartition`; every health `ok`; none `firing`, `pending` allowed). Mutation M4: `PartitionHorizonShort`'s `< 34` → `< 340`, Prometheus restarted. Red: `+ "name": "PartitionHorizonShort"`, `+ "state": "firing"`.
+   - Found by re-running M4 right after Prometheus's restart: **green with the mutation in place**, because each rule had been evaluated once before Prometheus scraped the app. The test now waits for the app's gauge through Grafana, then `alertRules(since)` polls until every rule's `lastEvaluation` is after that moment. M4 again, run at once after the restart: red (`"state": "firing"`). Restored: green.
+6. **`'feeds every dashboard panel'`** (two identical searches; every target of every panel of `flight-aggregator`, run through Grafana's `/api/ds/query` over the last hour, all at once, each polled until it returns a series with a value). Mutation M5: the Cache hit ratio's `{result="hit"}` → `{result="hits"}` (a stored name, which `GrafanaProvisioningTest` cannot see; only the data can), Grafana restarted. Red after the minute: `+ Array [ "Cache hit ratio/A" ]`. Restored: green.
+
+The six together on the restored stack, on the final files: `6 passed (1.1m)` (search 6.2 s, manual run 43.9 s, jump 2.2 s, labels 5 ms, rules 14.1 s waiting for a fresh evaluation, panels 222 ms).
+
+### Deviations from the plan's wording
+
+- **Test 1's mutation is B3 propagation, not sampling 0**, which cannot turn a caller-sampled trace red (above); sampling 0 is test 2's mutation instead, where the app starts the trace.
+- **`telemetry.ts` has more than the four functions the plan names:** `lokiLabels`, `lokiExploreUrl`, `alertRules` and `dashboardPanels` serve tests 3–6; `tempoTrace` takes the span to wait for (above). Prometheus's rules are read on its own API (the plan's "Prometheus `/api/v1/rules`"), the rest through Grafana.
+- **The addresses have environment overrides** (`GRAFANA_URL`, `PROMETHEUS_URL`, `KEYCLOAK_URL`, and `ADMIN_SERVICE_CLIENT_SECRET` as compose reads it), defaulting to compose's, so the project ran against `p7t7` here. `baseURL` stays fixed in the config; making it an environment variable is in the extras backlog.
+- **The whole suite was not run here:** on `p7t7` the admin specs would sign in through `/config.json`'s Keycloak, `localhost:8180`, the user's stack. CI's `e2e` job runs the whole order (admin ×3, observability, rate-limit) on the push.
+
+### Concerns
+
+- **The approved extras E1 (trace to logs), E2 (database spans), E4 (logs panel and alert list on the dashboard), E5 (HTTP panel) and E7 (`mock-gds` telemetry) are not built by any task**, Task 7 included (its text names none of them). For the controller or the user: build them, or move them to the backlog.
+- The jump test reads the newest run line of the last hour; on a stack whose last run is older (none in CI, where the suite runs minutes after startup) it would wait out its minute and fail.
+
+### Gates
+
+- `npm run verify` in `frontend/`: exit 0 (typecheck, lint, format check, 151 component tests).
+- `./gradlew build`: exit 0, `BUILD SUCCESSFUL`; 1,104 tests, none failed or skipped (no backend change; the test tasks came from the build cache).
+- Self-review (thermo-nuclear) of the diff: `telemetry.ts` regrouped by backend; one `json()` request helper (10 s limit, a non-2xx answer an error naming the URL) instead of three copies; an unused `spanId` removed; a custom `poll` kept because Playwright's `expect.poll` does not return the value it waited for. No existing helper for client-credentials tokens or telemetry reads in `frontend/e2e/`. Nothing fails silently: every read that finds nothing within its minute throws, naming what it waited for; a Grafana query error throws at once.
+- Throwaway stack: `docker compose -p p7t7 … down -v`, exit 0; no container, volume or network of `p7t7` left; the user's `flight-aggregator` stack still running, 11 services, untouched.
