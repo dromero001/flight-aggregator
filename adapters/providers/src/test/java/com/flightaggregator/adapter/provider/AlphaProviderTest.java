@@ -125,8 +125,8 @@ class AlphaProviderTest {
 
   /**
    * A quote asks for room for two records, so a provider that holds two offers of the flight says
-   * so on the page instead of behind a "more" signal; two offers of one flight contradict the
-   * quote, as ingestion's conflicting offers do.
+   * so on the page instead of behind a "more" signal; the brief's rule for a quote is at most one
+   * record, and more than one fails it with {@code MALFORMED_PAGE} (plan 5 Task 2).
    */
   @Test
   void failsAQuoteWithTwoRecordsOfTheFlight() {

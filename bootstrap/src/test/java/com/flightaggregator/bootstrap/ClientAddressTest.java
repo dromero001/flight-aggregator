@@ -23,11 +23,15 @@ import org.testcontainers.utility.DockerImageName;
  * Review Focus 5: the rate limit counts a client under the address Tomcat resolves, on a real
  * server, so that a client cannot pick its own counter with {@code X-Forwarded-For}; only a
  * connection from an internal proxy may say whom it forwards. The test connects from loopback, and
- * reads which counter Valkey holds after one search.
+ * reads which counter Valkey holds after one search. Its Valkey commands get 2 s, not the
+ * application's 250 ms: the first command on each nested class's new connection, its flush or the
+ * search's count, can take longer while every module's containers start at once, and the count
+ * would then fail open, which this test is not about.
  */
 @AggregatorTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     containers = {PostgresContainers.class, ClientAddressTest.Valkey.class})
+@TestPropertySource(properties = "spring.data.redis.timeout=2s")
 class ClientAddressTest {
 
   /** The address a client forwards, as a forging client or a proxy would. */

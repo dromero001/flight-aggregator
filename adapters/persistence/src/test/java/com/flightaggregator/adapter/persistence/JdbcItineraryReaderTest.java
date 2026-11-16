@@ -362,7 +362,7 @@ class JdbcItineraryReaderTest {
               () -> reader.page(EVERYTHING_BY_PRICE, Optional.empty(), 10, NOW));
       // The generation's read takes no lock the refresh holds, so the page's first statement to
       // wait for the refresh is its read of slot b, after it has read the generation.
-      LockWaits.awaitAStatementBlockedBy(jdbc, backendPid(refresh));
+      LockWaits.awaitAStatementBlockedBy(jdbc, LockWaits.backendPid(refresh));
 
       try (Statement statement = refresh.createStatement()) {
         statement.execute("DELETE FROM itinerary_b");
@@ -383,17 +383,9 @@ class JdbcItineraryReaderTest {
     return jdbc.sql(
             "SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend'"
                 + " AND state <> 'idle' AND pid NOT IN (pg_backend_pid(), ?)")
-        .param(backendPid(holder))
+        .param(LockWaits.backendPid(holder))
         .query(Long.class)
         .single();
-  }
-
-  private static int backendPid(Connection connection) throws SQLException {
-    try (Statement statement = connection.createStatement();
-        ResultSet pid = statement.executeQuery("SELECT pg_backend_pid()")) {
-      pid.next();
-      return pid.getInt(1);
-    }
   }
 
   /**
