@@ -7,10 +7,18 @@ import { RunIngestionButton } from './RunIngestionButton';
 import styles from './StatusPage.module.css';
 import { STATUS_REFRESH_MS, useInventoryStatus } from './useInventoryStatus';
 
+/** "18 min", or "1 h 30 min" from an hour on. */
+function hoursAndMinutes(minutes: number): string {
+  if (minutes < 60) {
+    return `${String(minutes)} min`;
+  }
+  return `${String(Math.floor(minutes / 60))} h ${String(minutes % 60)} min`;
+}
+
 /** "Next ingestion in 18 min", or "Next ingestion due" once its time has come (plan 6, Q7). */
 function nextIngestion(at: string, now: Date): string {
   const minutes = minutesUntil(at, now);
-  return minutes > 0 ? `Next ingestion in ${String(minutes)} min` : 'Next ingestion due';
+  return minutes > 0 ? `Next ingestion in ${hoursAndMinutes(minutes)}` : 'Next ingestion due';
 }
 
 /**
