@@ -263,6 +263,17 @@ class FlightAggregatorApplicationTest {
         .containsEntry("tcpKeepAlive", "true");
   }
 
+  /**
+   * A request waits at most 2 s for a pooled connection, not Hikari's 30 s (F-I1), so a health
+   * probe with PostgreSQL out of reach answers DOWN inside compose's 5 s; 2 s, not 1 s, so a burst
+   * that takes every connection for about a second does not fail runs and re-prices (the user's
+   * decision at the re-review of plan 5's closing round 1, N3).
+   */
+  @Test
+  void waitsAtMostTwoSecondsForAPooledConnection() {
+    assertThat(((HikariDataSource) dataSource).getConnectionTimeout()).isEqualTo(2_000);
+  }
+
   /** Boot's own tasks, and the schedule of Task 10 with them, run on virtual threads (§6.1). */
   @Test
   void runsBootsTasksOnVirtualThreads() throws Exception {
