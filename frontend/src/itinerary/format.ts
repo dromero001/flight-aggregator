@@ -48,11 +48,12 @@ export function daysLater(departure: string, arrival: string): number {
 
 /**
  * "+1 day" after an arrival on a later local date than its departure (plan 6 E1; the user's words
- * of 2026-11-16); none otherwise.
+ * of 2026-11-16), "+2 days" two dates later; none otherwise.
  */
 export function laterDayMark(departure: string, arrival: string): string | undefined {
   const days = daysLater(departure, arrival);
-  return days > 0 ? `+${String(days)} day` : undefined;
+  if (days <= 0) return undefined;
+  return days === 1 ? '+1 day' : `+${String(days)} days`;
 }
 
 /** "7h 25m", "45m", "2h". */
