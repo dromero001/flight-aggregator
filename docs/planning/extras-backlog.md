@@ -30,18 +30,14 @@ Extras that a review turned into a finding are not here: they are fixed in the c
 | Extra | Proposed by | Value | Cost |
 |---|---|---|---|
 | `openapi-typescript --check` instead of `schema.test.ts` | Task 2 | one file and a tsconfig exception fewer | the generated file left unformatted |
-| Focus the first new card after "Load more" | Task 5 | keyboard users carry on where new results start | a ref, one test |
-| "+1" on each leg in the open card | Task 6 | next-day legs read right | helper reuse, one test |
-| A caption telling the chosen legs from the alternative's | Task 6 | clearer alternative | copy, one test |
 | Let `npm run dev` sign in (Vite on 3000 with `strictPort`, or the realm allowing 5173) | Task 7 | local sign-in without flags | config line |
 | One shared renewal for concurrent 401s | Task 7 | one renewal instead of two | a shared promise, test |
-| A "Loading…" line on the first status read | Task 8 | no blank screen | one state, one test |
-| Stop polling after a 403 | Task 8 | no request every 10 s for a non-admin | query option, test |
-| Hours in "Next ingestion in N min" for intervals over an hour | Task 8 | readable times | formatter, test |
 | Cache Playwright's browsers in the CI `e2e` job | Task 10 | faster CI | a cache step |
 | Choose the end-to-end browsers with an environment variable (`E2E_BROWSERS`), so `npm run e2e` works where a browser does not start (Firefox on macOS 27) | Task 10 | local runs on any Mac | config, docs |
 | Keep screenshots and traces of failed end-to-end tests | Task 10 | easier diagnosis of CI failures | config, artefacts |
 | E3, airport and airline suggestions in the filters (approved, but needs a catalogue endpoint no task builds) | plan 6 | no IATA codes to know | an endpoint, a combobox, accessibility tests |
+
+**Built on 2026-11-16 (G2)**, by the user's decision of about 15:05, and so out of this table: the focus on the first new card after "Load more"; "+1" on each leg in the open card; the caption on an alternative's legs ("Alternative legs"); "Loading…" on the first status read; no polling after a 403; hours in "Next ingestion in …". The same decision added three points that were not rows here: no immediate retry of a failure with `Retry-After`, the decimal comma read only when there is no dot, and "Ingestion in progress" on the admin screen (`ingestionRunning` in `GET /api/admin/status`). What each does: [`dashboard.md`](../architecture/dashboard.md).
 
 ## Plan 7, observability and delivery
 
