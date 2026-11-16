@@ -462,7 +462,7 @@
         "properties" : {
           "detail" : {
             "type" : "string",
-            "description" : "What went wrong and what to do, naming the parameter at fault"
+            "description" : "What went wrong, and what to do about it"
           },
           "instance" : {
             "type" : "string",

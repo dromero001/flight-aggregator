@@ -108,7 +108,7 @@ export interface components {
     };
     /** @description An RFC 9457 problem: what went wrong with the request */
     ProblemDetail: {
-      /** @description What went wrong and what to do, naming the parameter at fault */
+      /** @description What went wrong, and what to do about it */
       detail: string;
       /**
        * Format: uri-reference

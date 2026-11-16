@@ -30,9 +30,7 @@ public final class ProblemDetailSchema implements OpenApiCustomizer {
     problem.addProperty(
         "title", member("string", "The status's reason phrase, such as \"Bad Request\""));
     problem.addProperty("status", status);
-    problem.addProperty(
-        "detail",
-        member("string", "What went wrong and what to do, naming the parameter at fault"));
+    problem.addProperty("detail", member("string", "What went wrong, and what to do about it"));
     problem.addProperty("instance", instance);
     problem.setRequired(List.copyOf(problem.getProperties().keySet()));
     openApi.getComponents().addSchemas(NAME, problem);
