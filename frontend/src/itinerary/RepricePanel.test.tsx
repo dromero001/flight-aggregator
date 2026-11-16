@@ -76,6 +76,21 @@ test('shows a confirmed price with Select', async () => {
   expect(within(panel).getByRole('button', { name: 'Select' })).toBeInTheDocument();
 });
 
+test('says the price changed when the confirmed price is not the one the card showed', async () => {
+  // A cached search page still shows €412.60; another customer's re-price already stored €431.00,
+  // so the API confirms €431.00 against its own row (final review, code I2).
+  const panel = await openCard(() =>
+    HttpResponse.json({
+      outcome: 'CONFIRMED',
+      itinerary: connecting({ price: { amount: '431.00', currency: 'EUR' } }),
+    }),
+  );
+
+  expect(
+    await within(panel).findByText('Price changed: was €412.60, now €431.00'),
+  ).toBeInTheDocument();
+});
+
 test('shows how fresh a confirmed price is', async () => {
   // The search quoted it ten minutes before `now`; the re-price confirmed it at `now`.
   await openCard(() =>

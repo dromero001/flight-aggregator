@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ApiError, rateLimitWait } from '../api/apiError';
-import type { RepriceResponse } from '../api/types';
+import type { Itinerary, RepriceResponse } from '../api/types';
 import { price } from './format';
 import { LegList } from './LegList';
 import styles from './RepricePanel.module.css';
@@ -29,8 +29,8 @@ function failure(error: Error): string {
   return CANNOT_CONFIRM;
 }
 
-/** The sentence for a price the API has just confirmed (Q5-A). */
-function confirmation(response: RepriceResponse): string {
+/** The sentence for a price the API has just confirmed (Q5-A), against the price the card showed. */
+function confirmation(response: RepriceResponse, shown: Itinerary['price']): string {
   const now = price(response.itinerary.price.amount);
   if (response.outcome === 'PRICE_CHANGED') {
     // The contract sends the price shown before with this outcome only, and marks it optional.
@@ -39,15 +39,23 @@ function confirmation(response: RepriceResponse): string {
       ? `Price changed: was ${price(before.amount)}, now ${now}`
       : `Price changed: now ${now}`;
   }
+  // The API confirms against its stored price, which a cached page may not show yet (final
+  // review, code I2): for the customer, a price other than the card's has changed.
+  const before = price(shown.amount);
+  if (response.outcome === 'CONFIRMED' && before !== now) {
+    return `Price changed: was ${before}, now ${now}`;
+  }
   return `Price confirmed: ${now}`;
 }
 
 interface RepricePanelProps {
   result: Reprice;
+  /** The price the card showed when it was opened. */
+  shownPrice: Itinerary['price'];
 }
 
 /** What the re-price of an opened card answered (spec 6.5 and 6.8; plan 6, Q5-A). */
-export function RepricePanel({ result }: RepricePanelProps) {
+export function RepricePanel({ result, shownPrice }: RepricePanelProps) {
   const { data, error, isPending } = result;
   // Booking is out of scope (spec 6.8): "Select" goes no further, and says so (plan 6 E8).
   const [selected, setSelected] = useState(false);
@@ -64,7 +72,7 @@ export function RepricePanel({ result }: RepricePanelProps) {
             </>
           )}
           <div className={styles.offer}>
-            <p>{confirmation(data)}</p>
+            <p>{confirmation(data, shownPrice)}</p>
             <button
               className={styles.select}
               type="button"
