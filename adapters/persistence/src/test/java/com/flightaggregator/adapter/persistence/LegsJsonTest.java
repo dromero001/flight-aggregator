@@ -46,6 +46,12 @@ class LegsJsonTest {
           BETA,
           Instant.parse("2026-11-15T09:59:00Z"));
 
+  /** One leg as {@code write} gives it, to be broken one property at a time. */
+  private static final String LEG =
+      "{\"carrier\":\"IB\",\"flightNumber\":3166,\"origin\":\"MAD\",\"destination\":\"LHR\","
+          + "\"departure\":\"2026-11-20T08:15:00+01:00\",\"arrival\":\"2026-11-20T09:30:00+00:00\","
+          + "\"price\":\"129.90\",\"provider\":\"ALPHA\",\"quotedAt\":\"2026-11-15T10:00:00Z\"}";
+
   @Test
   void roundTripsLegsExactly() {
     List<Leg> legs = List.of(MAD_LHR, LHR_JFK);
@@ -75,12 +81,6 @@ class LegsJsonTest {
     assertThatThrownBy(() -> LegsJson.read("{\"carrier\":\"IB\"}", JSON))
         .isInstanceOf(IllegalStateException.class);
   }
-
-  /** One leg as {@code write} gives it, to be broken one property at a time. */
-  private static final String LEG =
-      "{\"carrier\":\"IB\",\"flightNumber\":3166,\"origin\":\"MAD\",\"destination\":\"LHR\","
-          + "\"departure\":\"2026-11-20T08:15:00+01:00\",\"arrival\":\"2026-11-20T09:30:00+00:00\","
-          + "\"price\":\"129.90\",\"provider\":\"ALPHA\",\"quotedAt\":\"2026-11-15T10:00:00Z\"}";
 
   @Test
   void failsOnAMissingProperty() {

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import com.flightaggregator.adapter.persistence.support.ItinerarySlots;
+import com.flightaggregator.adapter.persistence.support.LockWaits;
 import com.flightaggregator.adapter.persistence.support.OneSession;
 import com.flightaggregator.adapter.persistence.support.PostgresTestDatabase;
 import com.flightaggregator.application.port.in.SearchCriteria;
@@ -258,22 +259,6 @@ class JdbcItineraryReaderTest {
     assertThat(reader.state()).isEqualTo(new InventoryState(2, Optional.of(secondRun)));
   }
 
-  /** Waits until a page's read of slot b waits for a lock, after it has read the generation. */
-  private void awaitThePageWaitingForSlotB() throws InterruptedException {
-    Instant deadline = Instant.now().plusSeconds(10);
-    while (jdbc.sql(
-                "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock'"
-                    + " AND query LIKE 'SELECT legs FROM itinerary_b %'")
-            .query(Long.class)
-            .single()
-        == 0) {
-      if (Instant.now().isAfter(deadline)) {
-        throw new AssertionError("no page waited for slot b");
-      }
-      Thread.sleep(20);
-    }
-  }
-
   /**
    * A refresh (Q2-B) deletes rows of the active slot and bumps the generation in one transaction. A
    * page that read the generation before the refresh committed still reads that generation's rows,
@@ -293,7 +278,9 @@ class JdbcItineraryReaderTest {
       CompletableFuture<StoredPage> page =
           CompletableFuture.supplyAsync(
               () -> reader.page(EVERYTHING_BY_PRICE, Optional.empty(), 10, NOW));
-      awaitThePageWaitingForSlotB();
+      // The generation's read takes no lock the refresh holds, so the page's first statement to
+      // wait for the refresh is its read of slot b, after it has read the generation.
+      LockWaits.awaitAStatementBlockedBy(jdbc, backendPid(refresh));
 
       try (Statement statement = refresh.createStatement()) {
         statement.execute("DELETE FROM itinerary_b");
@@ -311,18 +298,20 @@ class JdbcItineraryReaderTest {
    * state is what tells.
    */
   private long busyBackendsBesides(Connection holder) throws SQLException {
-    int holderPid;
-    try (Statement statement = holder.createStatement();
-        ResultSet pid = statement.executeQuery("SELECT pg_backend_pid()")) {
-      pid.next();
-      holderPid = pid.getInt(1);
-    }
     return jdbc.sql(
             "SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend'"
                 + " AND state <> 'idle' AND pid NOT IN (pg_backend_pid(), ?)")
-        .param(holderPid)
+        .param(backendPid(holder))
         .query(Long.class)
         .single();
+  }
+
+  private static int backendPid(Connection connection) throws SQLException {
+    try (Statement statement = connection.createStatement();
+        ResultSet pid = statement.executeQuery("SELECT pg_backend_pid()")) {
+      pid.next();
+      return pid.getInt(1);
+    }
   }
 
   /**

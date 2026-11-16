@@ -45,7 +45,9 @@ public final class ValkeyFailures {
   /**
    * Valkey's breaker (plan 5, the user's decision of 2026-11-15): one failed command opens it, it
    * skips Valkey for {@code skip}, then lets one call probe it. It starts as if probing, so the
-   * first call goes alone as well. Only Valkey's failures count against it.
+   * first call goes alone as well. Only Valkey's failures count against it: {@link #call} reports
+   * nothing but a {@code DataAccessException} as an error, and gives any other throwable's
+   * permission back, so the breaker classifies nothing itself.
    */
   public static CircuitBreakerConfig circuitBreakerConfig(Duration skip) {
     return CircuitBreakerConfig.custom()
@@ -54,7 +56,6 @@ public final class ValkeyFailures {
         .waitDurationInOpenState(skip)
         .permittedNumberOfCallsInHalfOpenState(1)
         .initialState(CircuitBreaker.State.HALF_OPEN)
-        .recordExceptions(DataAccessException.class)
         .build();
   }
 

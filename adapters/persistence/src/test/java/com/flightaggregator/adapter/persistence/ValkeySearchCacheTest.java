@@ -1,6 +1,7 @@
 package com.flightaggregator.adapter.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.tuple;
 
 import ch.qos.logback.classic.Level;
@@ -207,6 +208,32 @@ class ValkeySearchCacheTest {
     assertThat(valkey.getExpire(key.value(), TimeUnit.MILLISECONDS)).isBetween(298_000L, 300_000L);
   }
 
+  /**
+   * A time to live under a millisecond is Valkey's zero, an expiry it refuses: the page is not
+   * sent, so the refusal is not taken for an outage that would skip Valkey for every store sharing
+   * its failures.
+   */
+  @Test
+  void sendsNoPageWhoseTimeToLiveIsUnderAMillisecond() {
+    ValkeyFailures shared =
+        new ValkeyFailures(
+            CircuitBreaker.of(
+                "valkey", ValkeyFailures.circuitBreakerConfig(Duration.ofSeconds(10))));
+    ValkeySearchCache underAMillisecond =
+        new ValkeySearchCache(
+            valkey, new JsonFactory(), Duration.ofNanos(500_000), shared, meters, clock::instant);
+    ValkeySearchCache sharingItsFailures =
+        new ValkeySearchCache(valkey, new JsonFactory(), TTL, shared, meters, clock::instant);
+    SearchKey dropped = new SearchKey(4, FROM_MADRID, 20);
+    SearchKey kept = new SearchKey(5, FROM_MADRID, 20);
+
+    underAMillisecond.put(dropped, new SearchPage(List.of(), Optional.empty(), false));
+    sharingItsFailures.put(kept, new SearchPage(List.of(), Optional.empty(), false));
+
+    assertThat(valkey.hasKey(dropped.value())).isFalse();
+    assertThat(valkey.hasKey(kept.value())).isTrue();
+  }
+
   /** A new generation finds none of the pages of the one before it (§6.2). */
   @Test
   void keysDifferByGeneration() {
@@ -292,7 +319,8 @@ class ValkeySearchCacheTest {
   /**
    * That WARN's episode lasts the cache's time to live, the longest a page written in another
    * format can still be found. The first page that cannot be read after it is a WARN again, which
-   * counts the ones that were not logged.
+   * counts the ones that were not logged and says when the episode they belong to began, so the
+   * count is not read as the new WARN's own.
    */
   @Test
   void warnsAgainOnceItsTimeToLiveHasPassedCountingTheOnesNotLogged() {
@@ -311,7 +339,11 @@ class ValkeySearchCacheTest {
         .extracting(ILoggingEvent::getLevel, ILoggingEvent::getKeyValuePairs)
         .containsExactly(
             tuple(Level.WARN, List.of(new KeyValuePair("unloggedRepeats", 0L))),
-            tuple(Level.WARN, List.of(new KeyValuePair("unloggedRepeats", 3L))));
+            tuple(
+                Level.WARN,
+                List.of(
+                    new KeyValuePair("unloggedRepeats", 3L),
+                    new KeyValuePair("unloggedSince", START))));
   }
 
   /** Valkey down, a lookup is a miss, counted as an error rather than a miss (§6.2). */
@@ -325,14 +357,22 @@ class ValkeySearchCacheTest {
     assertThat(lookups("hit") + lookups("miss")).isZero();
   }
 
-  /** Valkey down, a page is not kept, and the search that read it goes on (§6.2). */
+  /**
+   * Valkey down, a page is not kept, and the search that read it goes on (§6.2): the write neither
+   * throws nor holds the search past the outage bound, which {@code whileDown} asserts.
+   */
   @Test
   void dropsAPageWhileValkeyIsDown() {
     SearchKey key = new SearchKey(4, FROM_MADRID, 20);
     cache.get(key);
 
-    ValkeyTestServer.whileDown(
-        () -> cache.put(key, new SearchPage(List.of(MADRID_PARIS), Optional.empty(), false)));
+    assertThatNoException()
+        .isThrownBy(
+            () ->
+                ValkeyTestServer.whileDown(
+                    () ->
+                        cache.put(
+                            key, new SearchPage(List.of(MADRID_PARIS), Optional.empty(), false))));
   }
 
   private double lookups(String result) {

@@ -1,6 +1,7 @@
 package com.flightaggregator.adapter.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.tuple;
 
 import ch.qos.logback.classic.Level;
@@ -156,7 +157,11 @@ class ValkeyRefreshCoordinationTest {
         .extracting(ILoggingEvent::getLevel, ILoggingEvent::getKeyValuePairs)
         .containsExactly(
             tuple(Level.WARN, List.of(new KeyValuePair("unloggedRepeats", 0L))),
-            tuple(Level.WARN, List.of(new KeyValuePair("unloggedRepeats", 1L))));
+            tuple(
+                Level.WARN,
+                List.of(
+                    new KeyValuePair("unloggedRepeats", 1L),
+                    new KeyValuePair("unloggedSince", Instant.parse("2026-11-20T10:00:00Z")))));
   }
 
   /** Valkey down, no caller gets a claim, so no refresh starts until it is back (§6.2). */
@@ -175,12 +180,18 @@ class ValkeyRefreshCoordinationTest {
     assertThat(ValkeyTestServer.whileDown(() -> coordination.refreshedAt(MADRID))).isEmpty();
   }
 
-  /** Valkey down, a finished refresh is not recorded, and the refresh still ends normally. */
+  /**
+   * Valkey down, a finished refresh is not recorded, and the refresh still ends normally: the write
+   * neither throws nor holds it past the outage bound, which {@code whileDown} asserts.
+   */
   @Test
   void dropsARefreshWhileValkeyIsDown() {
     coordination.refreshedAt(MADRID);
 
-    ValkeyTestServer.whileDown(
-        () -> coordination.refreshed(MADRID, Instant.parse("2026-11-20T10:00:00Z")));
+    assertThatNoException()
+        .isThrownBy(
+            () ->
+                ValkeyTestServer.whileDown(
+                    () -> coordination.refreshed(MADRID, Instant.parse("2026-11-20T10:00:00Z"))));
   }
 }

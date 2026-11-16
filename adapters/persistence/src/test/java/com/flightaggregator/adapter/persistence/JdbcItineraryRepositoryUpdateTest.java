@@ -40,6 +40,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -236,6 +237,36 @@ class JdbcItineraryRepositoryUpdateTest {
   }
 
   /**
+   * The refused lock has aborted the update's transaction, so the update marks it for rollback
+   * itself instead of committing it and leaning on the server turning that commit into a rollback,
+   * which a driver may be configured to raise as an error. Read in an enclosing transaction, which
+   * the update joins.
+   */
+  @Test
+  void marksItsTransactionForRollbackWhenItAnswersBusy() throws SQLException {
+    Itinerary chosen = direct(1, "2026-11-25T07:15:00Z");
+    publish(NOW, List.of(chosen));
+    try (Connection run = dataSource.getConnection()) {
+      run.setAutoCommit(false);
+      try (Statement statement = run.createStatement()) {
+        statement.execute("SELECT active_slot FROM inventory_publication FOR UPDATE");
+      }
+
+      boolean markedForRollback =
+          enclosing.execute(
+              status -> {
+                repository.updateInPlace(requoted(chosen, "120.00"));
+                boolean marked = status.isRollbackOnly();
+                status.setRollbackOnly();
+                return marked;
+              });
+
+      run.rollback();
+      assertThat(markedForRollback).isTrue();
+    }
+  }
+
+  /**
    * Only a refused lock means a run holds the publication row: an update that cannot read the row
    * for any other reason fails instead of answering busy. Here the row is deleted inside the
    * enclosing transaction, which always rolls back, so the row is back for the next test even if
@@ -255,6 +286,35 @@ class JdbcItineraryRepositoryUpdateTest {
                       repository.updateInPlace(requoted(chosen, "120.00"));
                     }))
         .isInstanceOf(IncorrectResultSizeDataAccessException.class);
+
+    assertThat(published(jdbc)).isEqualTo(new Published("b", 1, NOW));
+    assertThat(storedPrice("itinerary_b", chosen)).isEqualByComparingTo("105.00");
+  }
+
+  /**
+   * The database's own refusal of the row's read, here an unknown table (SQLState {@code 42P01}),
+   * is an error too: only {@code lock_not_available} ({@code 55P03}) means busy. The table is
+   * renamed inside the enclosing transaction, which always rolls back.
+   */
+  @Test
+  void failsAnUpdateWhoseReadOfThePublicationTheDatabaseRefuses() {
+    Itinerary chosen = direct(1, "2026-11-25T07:15:00Z");
+    publish(NOW, List.of(chosen));
+
+    assertThatThrownBy(
+            () ->
+                enclosing.executeWithoutResult(
+                    status -> {
+                      status.setRollbackOnly();
+                      jdbc.sql("ALTER TABLE inventory_publication RENAME TO renamed_publication")
+                          .update();
+                      repository.updateInPlace(requoted(chosen, "120.00"));
+                    }))
+        .isInstanceOfSatisfying(
+            DataAccessException.class,
+            failure ->
+                assertThat(((SQLException) failure.getMostSpecificCause()).getSQLState())
+                    .isEqualTo("42P01"));
 
     assertThat(published(jdbc)).isEqualTo(new Published("b", 1, NOW));
     assertThat(storedPrice("itinerary_b", chosen)).isEqualByComparingTo("105.00");
