@@ -582,3 +582,67 @@ One double reviewer (functional, then code), 2026-11-16 about 08:00, on `2e4839c
 | C2 | `deploy/prometheus/prometheus.yaml:22` | The scrape target's 8079 copies `application.yaml:87`; no test ties them | A small assertion, or Task 7's end-to-end run owns it |
 
 The implementer's points, as judged: the hand-written management-server check in `SecurityConfig` is kept (Boot's `toAnyEndpoint()` would open `/actuator/**` on the API port if both servers ever shared a port); `EXPOSE 8080` stays as is (an exposed 8079 would be published by `docker run -P`); plan 5 closing round 1's `HealthWithoutPostgresTest` moves to `/health` on the API port (not the management port), and its Hikari setting in `application.yaml` is merged by hand, whichever lands second.
+
+## Task 6 — evidence
+
+One dashboard, uid `flight-aggregator`, title "Flight aggregator", provisioned from `deploy/grafana/dashboards/flight-aggregator.json` by a file provider (`deploy/grafana/provisioning/dashboards/dashboards.yaml`, `allowUiUpdates: false`, `disableDeletion: true`). Its seven panels read Prometheus (datasource uid `prometheus`) with the names Task 2 recorded, and combine instances as the alert rules do.
+
+| Panel | Query | Display |
+|---|---|---|
+| Provider calls | `sum by (provider, outcome) (rate(provider_calls_total[$__rate_interval]))` | time series, calls per second |
+| Circuit breakers | `max by (name, state) (resilience4j_circuitbreaker_state) == 1` | one tile per provider and current state; green closed, orange half open, red open or forced open |
+| Data freshness | `min by (provider) (ingestion_provider_last_fresh_seconds)` | one tile per provider; red from 5,400 s (`ProviderDataStale`, Q4) |
+| Ingestion | runs in the last hour by outcome; `max by (outcome) (ingestion_duration_seconds_max)`; `max(ingestion_consecutive_failures)` | time series: the duration on the left axis with a red line at 1,800 s (the 30-minute cadence, §6.4); runs and failures in a row on the right |
+| Cache hit ratio | `sum(increase(search_cache_total{result="hit"}[1h])) / sum(increase(search_cache_total[1h]))` | time series, hits over hits, misses and errors in the last hour |
+| Discarded records | records discarded in the last hour by provider and reason | time series |
+| Partitions | `max(ingestion_partitions_days_ahead)`, `max(ingestion_partitions_default_rows)` | two tiles; red below 34 days and from 1 row, as the alerts fire (Q4) |
+
+### Red → green, one test at a time
+
+1. **`GrafanaProvisioningTest.loadsTheDashboardWithItsSevenPanels`** (`/api/dashboards/uid/flight-aggregator` as the anonymous Viewer: title "Flight aggregator", the seven titles in the plan's order).
+   - Red: `[{"message":"Dashboard not found","title":"Not found"}] expected: 200 but was: 404`.
+   - Green: the provider file, the dashboard file, the test's container gets `deploy/grafana/dashboards` at `/etc/grafana/dashboards` as compose mounts it, and compose mounts it read-only. `GrafanaProvisioningTest`: 8 tests, none failed.
+2. **`everyPanelQueriesAKnownMetric`** (every panel has a query; each expression names at least one metric, and only names of Task 2's recorded list, held in `StoredMetrics.NAMES`: 167 names, 167 distinct).
+   - Passed on its first run.
+   - Mutation M1, `rate(provider_call_total…`: `[metrics of Provider calls that Prometheus does not store: sum by (provider, outcome) (rate(provider_call_total[$__rate_interval]))] Expecting empty but was: ["provider_call_total"]`. Restored.
+   - Mutation M2, the name after `unless`, before `offset 1h`, misspelt (`ingestion_records_discard_total`): `Expecting empty but was: ["ingestion_records_discard_total"]`. Restored.
+   - Refactor (green to green): both tests read the dashboard through one helper; the recorded names and the PromQL reading moved to `StoredMetrics` beside the test. Mutation M3 after it, `max(ingestion_partition_days_ahead)`: `[metrics of Partitions that Prometheus does not store: max(ingestion_partition_days_ahead)] Expecting empty but was: ["ingestion_partition_days_ahead"]`. Restored; 9 tests, none failed.
+
+### The run (Step 3)
+
+Compose project `p7t6`, every published port moved to `127.0.0.1:38xxx` by a scratch override file (`ports: !override`), since other stacks share the host; Grafana on `38301`, the API on `38080`.
+- `docker compose -p p7t6 … up --build -d --wait`: exit 0 in 46 s, every service healthy. The startup run ended at 08:02:58.
+- As the anonymous Viewer, the dashboard's API answers `provisioned: true`, `canSave: false`, `canEdit: true` (Q1-A's `viewers_can_edit`: a change on screen, never saved), seven panels.
+- Two identical searches, `GET /api/itineraries?origin=MAD&destination=JFK`: 200 in 0.215 s, then 200 in 0.016 s; the scrape shows `search_cache_total` miss 1, hit 1, error 0.
+- A manual run with the README's client-credentials token: `POST /api/admin/ingestions` answered 409 at 08:03:08, as designed (the startup run holds the lock for at least one minute, `IngestionJob.SCHEDULED_LOCK_AT_LEAST_FOR`), then 202 at 08:05:17; it ended within a minute, `ingestion_duration_seconds_max{outcome="PUBLISHED"}` 56.3 s.
+- Each panel's queries through Grafana's `/api/ds/query` with no credentials, over the last hour: **every one returned data.** Provider calls: three series, peaking at 0.022 calls/s during the manual run. Circuit breakers: `ALPHA: closed`, `BETA: closed`, `GAMMA: closed`. Data freshness: about 95 s for each provider. Ingestion: runs `PUBLISHED` 2, duration 56.3 s, failed runs in a row 0. Cache hit ratio: 0.5. Discarded records: 12 series (3 providers × 4 reasons), each twice one run's count (for example Alpha `PRICE` 26 = 2 × 13). Partitions: 37 days ahead, 0 rows in `DEFAULT`.
+- A screenshot for the user, kept out of git: `.superpowers/sdd/2026-11-15-observability-and-delivery/task-6-screens/dashboard.png` (headless Chrome with a throwaway profile, kiosk mode, the last 30 minutes).
+- The names Prometheus stored this time: 173, Task 2's 167 plus six `spring_security_authentications_*` (an authenticated admin call, which Task 2's run did not make). None of the 167 was missing.
+- `down -v`: exit 0; no container, volume or network of `p7t6` left.
+
+### Deviations from the plan's wording
+
+- **`compose.yaml` gains one line** (not in the task's file list): Grafana mounts `./deploy/grafana/dashboards` at `/etc/grafana/dashboards`, read-only, where the provider reads it. The dashboard cannot load without it.
+- **The recorded names are a constant of `StoredMetrics`, beside the test,** not of `GrafanaProvisioningTest` itself: 160 lines of names and the PromQL reading are one concept of their own, and `GrafanaProvisioningTest` is shared with Tasks 1, 5 and 8, so it keeps only the two tests and the mount. Task 8's JVM dashboard can use the same check.
+- **Runs and discarded records count a new counter in full.** `ingestion.runs` and `ingestion.records.discarded` are created on their first increment, and `increase` ignores what a series held when Prometheus first saw it, so the startup run would never count. Their panels add `(x unless x offset 1h)`, the series that did not exist an hour ago, at their full value; the run's "runs 2" shows the startup run counted.
+- **The duration is `ingestion_duration_seconds_max`:** the timers have no buckets, and Micrometer's max holds a run's duration for its rolling window (about two minutes), so each run is a spike of its own length against the 1,800 s line.
+- **Colours follow Q4's alert values** (freshness, days ahead, `DEFAULT` rows) instead of Grafana's default thresholds, which turn anything above 80 red, a healthy 95-second freshness included.
+
+### Concerns
+
+- **Provider calls use `rate`, which misses a counter's first increment** for the same reason: `provider.calls` is created on first use, so the startup run's calls do not show; from the second run on they do. Counting from zero would mean registering the meters at zero at startup, in production code (see Extras).
+- **The recorded list will drift.** Tasks 4 and 5 add tracing and log export; a panel that later uses a name they add needs `StoredMetrics.NAMES` updated from a new run, or the test fails (closed, never silently).
+- **The PromQL reading is a set of regular expressions,** not Prometheus's parser; it errs towards reading more names, so a construct it does not know fails the test rather than passing it.
+
+### Extras for the user to decide
+
+- **E-T6-1. Register the counters at zero at startup** (`provider.calls`, `ingestion.runs`, `ingestion.records.discarded`, for every provider, outcome and reason). Value: `rate` and `increase` see the first run, the dashboard's panels need no `unless … offset` term, and Task 7's e2e reads a series even before a run. Cost: production code in `CountedFlightProvider`, `IngestionMetrics` and `LoggedDiscardedRecords`, and a test each. Left out unless you approve.
+
+### Gates
+
+- Between steps, `GrafanaProvisioningTest` alone (exit 0, 9 tests after Step 2).
+- `./gradlew build` on the final files: `BUILD SUCCESSFUL` (exit 0) in 2 min 25 s, 1,037 tests across the modules (Task 2's 1,035 plus this task's two), none failed or skipped. `frontend/` is not touched.
+- Self-review (thermo-nuclear) of the whole diff:
+  - Grafana's own mechanism: a file provider, read-only, as the datasources are; the test mounts the files where compose does, like Task 1's.
+  - Structure: the recorded names and the PromQL reading moved out of the shared `GrafanaProvisioningTest` into `StoredMetrics` (the test went from 416 lines to 258; `StoredMetrics` 172).
+  - Nothing passes silently: a panel without a query, an expression with no metric name, or a word the reading cannot place each fails the check; Mutations M1 to M3 show it failing on a misspelt name.
