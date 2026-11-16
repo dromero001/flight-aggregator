@@ -3,7 +3,7 @@ import { expect, test } from 'vitest';
 import { adminUser, fakeAuth } from '../test/fakeAuth';
 import { statusReport } from '../test/fixtures';
 import { server } from '../test/server';
-import { adminClient, api } from './client';
+import { adminClient, api, bodyOf } from './client';
 
 const STATUS = '*/api/admin/status';
 const REPORT = statusReport();
@@ -20,6 +20,15 @@ function recordAuthorization(answer: (authorization: string | null) => Response)
   );
   return seen;
 }
+
+test('rejects a 2xx answer without a body', async () => {
+  // Not reachable through the contract; a query must fail rather than render nothing.
+  server.use(http.get('*/api/itineraries', () => new HttpResponse(null, { status: 200 })));
+
+  await expect(bodyOf(api.GET('/api/itineraries'))).rejects.toThrow(
+    'The API answered without a body',
+  );
+});
 
 test('sends the token only to admin calls', async () => {
   const seen = recordAuthorization(() => HttpResponse.json(REPORT));

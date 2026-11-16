@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import type { StatusReport } from '../api/types';
+import { bodyOf } from '../api/client';
 import { useAdminClient } from './adminClientContext';
 
 /** How often the status is read again, so a started run is seen ending (plan 6, Q7). */
@@ -15,13 +16,7 @@ export function useInventoryStatus() {
   const client = useAdminClient();
   return useQuery<StatusReport>({
     queryKey: inventoryStatusKey,
-    queryFn: async () => {
-      const { data } = await client.GET('/api/admin/status');
-      if (data === undefined) {
-        throw new Error('The status answered without a body');
-      }
-      return data;
-    },
+    queryFn: () => bodyOf(client.GET('/api/admin/status')),
     refetchInterval: STATUS_REFRESH_MS,
   });
 }
