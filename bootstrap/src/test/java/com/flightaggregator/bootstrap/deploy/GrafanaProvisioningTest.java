@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -34,6 +35,12 @@ class GrafanaProvisioningTest {
    */
   private static final String PROVISIONING = "../deploy/grafana/provisioning";
 
+  /** Mounted by compose where the dashboards' provider reads them. */
+  private static final String DASHBOARDS = "../deploy/grafana/dashboards";
+
+  /** The dashboard, by the fixed uid its file sets. */
+  private static final String DASHBOARD = "/api/dashboards/uid/flight-aggregator";
+
   private static final JsonMapper JSON = JsonMapper.builder().build();
 
   private static final HttpClient HTTP = HttpClient.newHttpClient();
@@ -46,6 +53,7 @@ class GrafanaProvisioningTest {
       new GenericContainer<>(ObservabilityImages.GRAFANA)
           .withCopyFileToContainer(
               MountableFile.forHostPath(PROVISIONING), "/etc/grafana/provisioning")
+          .withCopyFileToContainer(MountableFile.forHostPath(DASHBOARDS), "/etc/grafana/dashboards")
           .withExposedPorts(3000)
           .waitingFor(Wait.forHttp("/api/health").forPort(3000));
 
@@ -158,6 +166,46 @@ class GrafanaProvisioningTest {
   }
 
   /**
+   * One dashboard with every metric the spec promises (spec 6.10; plan 7 Task 6), read as the
+   * anonymous Viewer reads it.
+   */
+  @Test
+  void loadsTheDashboardWithItsSevenPanels() throws IOException, InterruptedException {
+    JsonNode dashboard = dashboard();
+
+    assertThat(dashboard.path("title").asString()).isEqualTo("Flight aggregator");
+    assertThat(dashboard.path("panels").valueStream().map(panel -> panel.path("title").asString()))
+        .containsExactly(
+            "Provider calls",
+            "Circuit breakers",
+            "Data freshness",
+            "Ingestion",
+            "Cache hit ratio",
+            "Discarded records",
+            "Partitions");
+  }
+
+  /**
+   * Each panel's expressions name only metrics Prometheus stores, so a misspelt or renamed meter
+   * leaves no panel silently empty (spec 6.10; plan 7 Task 6).
+   */
+  @Test
+  void everyPanelQueriesAKnownMetric() throws IOException, InterruptedException {
+    for (JsonNode panel : dashboard().path("panels")) {
+      String title = panel.path("title").asString();
+      assertThat(panel.path("targets").valueStream()).as("queries of %s", title).isNotEmpty();
+      for (JsonNode target : panel.path("targets")) {
+        String expression = target.path("expr").asString();
+        Set<String> names = StoredMetrics.namedIn(expression);
+        assertThat(names).as("metrics of %s: %s", title, expression).isNotEmpty();
+        assertThat(names.stream().filter(name -> !StoredMetrics.NAMES.contains(name)))
+            .as("metrics of %s that Prometheus does not store: %s", title, expression)
+            .isEmpty();
+      }
+    }
+  }
+
+  /**
    * Grafana sends anonymous usage statistics to {@code stats.grafana.org} unless {@code [analytics]
    * reporting_enabled} is false (Grafana 13.3's "Configure Grafana", section {@code analytics});
    * the user's decision of 2026-11-15. Grafana shows the setting only to an administrator, and
@@ -180,6 +228,12 @@ class GrafanaProvisioningTest {
     assertThat(composeEnvironment("grafana"))
         .containsEntry("GF_ANALYTICS_CHECK_FOR_UPDATES", "false")
         .containsEntry("GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES", "false");
+  }
+
+  private static JsonNode dashboard() throws IOException, InterruptedException {
+    HttpResponse<String> response = send(HttpRequest.newBuilder(uri(DASHBOARD)).GET());
+    assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+    return JSON.readTree(response.body()).path("dashboard");
   }
 
   private static URI uri(String path) {
