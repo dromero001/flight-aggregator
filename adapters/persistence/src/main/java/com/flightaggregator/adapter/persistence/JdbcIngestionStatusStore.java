@@ -11,7 +11,6 @@ import com.flightaggregator.domain.Provider;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
@@ -19,15 +18,15 @@ import java.util.Map;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Keeps each provider's latest run in {@code ingestion_status}, and its discarded records by reason
  * in {@code ingestion_status_discarded} (V7). A run's providers are recorded in one transaction,
  * bounded by {@link StatementTimeout#STORE}, so a failure leaves the previous run's rows whole;
- * they are read back in one read-only transaction at {@code REPEATABLE READ}, whose statements see
- * one snapshot, so a read never mixes two runs.
+ * they are read back in one {@link BoundedSnapshot}, whose statements see one snapshot, so a read
+ * never mixes two runs, and are bounded as a search's are, since the public health probe reads
+ * them.
  */
 public final class JdbcIngestionStatusStore implements IngestionStatusStore {
 
@@ -45,7 +44,7 @@ public final class JdbcIngestionStatusStore implements IngestionStatusStore {
       "SELECT provider, reason, records FROM ingestion_status_discarded";
 
   private final TransactionTemplate transaction;
-  private final TransactionTemplate snapshot;
+  private final BoundedSnapshot snapshot;
   private final JdbcClient jdbc;
 
   /**
@@ -54,9 +53,7 @@ public final class JdbcIngestionStatusStore implements IngestionStatusStore {
    */
   public JdbcIngestionStatusStore(DataSourceTransactionManager transactions) {
     this.transaction = new TransactionTemplate(transactions);
-    this.snapshot = new TransactionTemplate(transactions);
-    this.snapshot.setReadOnly(true);
-    this.snapshot.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+    this.snapshot = new BoundedSnapshot(transactions);
     this.jdbc =
         JdbcClient.create(requireNonNull(transactions.getDataSource(), "the manager's DataSource"));
   }
@@ -93,7 +90,7 @@ public final class JdbcIngestionStatusStore implements IngestionStatusStore {
 
   @Override
   public Optional<LatestRun> latest() {
-    return requireNonNull(snapshot.execute(status -> latestRun()));
+    return snapshot.read(this::latestRun);
   }
 
   /** Each provider's row with the records it discarded, and the end of the latest run. */
@@ -104,7 +101,7 @@ public final class JdbcIngestionStatusStore implements IngestionStatusStore {
             .sorted(Comparator.comparing(ProviderRun::provider))
             .toList();
     return jdbc.sql("SELECT max(finished_at) AS finished_at FROM ingestion_status")
-        .query((rs, rowNum) -> instant(rs, "finished_at"))
+        .query((rs, rowNum) -> ProviderTime.readInstant(rs, "finished_at"))
         .single()
         .map(finishedAt -> new LatestRun(finishedAt, providers));
   }
@@ -132,11 +129,6 @@ public final class JdbcIngestionStatusStore implements IngestionStatusStore {
         Optional.ofNullable(rs.getString("failure")).map(FailureReason::valueOf),
         rs.getInt("offers_used"),
         discarded.getOrDefault(provider, Map.of()),
-        instant(rs, "newest_quoted_at"));
-  }
-
-  private static Optional<Instant> instant(ResultSet rs, String column) throws SQLException {
-    return Optional.ofNullable(rs.getObject(column, OffsetDateTime.class))
-        .map(OffsetDateTime::toInstant);
+        ProviderTime.readInstant(rs, "newest_quoted_at"));
   }
 }
