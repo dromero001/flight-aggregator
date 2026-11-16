@@ -12,7 +12,7 @@ Flight aggregation & cache optimization system: ingests itineraries from three l
 docker compose up --build
 ```
 
-This starts the three mock providers, PostgreSQL, Keycloak (the token issuer of the [admin side](#admin-access)) and the aggregator (`bootstrap/Dockerfile`, `-Xmx512m`). The aggregator ingests the providers at startup, then every 30 minutes, and publishes about one million itineraries into PostgreSQL; the first run takes about 12 to 15 seconds. Its health is on `http://localhost:8080/actuator/health`, published on the loopback interface only. PostgreSQL is not published. How a run works, and what each failure does: [Ingestion](docs/architecture/ingestion.md).
+This starts the three mock providers, PostgreSQL, Valkey (the search's result cache, refresh claims and rate-limit counters), Keycloak (the token issuer of the [admin side](#admin-access)) and the aggregator (`bootstrap/Dockerfile`, `-Xmx512m`). The aggregator ingests the providers at startup, then every 30 minutes, and publishes about one million itineraries into PostgreSQL; a run takes about 25 to 30 seconds. Its health is on `http://localhost:8080/actuator/health` and the search on `http://localhost:8080/api/itineraries`, both published on the loopback interface only. PostgreSQL and Valkey are not published. How a run works, and what each failure does: [Ingestion](docs/architecture/ingestion.md); the API: [Search API](docs/architecture/search-api.md).
 
 **The database password is a committed demo default too**, the same deliberate exception as the provider keys below (spec 6.6): `POSTGRES_PASSWORD` in the shell or a `.env` file overrides it. It protects only a database that no port exposes outside the compose network; in production it would be a secret injected at deploy time. PostgreSQL sets the password only when it creates its volume: to change it after the first start, remove the volume with `docker compose down -v` (which deletes the stored inventory) and start again.
 
@@ -116,6 +116,7 @@ The documentation is split by what each part shows.
 - [Architecture overview](docs/architecture/README.md): hexagonal modules, flows and the domain glossary
 - [Ingestion](docs/architecture/ingestion.md): the run, the double-buffered slots, and what each failure does
 - [Domain visibility rule](docs/architecture/domain-visibility.md): which domain members are public
+- [Search API](docs/architecture/search-api.md): the endpoints, cursor and generation, cache, refresh, re-price, auth and rate limit, measured on the real volume
 - [OpenAPI contract](docs/architecture/openapi.json): the API as the application serves it, from which the dashboard's types are generated; `OpenApiContractTest` fails when it drifts
 
 ### 2. Planning — how the work was planned

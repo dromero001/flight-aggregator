@@ -1,0 +1,72 @@
+# Search API
+
+The HTTP API over the published inventory: a public search and a public re-price, both limited per client address, and an admin side behind Keycloak tokens. It reads PostgreSQL and Valkey only; re-price is the one public call that reaches the providers. The contract the application serves is committed as [`openapi.json`](openapi.json), and the dashboard's types are generated from it. The reasoning behind each choice is in the [design spec](../planning/design-spec.md) (§4, §5.4, §6.2 to §6.6) and in [plan 5](../planning/plans/2026-11-15-search-api.md) (Q1 to Q9).
+
+```mermaid
+flowchart LR
+    client[Client or dashboard] -->|GET /api/itineraries| limit[RateLimitInterceptor]
+    client -->|POST .../reprice| limit
+    limit -->|count per address| valkey[(Valkey)]
+    limit --> search[SearchItinerariesService]
+    limit --> reprice[RepriceItineraryService]
+    search -->|first pages| valkey
+    search -->|keyset page| pg[(PostgreSQL<br/>active slot)]
+    search -->|stale origin, claim won| refresh[BackgroundRefresh]
+    reprice -->|quote each leg| providers[Providers]
+    reprice -->|update in place| pg
+    admin[Admin with a token] -->|/api/admin/**| status[InventoryStatus, TriggerIngestion]
+```
+
+## Endpoints
+
+| Endpoint | Access | Answers |
+|---|---|---|
+| `GET /api/itineraries` | public, 60 a minute per address | `200` a page; `400` a bad parameter or cursor; `429` |
+| `POST /api/itineraries/{id}/reprice` | public, 10 a minute per address | `200` `CONFIRMED`, `PRICE_CHANGED` or `ALTERNATIVE`; `400` not an id; `404` not on sale; `429`; `503` nothing confirmable |
+| `GET /api/admin/status` | `ADMIN` | `200` the inventory's and each provider's status; `401`; `403` |
+| `POST /api/admin/ingestions` | `ADMIN` | `202` a run started; `409` a run is going on; `401`; `403` |
+| `GET /actuator/health` | public (status only; components for `ADMIN`) | `200` `UP` or `DEGRADED`; `503` `DOWN` |
+| `GET /v3/api-docs` | public | the OpenAPI contract |
+
+Every error the application writes is an RFC 9457 problem (`application/problem+json`) whose `detail` names the parameter or says what to do; a `429` and a `503` carry `Retry-After` in whole seconds. A `401` or `403` is Spring Security's bearer challenge: a `WWW-Authenticate` header and no body. The contract documents each of these on its own operation, the admin bearer scheme (`bearer`, a JWT) on the admin operations only, and `OpenApiContractTest` fails when the served contract drifts from the committed file or loses any of them.
+
+## Search
+
+`GET /api/itineraries` takes `origin`, `destination`, `carrier` (codes in either case), `maxPrice` (a decimal with at most two decimals, above zero, inclusive), `sort` (`price` by default, `departure` or `duration`), `limit` (20 by default, 1 to 100) and `cursor`, all optional. `carrier` keeps the trips whose every leg is flown by that carrier. Only departures after now are listed (§4.1). A result carries what a result card shows (§6.8): the trip's airports, local times with their offsets, duration, stops, price in EUR as a decimal string, `quotedAt` (for "updated X min ago") and its legs; never a provider or a leg's price.
+
+**Keyset pages (§5.4).** A page is read as one SQL statement over the active slot: the filters, then `(sort key, id) > (cursor's position)`, `ORDER BY sort key, id`, one row more than the page so that `nextCursor` is given only when another page exists. There is no total count. Each slot has one index per sort order, keyed by id, alone and behind `origin, destination` (Q6-B), so every combination is an index scan; the plans are in the measures below. A read is one read-only `REPEATABLE READ` transaction bounded at 2 s, so the page and its generation come from one snapshot.
+
+**The cursor and the generation (§6.3, Q1-A).** `nextCursor` is opaque: base64url of `1|generation|sort|price|departure|duration|id`, at most 200 characters, not signed (E3 rejected: a forged cursor only seeks within public data). Anything else, or a cursor of another sort order, is a `400`. Every publication, a full run or a refresh, bumps the generation; a cursor of an older generation still seeks from its position, in the new generation, and the page says `inventoryChanged: true`, the dashboard's "results updated, reload".
+
+**The result cache (§6.2, Q3-A).** Only first pages of searches without `maxPrice` are cached in Valkey, under `search:<generation>:<sort>:<origin>:<destination>:<carrier>:<maxPrice>:<limit>`, for 5 minutes (`search.cache-ttl`) or until the page's first departure, whichever is sooner. A new generation leaves every cached page behind without a key deleted; old keys expire. Valkey runs with `maxmemory 256mb` and `allkeys-lru`. Hits, misses and errors are counted as `search.cache{result}`.
+
+**The stale-route refresh (§6.4, Q2-B).** A search with an origin whose last publication or refresh is more than 10 minutes old (`search.freshness-threshold`) claims the origin in Valkey (`SET refresh:<origin> NX`, 2 minutes) and, if it wins, starts the origin's refresh in the background; the search does not wait for it. How a refresh rewrites the active slot is in [Ingestion](ingestion.md#the-stale-route-refresh).
+
+## Re-price on selection
+
+`POST /api/itineraries/{id}/reprice` quotes every leg of the chosen itinerary live from its provider, at once (§6.3). A leg its provider does not confirm is quoted from the other providers that stored an offer of the same flight, cheapest first. The same price answers `CONFIRMED`, another `PRICE_CHANGED` with `previousPrice`; either way the stored itinerary is updated in place, generation unchanged (Q5-A). If the choice cannot be confirmed, up to 3 itineraries of the same route are tried by price, and the first confirmed is the answer, `ALTERNATIVE`, with the notice *"We couldn't confirm this flight. This is the best alternative we found."* (§6.5). When nothing is confirmed, the answer is a `503` with `Retry-After: 60` and *"We can't confirm the price right now. Please try again in a few minutes."* No quote starts after 10 s; one already started is bounded by its provider's own timeouts (2.5 s a request, 3 attempts), so the slowest `503` takes 10 s plus that quote. A departed choice takes the alternative flow. While a run or a refresh holds the inventory, the update is skipped (`reprice.store{outcome=BUSY}`, one `WARN` line) and the live answer still stands.
+
+## Rate limit
+
+Search and re-price are counted per client address in fixed windows of one minute, each on its own counter (`rate:<action>:<address>`), shared by every instance through Valkey (§6.6, Q9-A): 60 searches and 10 re-prices. A request past the limit answers `429` with `Retry-After`, the seconds left in its window. The address is the connection's; Tomcat takes `X-Forwarded-For` only from a private-range or loopback proxy, such as the dashboard's nginx.
+
+## Valkey down
+
+Valkey is a cache and a coordinator, never a source of truth (§6.2). A failed command is a cache miss, an unclaimed refresh and an admitted request; after a failure, Valkey is skipped for 10 s (`search.valkey-skip`), then one call probes it, so an outage costs a search at most one 250 ms command timeout, not one per command. The outage is one `WARN` line, `Valkey is unavailable…`, and its end one `INFO` line, `Valkey answers again`.
+
+## Admin side and health
+
+The admin endpoints and the other Actuator endpoints need a JWT whose `realm_access.roles` holds `ADMIN`, signed by Keycloak's realm `flight-aggregator` (§6.6). How to get a token with the `admin-service` client is in the [README](../../README.md#admin-access). `GET /api/admin/status` shows the generation, when it was published, when the next run is due, and each provider's health, breaker state, newest quote, legs and discarded records (Q7-B: recorded at the end of every run, so every instance shows the same). `POST /api/admin/ingestions` starts a run under the same ShedLock lock as the scheduled one.
+
+`/actuator/health` is `DEGRADED`, still `200`, when a provider is not `UP` (its last run kept its offers, or its breaker is not closed) or Valkey does not answer, and `DOWN` (`503`) only when PostgreSQL is (Q8-A). Compose's health check of the app accepts `UP` and `DEGRADED`.
+
+## Measured on the real volume
+
+On `docker compose up --build` (plan 5 Task 13, 2026-11-16, an Apple-silicon Mac, Docker Desktop with 10 CPUs and 7.7 GiB), with 1,033,722 itineraries published; every command and number is in the [progress report](../planning/progress/2026-11-15-search-api.md#task-13--evidence):
+
+- **A run** takes 24 to 28 s, against plan 4's 12 to 14 s: the `COPY` maintains the six sort indexes (about 15 s) and `ANALYZE` adds about 5 s.
+- **A page,** in PostgreSQL, takes under 2 ms for most of the 24 measured combinations (3 sorts × no filter, origin, origin and destination, carrier × first and fiftieth page), and at most 42 ms warm: departure order with only an origin, which walks the departure index of every day partition. Over HTTP a page answers in 4 to 60 ms (the first request after startup, 104 ms), and a cached first page in about 5 ms; 50 pages through their cursors gave 1,000 rows with none repeated.
+- **A refresh** of Madrid rewrote 530,603 itineraries in 15 s and held the publication row 14 s: 1.5 s of `DELETE`, then the build and `COPY` of the itineraries. Three origins refreshed at once: one succeeded, the two others gave up on the row's 5 s lock timeout, the second after 8 s because it queued behind the first. A refresh of a hub rewrites half the inventory (every trip with a leg from it), and its dead rows slow the first reader of that origin (up to 0.3 s) until autovacuum, which took them within two minutes.
+- **Re-price** answers in 0.1 to 1 s with every provider up and 0.5 to 6 s with Beta failing; with every provider stopped, the first `503` took 13.8 s (the 10 s budget plus a quote in flight), the next ones 1.4 s and 20 ms once the breakers opened.
+- **Valkey stopped:** searches answered in 4 to 30 ms, health `DEGRADED` with `200`, and the cache came back on its own when Valkey did.
+- **Rate limit:** of 61 searches sent within one second, 60 answered `200` and the 61st `429` with `Retry-After: 59`.
