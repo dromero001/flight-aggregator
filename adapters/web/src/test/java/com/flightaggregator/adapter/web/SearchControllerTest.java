@@ -224,7 +224,8 @@ class SearchControllerTest {
   /**
    * A misspelt parameter is refused, not ignored: {@code orign=MAD} would otherwise search every
    * origin (G1, the user's decision of 2026-11-16). The detail names every unknown one, in the
-   * order sent, and the parameters the search takes.
+   * order sent, and the parameters the search takes, in the order the docs and the dashboard's
+   * filters list them.
    */
   @Test
   void answersAProblemNamingEachUnknownParameter() throws Exception {
@@ -235,7 +236,7 @@ class SearchControllerTest {
             jsonPath("$.detail")
                 .value(
                     "Unknown parameters: orign, page. The search takes origin, destination,"
-                        + " maxPrice, carrier, sort, limit and cursor."));
+                        + " carrier, maxPrice, sort, limit and cursor."));
 
     assertThat(search.queries()).isEmpty();
   }
@@ -248,8 +249,8 @@ class SearchControllerTest {
         .andExpect(
             jsonPath("$.detail")
                 .value(
-                    "Unknown parameter: orign. The search takes origin, destination, maxPrice,"
-                        + " carrier, sort, limit and cursor."));
+                    "Unknown parameter: orign. The search takes origin, destination, carrier,"
+                        + " maxPrice, sort, limit and cursor."));
   }
 
   /** The global constraints: each bad value is a 400 whose detail names its parameter. */

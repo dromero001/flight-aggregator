@@ -20,7 +20,7 @@ class SearchParametersTest {
   /** Codes in any case, an amount with or without cents; the defaults of Q9 and §5.4. */
   @Test
   void normalisesCodesAndAmounts() {
-    SearchQuery query = new SearchParameters("mad", "Jfk", "100", "ib", null, null, null).toQuery();
+    SearchQuery query = new SearchParameters("mad", "Jfk", "ib", "100", null, null, null).toQuery();
 
     assertThat(query)
         .isEqualTo(
@@ -33,8 +33,8 @@ class SearchParametersTest {
                     SortOrder.PRICE),
                 20,
                 Optional.empty()));
-    assertThat(new SearchParameters(null, null, "100.00", null, null, null, null).toQuery())
-        .isEqualTo(new SearchParameters(null, null, "100", null, null, null, null).toQuery());
+    assertThat(new SearchParameters(null, null, null, "100.00", null, null, null).toQuery())
+        .isEqualTo(new SearchParameters(null, null, null, "100", null, null, null).toQuery());
   }
 
   /** The page after a cursor, in each sort order, at the largest page Q9 allows. */
@@ -92,8 +92,8 @@ class SearchParametersTest {
     return switch (parameter) {
       case "origin" -> new SearchParameters(value, null, null, null, null, null, null);
       case "destination" -> new SearchParameters(null, value, null, null, null, null, null);
-      case "maxPrice" -> new SearchParameters(null, null, value, null, null, null, null);
-      case "carrier" -> new SearchParameters(null, null, null, value, null, null, null);
+      case "maxPrice" -> new SearchParameters(null, null, null, value, null, null, null);
+      case "carrier" -> new SearchParameters(null, null, value, null, null, null, null);
       case "sort" -> new SearchParameters(null, null, null, null, value, null, null);
       case "limit" -> new SearchParameters(null, null, null, null, null, value, null);
       default -> throw new IllegalArgumentException(parameter);
