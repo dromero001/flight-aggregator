@@ -18,6 +18,7 @@ import javax.sql.DataSource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.core.json.JsonFactory;
 
@@ -95,7 +96,7 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
 
   @Override
   public StoreOutcome updateInPlace(Itinerary repriced) {
-    return transaction.execute(status -> rewrite(repriced));
+    return transaction.execute(status -> rewrite(status, repriced));
   }
 
   /**
@@ -106,15 +107,16 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
    * included, so a re-quote has the stored row's key. The active slot is read under a share of the
    * publication row's lock, held until the commit, so a run cannot switch slots between the read
    * and the write. While a run holds the row, nothing is written: the update answers busy at once
-   * instead of holding a connection for the run's whole load. Its other lock waits and its
-   * statements are bounded as the load's are.
+   * instead of holding a connection for the run's whole load, and its transaction, which the
+   * refused lock aborted, is marked for rollback. Its other lock waits and its statements are
+   * bounded as the load's are.
    */
-  private StoreOutcome rewrite(Itinerary repriced) {
+  private StoreOutcome rewrite(TransactionStatus status, Itinerary repriced) {
     waitForEachLockAtMost(LOCK_TIMEOUT);
     StatementTimeout.STORE.boundTheTransaction(jdbc);
     Optional<Slot> active = activeSlotUnlessARunHoldsIt();
     if (active.isEmpty()) {
-      // The refused lock aborted the transaction; its commit is a rollback.
+      status.setRollbackOnly();
       return StoreOutcome.BUSY;
     }
     Slot slot = active.get();
@@ -144,7 +146,7 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
   private Publication rewriteThrough(Airport origin, ItineraryWriter writer) {
     waitForEachLockAtMost(LOCK_TIMEOUT);
     StatementTimeout.STORE.boundTheTransaction(jdbc);
-    Slot slot = activeSlotLocked();
+    Slot slot = publishedSlotLocked();
     Instant partitionedUntil = partitionedUntil(slot);
     jdbc.sql(
             "DELETE FROM "
@@ -162,18 +164,12 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
     return new Publication(generation, itineraries, rowsInDefaultPartition(slot), partitionedUntil);
   }
 
-  /**
-   * Where the slot's day partitions end, as the run that loaded it created them. A slot no run has
-   * loaded has none, and nothing to rewrite.
-   */
+  /** Where the slot's day partitions end, as the run that published it created them. */
   private Instant partitionedUntil(Slot slot) {
     LocalDate lastDay =
         dayPartitions(slot).stream()
             .max(Comparator.naturalOrder())
-            .orElseThrow(
-                () ->
-                    new IllegalStateException(
-                        slot.table() + " has no day partition: no run has published into it"));
+            .orElseThrow(() -> new IllegalStateException(slot.table() + " has no day partition"));
     return PartitionCalendar.start(lastDay.plusDays(1));
   }
 
@@ -212,6 +208,25 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
    */
   private Slot activeSlotLocked() {
     return Slot.of(jdbc.sql(ACTIVE_SLOT + " FOR UPDATE").query(String.class).single());
+  }
+
+  /**
+   * The active slot, read under the publication row's lock as {@link #activeSlotLocked} reads it,
+   * once a run has published it. Before the first run ({@code published_at} unset) there is nothing
+   * to rewrite, and a refresh must not publish a generation no run made.
+   */
+  private Slot publishedSlotLocked() {
+    record Row(String activeSlot, boolean published) {}
+    Row row =
+        jdbc.sql(
+                "SELECT active_slot, published_at IS NOT NULL AS published"
+                    + " FROM inventory_publication FOR UPDATE")
+            .query(Row.class)
+            .single();
+    if (!row.published()) {
+      throw new IllegalStateException("No run has published the inventory yet: nothing to refresh");
+    }
+    return Slot.of(row.activeSlot());
   }
 
   /**

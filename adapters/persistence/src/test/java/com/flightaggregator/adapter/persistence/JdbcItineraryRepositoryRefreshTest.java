@@ -175,15 +175,33 @@ class JdbcItineraryRepositoryRefreshTest {
   }
 
   /**
-   * Before the first run, the active slot has no day partition and no itinerary to rewrite: the
-   * refresh fails, naming the slot, and the empty inventory stays as it was. Search asks for no
-   * refresh then; this keeps the repository from publishing a generation no run made.
+   * "No run has published yet" is read from the publication row, not from the slot's partitions: a
+   * day partition made outside the repository does not let a refresh publish a generation no run
+   * made.
+   */
+  @Test
+  void refusesARefreshBeforeTheFirstPublicationWhateverPartitionsItsSlotHolds() {
+    jdbc.sql(
+            "CREATE TABLE itinerary_a_20261125 PARTITION OF itinerary_a"
+                + " FOR VALUES FROM ('2026-11-25T00:00:00Z') TO ('2026-11-26T00:00:00Z')")
+        .update();
+
+    assertThatThrownBy(() -> refreshMadrid(madridLondon)).isInstanceOf(IllegalStateException.class);
+
+    assertThat(published(jdbc)).isEqualTo(new Published("a", 0, null));
+    assertThat(ids("itinerary_a")).isEmpty();
+  }
+
+  /**
+   * Before the first run, the active slot has no itinerary to rewrite: the refresh fails, and the
+   * empty inventory stays as it was. Search asks for no refresh then; this keeps the repository
+   * from publishing a generation no run made.
    */
   @Test
   void refusesARefreshBeforeTheFirstPublication() {
     assertThatThrownBy(() -> refreshMadrid(madridLondon))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessage("itinerary_a has no day partition: no run has published into it");
+        .hasMessage("No run has published the inventory yet: nothing to refresh");
 
     assertThat(published(jdbc)).isEqualTo(new Published("a", 0, null));
     assertThat(ids("itinerary_a")).isEmpty();

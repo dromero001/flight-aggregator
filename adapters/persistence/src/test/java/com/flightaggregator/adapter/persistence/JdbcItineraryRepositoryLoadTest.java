@@ -85,9 +85,13 @@ class JdbcItineraryRepositoryLoadTest {
     assertThat(rows(jdbc, "itinerary_b")).isEqualTo(2);
   }
 
-  /** The planner's statistics must be there before search reads the slot the switch publishes. */
+  /**
+   * The planner's statistics are there before search reads the slot the switch publishes: the
+   * ANALYZE runs inside the load's transaction, with the switch, so both become visible at its
+   * commit. Their order inside it cannot be seen, so the name promises only "in the load".
+   */
   @Test
-  void analyzesTheLoadedSlotBeforeTheSwitch() {
+  void analyzesTheLoadedSlotInTheLoad() {
     publish(NOW, List.of(direct(1, "2026-11-25T07:15:00Z"), direct(2, "2026-11-25T08:15:00Z")));
 
     // A partition never analyzed reports -1.
