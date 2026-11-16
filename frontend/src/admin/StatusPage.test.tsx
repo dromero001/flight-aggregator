@@ -96,6 +96,17 @@ test('says when the next ingestion is due', async () => {
   expect(await screen.findByText('Next ingestion due')).toBeInTheDocument();
 });
 
+test('says an ingestion is in progress instead of when the next one is due', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-15T09:30:20Z'));
+  serveStatus(statusReport({ ingestionRunning: true }));
+
+  renderAsAdmin(<StatusPage />);
+
+  expect(await screen.findByText('Ingestion in progress')).toBeInTheDocument();
+  expect(screen.queryByText('Next ingestion due')).not.toBeInTheDocument();
+});
+
 /** The text of each cell of a provider's row, its header included. */
 function rowOf(provider: string): string[] {
   const header = screen.getByRole('rowheader', { name: provider });
