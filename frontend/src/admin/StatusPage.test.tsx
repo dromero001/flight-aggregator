@@ -1,5 +1,5 @@
 import { act, screen, within } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { afterEach, expect, test, vi } from 'vitest';
 import type { StatusReport } from '../api/types';
 import { axe } from '../test/axe';
@@ -36,6 +36,19 @@ test('has no accessibility violations with the providers shown', async () => {
   await screen.findByRole('table', { name: 'Providers' });
 
   expect(await axe(container)).toHaveNoViolations();
+});
+
+test('says it is loading until the first status arrives', async () => {
+  server.use(
+    http.get(STATUS, async () => {
+      await delay('infinite');
+      return HttpResponse.json(statusReport());
+    }),
+  );
+
+  renderAsAdmin(<StatusPage />);
+
+  expect(await screen.findByText('Loading…')).toBeInTheDocument();
 });
 
 test('shows the generation, its publication and the next ingestion', async () => {
