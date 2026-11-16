@@ -55,10 +55,8 @@ import org.springframework.boot.health.actuate.endpoint.HealthEndpoint;
 import org.springframework.boot.health.actuate.endpoint.HttpCodeStatusMapper;
 import org.springframework.boot.health.actuate.endpoint.StatusAggregator;
 import org.springframework.boot.health.contributor.Status;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
-import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.task.AsyncTaskExecutor;
@@ -67,27 +65,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-@SpringBootTest(
-    properties = {
-      FlightAggregatorApplicationTest.ALPHA_URL,
-      FlightAggregatorApplicationTest.ALPHA_KEY,
-      FlightAggregatorApplicationTest.BETA_URL,
-      FlightAggregatorApplicationTest.BETA_KEY,
-      FlightAggregatorApplicationTest.GAMMA_URL,
-      FlightAggregatorApplicationTest.GAMMA_KEY,
-      "ingestion.schedule.enabled=false"
-    })
-@ImportTestcontainers(PostgresContainers.class)
+@AggregatorTest
 @ExtendWith(OutputCaptureExtension.class)
 class FlightAggregatorApplicationTest {
-
-  // Nothing listens on port 1, so a provider call fails at once.
-  static final String ALPHA_URL = "providers.alpha.base-url=http://localhost:1/";
-  static final String ALPHA_KEY = "providers.alpha.api-key=test-alpha-key";
-  static final String BETA_URL = "providers.beta.base-url=http://localhost:1/";
-  static final String BETA_KEY = "providers.beta.api-key=test-beta-key";
-  static final String GAMMA_URL = "providers.gamma.base-url=http://localhost:1/";
-  static final String GAMMA_KEY = "providers.gamma.api-key=test-gamma-key";
 
   @Autowired private HealthEndpoint health;
   @Autowired private StatusAggregator statusOrder;
@@ -359,7 +339,13 @@ class FlightAggregatorApplicationTest {
                     "spring.datasource.username=" + PostgresContainers.POSTGRES.getUsername(),
                     "spring.datasource.password=" + PostgresContainers.POSTGRES.getPassword(),
                     "ingestion.schedule.enabled=false"),
-                Stream.of(ALPHA_URL, ALPHA_KEY, BETA_URL, BETA_KEY, GAMMA_URL, GAMMA_KEY)
+                Stream.of(
+                        AggregatorTest.ALPHA_URL,
+                        AggregatorTest.ALPHA_KEY,
+                        AggregatorTest.BETA_URL,
+                        AggregatorTest.BETA_KEY,
+                        AggregatorTest.GAMMA_URL,
+                        AggregatorTest.GAMMA_KEY)
                     .filter(
                         setting ->
                             !setting.startsWith(name + "=") && !setting.startsWith(name + ".")))

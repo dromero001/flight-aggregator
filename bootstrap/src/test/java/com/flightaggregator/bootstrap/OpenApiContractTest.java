@@ -14,8 +14,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.FieldSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.core.util.DefaultIndenter;
@@ -29,17 +27,7 @@ import tools.jackson.databind.json.JsonMapper;
  * when a change to the API leaves it behind (§6.11). It is asked for anonymously, through the
  * security filters, as the dashboard's build would.
  */
-@SpringBootTest(
-    properties = {
-      "providers.alpha.base-url=http://localhost:1/",
-      "providers.alpha.api-key=alpha-key",
-      "providers.beta.base-url=http://localhost:1/",
-      "providers.beta.api-key=beta-key",
-      "providers.gamma.base-url=http://localhost:1/",
-      "providers.gamma.api-key=gamma-key",
-      "ingestion.schedule.enabled=false"
-    })
-@ImportTestcontainers(PostgresContainers.class)
+@AggregatorTest
 @AutoConfigureMockMvc
 class OpenApiContractTest {
 
