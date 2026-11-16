@@ -204,6 +204,22 @@ test('shows that no ingestion has run yet', async () => {
   expect(screen.queryByRole('table')).not.toBeInTheDocument();
 });
 
+test('says the first ingestion is in progress', async () => {
+  // What the API answers while the first run goes on, as the application starts.
+  serveStatus({
+    generation: 0,
+    publishedAt: null,
+    nextIngestionAt: null,
+    ingestionRunning: true,
+    providers: [],
+  });
+
+  renderAsAdmin(<StatusPage />);
+
+  expect(await screen.findByText('Ingestion in progress.')).toBeInTheDocument();
+  expect(screen.queryByText('No ingestion has run yet.')).not.toBeInTheDocument();
+});
+
 test('refreshes the status every 10 seconds', async () => {
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
   let requests = 0;
