@@ -1,10 +1,12 @@
-# Rendered at container start by the nginx image's entrypoint: ${API_UPSTREAM}, ${OIDC_AUTHORITY} and
-# ${OIDC_CLIENT_ID} come from the environment; nginx's own variables ($uri, $remote_addr) are not
-# environment variables, so the rendering leaves them alone.
+# Rendered at container start by the nginx image's entrypoint: ${API_UPSTREAM}, ${OIDC_AUTHORITY},
+# ${OIDC_CLIENT_ID} and ${NGINX_LOCAL_RESOLVERS} come from the environment; nginx's own variables
+# ($uri, $remote_addr) are not environment variables, so the rendering leaves them alone.
 
-# Docker's embedded DNS. With the upstream in a variable, nginx resolves it per request, so a
-# recreated app container (a new address) is found without restarting nginx.
-resolver 127.0.0.11 valid=10s;
+# The container's own nameservers, from /etc/resolv.conf (the image's 15-local-resolvers.envsh,
+# turned on in the Dockerfile): Docker's embedded DNS (127.0.0.11) in compose, the cluster's DNS
+# elsewhere. With the upstream in a variable, nginx resolves it per request, so a recreated app
+# container (a new address) is found without restarting nginx.
+resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;
 
 server {
     listen 8080;
@@ -17,7 +19,15 @@ server {
         # Overwritten, never appended: the app's rate limit counts the client address, which a client
         # must not be able to choose through a header it sends itself.
         proxy_set_header X-Forwarded-For $remote_addr;
+        # The app also takes the scheme, host and port from these (RemoteIpValve): a client must not
+        # set them either. An empty value is not sent.
+        proxy_set_header X-Forwarded-Proto "";
+        proxy_set_header X-Forwarded-Host "";
+        proxy_set_header X-Forwarded-Port "";
         proxy_set_header Host $host;
+        # An app that accepts the call and never answers gets a 504 within 15 s, above the re-price's
+        # own 10 s budget, rather than after nginx's 60 s (and three retries of the search).
+        proxy_read_timeout 15s;
         proxy_pass $api_upstream;
     }
 
@@ -25,6 +35,12 @@ server {
     location = /config.json {
         default_type application/json;
         return 200 '{"oidcAuthority":"${OIDC_AUTHORITY}","oidcClientId":"${OIDC_CLIENT_ID}"}';
+    }
+
+    # The bundle's own files: one that does not exist (asked for by an index.html from before a
+    # redeploy) is a 404, not index.html served as a script.
+    location /assets/ {
+        try_files $uri =404;
     }
 
     # /admin and shared search URLs are routes of the app, not files: they survive a reload.

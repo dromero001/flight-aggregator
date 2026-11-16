@@ -5,10 +5,11 @@
 # error, so a bad value stops the container here, naming the variable.
 set -eu
 
-# An http(s) URL made only of characters that are safe where the value lands. API_UPSTREAM goes
-# unquoted into a `set` directive, where `#` starts a comment; OIDC_AUTHORITY only goes inside a
-# quoted string of the JSON, where `#` is plain text, so only it may keep one.
-upstream_url='^https?://[A-Za-z0-9._~:/?@!&=+,%-]+$'
+# API_UPSTREAM goes unquoted into a `set` directive and then into `proxy_pass` through a variable,
+# where any path (even a trailing /) would replace every request's URI: a scheme, a host and an
+# optional port only. OIDC_AUTHORITY only goes inside a quoted string of the JSON: an http(s) URL
+# made of characters that are safe there.
+upstream_url='^https?://[A-Za-z0-9.-]+(:[0-9]+)?$'
 json_url='^https?://[A-Za-z0-9._~:/?#@!&=+,%-]+$'
 
 nl=$(printf '\nx')
@@ -33,6 +34,6 @@ check() {
   fi
 }
 
-check API_UPSTREAM "$upstream_url" 'an http:// or https:// URL without quotes, backslashes, $, spaces, semicolons or #'
+check API_UPSTREAM "$upstream_url" 'http:// or https://, a host and an optional port, with no path'
 check OIDC_AUTHORITY "$json_url" 'an http:// or https:// URL without quotes, backslashes, $, spaces or semicolons'
 check OIDC_CLIENT_ID '^[A-Za-z0-9._-]+$' 'letters, digits, dots, underscores and hyphens'
