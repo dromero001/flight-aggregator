@@ -90,6 +90,12 @@ management:
       # Every request and run is traced (plan 7, Q4): Boot samples 10% by default, so the run a
       # demo shows could go untraced, and a demo's volume is small.
       probability: 1.0
+  otlp:
+    metrics:
+      export:
+        # The OpenTelemetry starter brings an OTLP meter registry; metrics take one path, Prometheus's
+        # scrape of the management port (spec 6.6), so nothing pushes them.
+        enabled: false
   health:
     redis:
       # Valkey down makes search slower, not broken (spec 6.2), so Boot's indicator, which would
