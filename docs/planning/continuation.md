@@ -85,6 +85,7 @@ Lessons for every brief: each subagent uses a private scratch folder of its own 
 
 ## Priority (the user's decision of 2026-11-16, about 08:20)
 
+- **Reviews by group (the user's decision, about 10:02).** From now on no per-task review: each task keeps TDD, its evidence and the gates, and goes to `main` when `./gradlew build`, `npm run verify` and CI are green. One double review (one reviewer, functional and code) covers the group plan 7 Task 5 + Task 7 + plan 5's C1/F3/F5/F6 + the airport autocomplete and the airports' doc, as one range on `main`; one fix round if a Critical or Important. Then Task 9, and Task 10's final triple review covers everything.
 - **The search application working first, monitoring and traces after.** Order: plan 5's closing rounds (2, then 1 rebased on it, then 3) re-reviewed and on `main`; plan 6's closing round re-reviewed and on `main`; the controller's hands-on run of search, re-price and the dashboard on a fresh stack, and the user's try by hand. Only then plan 7: Task 4 and Task 6 (already approved or in review) are integrated after plans 5 and 6 close, and Tasks 5 and 7 start then. Reviews already running finish, but no new plan 7 implementer starts before plans 5 and 6 are closed.
 
 ## Speed rules (the user's decision of 2026-11-16, about 00:30)
