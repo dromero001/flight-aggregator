@@ -277,6 +277,8 @@ Booking (§6.8: "Select" goes no further); `SOLUTION.md`, Grafana and the final 
 
 ### Task 7: Admin sign-in, the realm's dashboard client and the settings (as Q2-A, Q3-A)
 
+**Decided by the user at the end-of-plan review (2026-11-16, about 08:07), risk I-1:** a renewed token that the API refuses again no longer redirects to Keycloak (which looped through SSO forever on a misconfigured issuer, realm or clock); the screen shows an error with Sign out. Only a failed renewal redirects. Built in plan 6's closing round.
+
 **Amended after Task 2's review (2026-11-15):** `adminClient(auth)` uses the same `baseUrl` and the same `apiErrors` middleware. Its 401 renewal must see the 401 before `apiErrors` throws: `openapi-fetch` runs `onResponse` in reverse order of registration, so `apiErrors` is registered first and the auth middleware after it.
 
 **Files:**

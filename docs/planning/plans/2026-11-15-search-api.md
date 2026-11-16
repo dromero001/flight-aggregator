@@ -143,6 +143,12 @@ The end-of-plan review (`.superpowers/sdd/2026-11-15-search-api/end-review-{func
 - **The first all-down 503 takes 13.8 s** (the 10 s budget plus one quote in flight): **kept as built**, since Q9 says only "no new quote after 10 s" and the breakers make later answers fast (1.35 s, then 0.02 s); documented in `search-api.md`.
 - **Every pending extra proposed by the agents** is out of the delivery, except the ones a review turned into a finding (fixed in the closing rounds); the rest are **kept in `docs/planning/extras-backlog.md`**, to build if time remains and to list in `SOLUTION.md` as next steps.
 
+
+## Decided by the user at the closing round's re-review (2026-11-16, about 08:07)
+
+The functional re-review of closing round 1 (`.superpowers/sdd/2026-11-15-search-api/close-1-rereview-functional.md`) found:
+- **N1, a destination-only search sorted by price from a long-haul airport still exceeds the 2 s read bound** (NRT 3.0 s, JFK 4.0 s, GRU 3.3 s, DXB 4.0 s on first execution; no index starts with `destination`): **option A**, each slot gains three `(destination, key, id)` indexes, as I1 did for the origin, in a new migration, measured like I1. Rejected: accepting the 503, since every filter is optional (§4).
+- **N3, the 1 s wait for a pooled connection applies to the whole pool** (runs, refreshes, re-prices, locks, not only health): **option A**, 2 s, which keeps health's 503 `DOWN` under compose's 5 s health-check timeout and doubles the margin a run or a refresh has in a burst.
 ## Out of scope
 
 - The dashboard, its Keycloak client and login, and the TypeScript types (plan 6). Prometheus, Grafana, alerts and OTel (plan 7). Plan 4's extras are decided (E4–E8, E11, E13 and E14 built in plan 4; the rest rejected).
