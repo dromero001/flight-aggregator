@@ -21,10 +21,11 @@ import java.util.regex.Pattern;
 /**
  * The opaque cursor of the next page (§5.4): base64url, without padding, of {@code
  * 1|<generation>|<sort>|<price>|<departure instant>|<duration seconds>|<id>}. It is not signed (E3
- * was rejected): a client can only seek within public data, so decoding accepts exactly what {@link
- * #encode} writes, each field in its own form, and refuses everything else, so that no value
- * reaches the database that it cannot store (departures stay within the years 1000 to 9999) and no
- * cursor is read in a form this API never issued.
+ * was rejected): a client can only seek within public data, so decoding accepts each field in the
+ * form {@link #encode} writes it, up to leading zeros and the length of a fraction of a second, and
+ * refuses everything else, so that no value reaches the database that it cannot store (departures
+ * stay within the years 1000 to 9999). Those looser forms decode to the seek position the issued
+ * cursor names.
  */
 final class CursorCodec {
 
