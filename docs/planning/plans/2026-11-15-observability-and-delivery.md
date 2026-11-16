@@ -306,6 +306,8 @@ Alertmanager, SLO burn-rate alerts and a trace id in error responses (rejected, 
 
 ### Task 10: Delivery: the final reviews, the README and the clean-clone check 👤
 
+**Decided by the user (2026-11-16, about 13:00):** the reviewers may run the project on Windows, Linux or macOS, so the README gains a "Requirements" section: Docker with Compose v2 (Docker Desktop on macOS and Windows, Docker Engine on Linux); the memory Docker needs (measure the whole stack's use, about 2.5 GB, and give a rounded minimum such as 4 GB); the host ports that must be free (3000, 3001, 8080, 8081, 8180, 9090, checked against `compose.yaml`); both amd64 and arm64 (multi-arch images); and anything E9 finds on Windows. Coverage to state in the delivery record: macOS arm64 (the controller's runs), Linux amd64 (CI's e2e job builds and starts the stack from a clean checkout on every push), Windows (E9).
+
 **Deadline (the user, 2026-11-15):** the URL is sent before **23:59 on Monday 2026-11-16**. The hands-on runs at the close of plans 5 and 6 (roadmap) come before this task, so Step 6 confirms on a clean clone what was already tried.
 
 **Files:** Modify `README.md` (final), `docs/planning/roadmap.md` (plan 7 done), `docs/planning/progress/<date>.md` (plan 7's close-out), `docs/ai/sessions/` and the README's sessions index (a record for the work since session 09, if none exists yet). (CLAUDE.md; §9)
