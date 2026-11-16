@@ -5,7 +5,7 @@ These rules apply to every AI agent (main session and subagents) working in this
 ## Source of truth
 - Design: `docs/planning/design-spec.md`. Do not take design decisions on your own: if one blocks you, write it down as pending in the progress report and move on.
 - Decision history: `docs/ai/sessions/`. Implementation plans: `docs/planning/plans/`. Progress reports: `docs/planning/progress/`.
-- Documentation is split in three blocks, each indexed from `README.md`: `docs/architecture/` (what is built), `docs/planning/` (spec, plans, progress) and `docs/ai/` (how the agent is used). Add every new document to its block and to the README index.
+- Documentation is split in three blocks, each indexed from `README.md`: `docs/architecture/` (what is built), `docs/planning/` (spec, plans, progress) and `docs/ai/` (how the agent is used); the user-facing manual, `docs/user-manual/`, sits apart from them. Add every new document to its block and to the README index.
 - How the agent is used, and its skills, plugins and hooks: `docs/ai/README.md`.
 - **Scope:** read `.claude/skills/brief-scope/SKILL.md` before proposing or building anything, and follow its output contract. Only what the brief requires or the user has decided goes in, each line with its source; every proposal ends with a "⚠ Extras — your call" section, and extras stay out until the user approves them.
 
