@@ -598,6 +598,9 @@
             "type" : "integer",
             "format" : "int64"
           },
+          "ingestionRunning" : {
+            "type" : "boolean"
+          },
           "nextIngestionAt" : {
             "type" : [
               "string",
@@ -621,6 +624,7 @@
         },
         "required" : [
           "generation",
+          "ingestionRunning",
           "nextIngestionAt",
           "providers",
           "publishedAt"

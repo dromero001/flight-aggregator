@@ -15,8 +15,9 @@ import java.util.Map;
 
 /**
  * The provider-status screen (§6.8): the active generation, when it was published and when the next
- * run is due, and one row per provider. Every field is always written; a time not known yet, before
- * the first run or for a provider with nothing stored, is null, as the search's last cursor is.
+ * run is due, whether a run is going on now, and one row per provider. Every field is always
+ * written; a time not known yet, before the first run or for a provider with nothing stored, is
+ * null, as the search's last cursor is.
  */
 record StatusResponse(
     @Schema(requiredMode = REQUIRED) long generation,
@@ -30,6 +31,7 @@ record StatusResponse(
             types = {"string", "null"},
             format = "date-time")
         Instant nextIngestionAt,
+    @Schema(requiredMode = REQUIRED) boolean ingestionRunning,
     @Schema(requiredMode = REQUIRED) List<ProviderStatusResponse> providers) {
 
   static StatusResponse of(StatusReport report) {
@@ -37,6 +39,7 @@ record StatusResponse(
         report.generation(),
         report.publishedAt().orElse(null),
         report.nextIngestionAt().orElse(null),
+        report.ingestionRunning(),
         report.providers().stream().map(ProviderStatusResponse::of).toList());
   }
 

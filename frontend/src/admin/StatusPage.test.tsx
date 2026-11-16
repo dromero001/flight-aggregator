@@ -178,7 +178,13 @@ test('marks a provider kept from the last good ingestion', async () => {
 
 test('shows that no ingestion has run yet', async () => {
   // What the API answers before the first run ends: nothing published, nothing scheduled.
-  serveStatus({ generation: 0, publishedAt: null, nextIngestionAt: null, providers: [] });
+  serveStatus({
+    generation: 0,
+    publishedAt: null,
+    nextIngestionAt: null,
+    ingestionRunning: false,
+    providers: [],
+  });
 
   renderAsAdmin(<StatusPage />);
 

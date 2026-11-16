@@ -151,6 +151,7 @@ export interface components {
     StatusResponse: {
       /** Format: int64 */
       generation: number;
+      ingestionRunning: boolean;
       /** Format: date-time */
       nextIngestionAt: string | null;
       providers: components['schemas']['ProviderStatusResponse'][];
