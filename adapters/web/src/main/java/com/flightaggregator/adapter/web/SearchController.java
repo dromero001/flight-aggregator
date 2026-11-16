@@ -107,7 +107,7 @@ public final class SearchController {
       HttpServletRequest request) {
     SearchParameters.refuseUnknown(request.getParameterMap().keySet());
     SearchParameters parameters =
-        new SearchParameters(origin, destination, maxPrice, carrier, sort, limit, cursor);
+        new SearchParameters(origin, destination, carrier, maxPrice, sort, limit, cursor);
     return SearchResponse.of(search.search(parameters.toQuery()));
   }
 }

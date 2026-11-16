@@ -26,15 +26,16 @@ import java.util.Optional;
 record SearchParameters(
     String origin,
     String destination,
-    String maxPrice,
     String carrier,
+    String maxPrice,
     String sort,
     String limit,
     String cursor) {
 
   /**
    * Every parameter the search takes: this record's components, which {@link SearchController}
-   * binds one to one, so the list cannot drift from them.
+   * binds one to one, so the list cannot drift from them. They are in the order the docs and the
+   * dashboard's filters list them.
    */
   static final List<String> NAMES =
       Arrays.stream(SearchParameters.class.getRecordComponents())
