@@ -22,6 +22,8 @@ import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.LegKey;
 import com.flightaggregator.domain.Money;
 import com.flightaggregator.domain.Provider;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -76,6 +78,7 @@ class RefreshConfigTest {
               LockingTaskExecutor.class,
               () -> new DefaultLockingTaskExecutor(configuration -> Optional.of(() -> {})))
           .withBean(Clock.class, () -> () -> NOW)
+          .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
           // The run's ceiling, which the refresh shares (R7): one, exactly what Madrid builds.
           .withPropertyValues("ingestion.max-itineraries=1");
 

@@ -88,8 +88,9 @@ services:
     restart: unless-stopped
     # The image the Valkey tests run (ValkeyImage), by tag and multi-arch digest (spec 6.1).
     image: valkey/valkey:9.1.3-trixie@sha256:3add1a336a920ea54770a001ab6feb3da5fceea96a40373a3a2cd469b815f0b7
-    # A cache, not a store: bounded memory, the least recently used key evicted first (spec 6.2).
-    command: ["valkey-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    # A cache, not a store: bounded memory, the least recently used key evicted first (spec 6.2),
+    # and no RDB snapshot written to disk (--save ""), since the image declares no volume for one.
+    command: ["valkey-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
     # Not published: only the app, on the compose network, reaches it.
     healthcheck:
       test: ["CMD-SHELL", "valkey-cli ping | grep -q PONG"]

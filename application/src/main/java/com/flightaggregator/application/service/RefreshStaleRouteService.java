@@ -1,7 +1,7 @@
 package com.flightaggregator.application.service;
 
-import com.flightaggregator.application.port.in.ProviderReport;
 import com.flightaggregator.application.port.in.RefreshReport;
+import com.flightaggregator.application.port.in.RefreshReport.ProviderRefresh;
 import com.flightaggregator.application.port.in.RefreshStaleRoute;
 import com.flightaggregator.application.port.out.AirportCatalogue;
 import com.flightaggregator.application.port.out.Clock;
@@ -77,9 +77,9 @@ public final class RefreshStaleRouteService implements RefreshStaleRoute {
     Map<Provider, List<Leg>> fresh = new EnumMap<>(Provider.class);
     List<CheckedDownload> downloaded =
         downloads.downloadEach(provider -> provider.downloadFrom(origin), fresh::put);
-    Map<Provider, ProviderReport.Status> statuses = statusesOf(downloaded);
+    Map<Provider, ProviderRefresh> providers = providersOf(downloaded);
     if (fresh.isEmpty()) {
-      return new RefreshReport(origin, RefreshReport.Outcome.NOTHING_FRESH, 0, 0, statuses);
+      return new RefreshReport(origin, RefreshReport.Outcome.NOTHING_FRESH, 0, 0, providers);
     }
     Deduplication deduplication =
         LegDeduplicator.deduplicate(offersWith(fresh, downloaded, origin));
@@ -111,9 +111,9 @@ public final class RefreshStaleRouteService implements RefreshStaleRoute {
           RefreshReport.Outcome.REFRESHED,
           publication.generation(),
           publication.itineraries(),
-          statuses);
+          providers);
     } catch (IngestionCeiling e) {
-      return new RefreshReport(origin, RefreshReport.Outcome.CEILING_EXCEEDED, 0, 0, statuses);
+      return new RefreshReport(origin, RefreshReport.Outcome.CEILING_EXCEEDED, 0, 0, providers);
     }
   }
 
@@ -138,14 +138,13 @@ public final class RefreshStaleRouteService implements RefreshStaleRoute {
     return offers;
   }
 
-  private static Map<Provider, ProviderReport.Status> statusesOf(List<CheckedDownload> downloaded) {
-    Map<Provider, ProviderReport.Status> statuses = new EnumMap<>(Provider.class);
+  /** Each provider fresh, or kept for the reason its download failed. */
+  private static Map<Provider, ProviderRefresh> providersOf(List<CheckedDownload> downloaded) {
+    Map<Provider, ProviderRefresh> providers = new EnumMap<>(Provider.class);
     for (CheckedDownload download : downloaded) {
-      statuses.put(
-          download.provider(),
-          download.fresh() ? ProviderReport.Status.FRESH : ProviderReport.Status.KEPT);
+      providers.put(download.provider(), new ProviderRefresh(download.failure()));
     }
-    return statuses;
+    return providers;
   }
 
   /** The rows a refresh of the origin rewrites: those with a leg departing from it. */

@@ -11,13 +11,15 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.classic.spi.ThrowableProxy;
 import ch.qos.logback.core.read.ListAppender;
-import com.flightaggregator.application.port.in.ProviderReport;
 import com.flightaggregator.application.port.in.RefreshReport;
+import com.flightaggregator.application.port.in.RefreshReport.ProviderRefresh;
 import com.flightaggregator.application.port.in.RefreshStaleRoute;
+import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.RefreshCoordination;
 import com.flightaggregator.bootstrap.observability.CorrelationId;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Provider;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -54,6 +56,10 @@ class BackgroundRefreshTest {
   private static final Instant NOW = Instant.parse("2026-11-20T08:00:00Z");
 
   private final RecordingClaims claims = new RecordingClaims();
+  private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
+
+  /** What the clock reads: a refresh moves it on to take time. */
+  private volatile Instant now = NOW;
 
   private final Logger logger = (Logger) LoggerFactory.getLogger(BackgroundRefresh.class);
   private final Semaphore appended = new Semaphore(0);
@@ -143,7 +149,8 @@ class BackgroundRefreshTest {
 
   /**
    * The refresh's report is one INFO line: the origin, the outcome, the generation and the
-   * itineraries rewritten, and each provider's status under its name, as a run's line has them.
+   * itineraries rewritten, and each provider's status under its name, with the reason a kept
+   * provider's download failed, as a run's line has them (plan 5 Task 7's extra).
    */
   @Test
   void logsTheReport() throws Exception {
@@ -157,7 +164,74 @@ class BackgroundRefreshTest {
                 Level.INFO,
                 "The refresh of a stale origin ended",
                 "origin=MAD outcome=REFRESHED generation=8 itineraries=3"
-                    + " alpha.status=FRESH beta.status=KEPT"));
+                    + " alpha.status=FRESH beta.status=KEPT beta.failure=TIMEOUT"));
+  }
+
+  /**
+   * A refresh with no fresh download leaves search on the origin's old offers: its line is a
+   * warning, as a run's that publishes nothing is (plan 5 Task 7's extra).
+   */
+  @Test
+  void logsARefreshWithNothingFreshAtWarn() throws Exception {
+    scheduler(
+            origin ->
+                new RefreshReport(
+                    origin,
+                    RefreshReport.Outcome.NOTHING_FRESH,
+                    0,
+                    0,
+                    Map.of(Provider.ALPHA, ProviderRefresh.kept(FailureReason.HTTP_ERROR))))
+        .request(MADRID);
+
+    assertThat(awaitLines(1))
+        .extracting(ILoggingEvent::getLevel, ILoggingEvent::getFormattedMessage)
+        .containsExactly(tuple(Level.WARN, "The refresh of a stale origin ended"));
+  }
+
+  /**
+   * Each refresh is counted and timed under its outcome (plan 5 Task 7's extra), from before it
+   * takes the lock until its report.
+   */
+  @Test
+  void metersEachRefreshUnderItsOutcome() throws Exception {
+    scheduler(
+            origin -> {
+              now = NOW.plusSeconds(37);
+              return refreshed(origin);
+            })
+        .request(MADRID);
+
+    awaitLines(1);
+    assertThat(meters.get("refresh.runs").tag("outcome", "REFRESHED").counter().count())
+        .isEqualTo(1);
+    assertThat(
+            meters
+                .get("refresh.duration")
+                .tag("outcome", "REFRESHED")
+                .timer()
+                .totalTime(TimeUnit.SECONDS))
+        .isEqualTo(37);
+  }
+
+  /** A refresh that throws is counted and timed as {@code FAILED}, as a run that throws is. */
+  @Test
+  void metersAFailedRefreshAsFailed() throws Exception {
+    scheduler(
+            origin -> {
+              now = NOW.plusSeconds(5);
+              throw new IllegalStateException("lock timeout");
+            })
+        .request(MADRID);
+
+    awaitLines(1);
+    assertThat(meters.get("refresh.runs").tag("outcome", "FAILED").counter().count()).isEqualTo(1);
+    assertThat(
+            meters
+                .get("refresh.duration")
+                .tag("outcome", "FAILED")
+                .timer()
+                .totalTime(TimeUnit.SECONDS))
+        .isEqualTo(5);
   }
 
   /**
@@ -207,6 +281,17 @@ class BackgroundRefreshTest {
   }
 
   /**
+   * A skipped refresh is counted as {@code SKIPPED} (plan 5's closing round 1), so the pressure on
+   * the one refresh at a time shows; its DEBUG line alone would be off in production.
+   */
+  @Test
+  void countsASkippedRefresh() throws Exception {
+    askForLondonWhileMadridIsRefreshed(new CopyOnWriteArrayList<>());
+
+    assertThat(meters.get("refresh.runs").tag("outcome", "SKIPPED").counter().count()).isEqualTo(1);
+  }
+
+  /**
    * A skipped refresh gives its origin's claim back, so the next search that finds the origin stale
    * asks again at once, instead of after the claim expires (no queue).
    */
@@ -238,7 +323,8 @@ class BackgroundRefreshTest {
             recording,
             claims,
             () -> NOW,
-            Thread.ofVirtual().factory())
+            Thread.ofVirtual().factory(),
+            new RefreshMetrics(meters))
         .request(MADRID);
 
     awaitLines(1);
@@ -300,7 +386,12 @@ class BackgroundRefreshTest {
                     ? Optional.of(() -> held.set(false))
                     : Optional.empty());
     return new BackgroundRefresh(
-        refreshes, oneAtATime, claims, () -> NOW, Thread.ofVirtual().factory());
+        refreshes,
+        oneAtATime,
+        claims,
+        () -> now,
+        Thread.ofVirtual().factory(),
+        new RefreshMetrics(meters));
   }
 
   /** The claims given back; search, not the scheduler, claims and marks origins. */
@@ -329,7 +420,9 @@ class BackgroundRefreshTest {
     }
   }
 
-  /** A refresh of the origin that rewrote 3 itineraries into generation 8, Beta kept. */
+  /**
+   * A refresh of the origin that rewrote 3 itineraries into generation 8, Beta kept on a timeout.
+   */
   private static RefreshReport refreshed(Airport origin) {
     return new RefreshReport(
         origin,
@@ -338,9 +431,9 @@ class BackgroundRefreshTest {
         3,
         Map.of(
             Provider.BETA,
-            ProviderReport.Status.KEPT,
+            ProviderRefresh.kept(FailureReason.TIMEOUT),
             Provider.ALPHA,
-            ProviderReport.Status.FRESH));
+            ProviderRefresh.FRESH));
   }
 
   private static void awaitRelease(CountDownLatch released) {
