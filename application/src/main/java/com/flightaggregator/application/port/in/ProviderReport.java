@@ -36,11 +36,16 @@ public record ProviderReport(
   /** Whether the run stored a new download, or kept the last good one. */
   public enum Status {
     FRESH,
-    KEPT
+    KEPT;
+
+    /** {@code KEPT} exactly when the download failed. */
+    public static Status of(Optional<FailureReason> failure) {
+      return failure.isPresent() ? KEPT : FRESH;
+    }
   }
 
   /** {@code KEPT} exactly when the download failed. */
   public Status status() {
-    return failure.isPresent() ? Status.KEPT : Status.FRESH;
+    return Status.of(failure);
   }
 }

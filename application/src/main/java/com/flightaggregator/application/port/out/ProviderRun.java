@@ -34,6 +34,6 @@ public record ProviderRun(
 
   /** {@code KEPT} exactly when the run's download failed. */
   public ProviderReport.Status status() {
-    return failure.isPresent() ? ProviderReport.Status.KEPT : ProviderReport.Status.FRESH;
+    return ProviderReport.Status.of(failure);
   }
 }
