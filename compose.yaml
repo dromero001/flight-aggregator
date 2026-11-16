@@ -4,11 +4,12 @@
 # The keys and the database password below are demo defaults, committed on purpose so that the
 # project runs with that single command (spec 6.6). They protect only these local containers, whose
 # ports are bound to the loopback interface. Override any of them from the shell or a .env file:
-# ALPHA_API_KEY, BETA_API_KEY, GAMMA_API_KEY, POSTGRES_PASSWORD, ADMIN_SERVICE_CLIENT_SECRET.
-# The same holds for the secret of the admin-service client in the imported Keycloak realm
-# (deploy/keycloak/flight-aggregator-realm.json) and for the demo password of the realm's admin
-# user, set in that file: committed on purpose so that a reviewer can call the admin endpoints
-# without the author (README, "Admin access"). In production they would be secrets.
+# ALPHA_API_KEY, BETA_API_KEY, GAMMA_API_KEY, POSTGRES_PASSWORD, ADMIN_SERVICE_CLIENT_SECRET,
+# ADMIN_USER_PASSWORD. The last two are the secret of the admin-service client and the demo
+# password of the realm's admin user, which the imported Keycloak realm
+# (deploy/keycloak/flight-aggregator-realm.json) reads at import: committed on purpose so that a
+# reviewer can call the admin endpoints without the author (README, "Admin access"). In
+# production they would be secrets.
 services:
   postgres:
     # Every service comes back after a crash or a Docker restart, until it is stopped on purpose.
@@ -123,8 +124,10 @@ services:
       # The issuer of every token: the address a browser reaches Keycloak by, not the one the app uses.
       KC_HOSTNAME: http://localhost:8180
       KC_HEALTH_ENABLED: "true"
-      # Read by the realm file's ${ADMIN_SERVICE_CLIENT_SECRET:...} placeholder at import.
+      # Read by the realm file's ${ADMIN_SERVICE_CLIENT_SECRET:...} and ${ADMIN_USER_PASSWORD:...}
+      # placeholders at import.
       ADMIN_SERVICE_CLIENT_SECRET: ${ADMIN_SERVICE_CLIENT_SECRET:-demo-admin-service-secret}
+      ADMIN_USER_PASSWORD: ${ADMIN_USER_PASSWORD:-demo-admin-password}
     ports:
       - "127.0.0.1:8180:8080"
     volumes:

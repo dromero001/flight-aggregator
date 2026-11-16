@@ -21,8 +21,11 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.Yaml;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * {@code docker compose up} runs the images the tests run, each pinned by tag and digest (spec
@@ -35,6 +38,12 @@ class ComposeFileTest {
    * The tests run in the module's directory; compose's build contexts are at the repository's root.
    */
   private static final Path REPOSITORY = Path.of("..");
+
+  /** The Keycloak realm compose mounts for import. */
+  private static final Path REALM =
+      REPOSITORY.resolve("deploy/keycloak/flight-aggregator-realm.json");
+
+  private static final JsonMapper JSON = JsonMapper.builder().build();
 
   /** An exact tag and the digest of the image's multi-arch index (spec 6.1). */
   private static final Pattern PINNED = Pattern.compile("[^\\s@]+:[^\\s@:/]+@sha256:[0-9a-f]{64}");
@@ -67,6 +76,20 @@ class ComposeFileTest {
   }
 
   /**
+   * Valkey answers a ping before it counts as healthy (plan 5 Task 13): the app waits for that, and
+   * compose refuses to start a service that waits for a dependency with no health check.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void callsValkeyHealthyOnceItAnswersAPing() throws IOException {
+    Map<String, Object> healthcheck =
+        (Map<String, Object>) ComposeFile.services().get("valkey").get("healthcheck");
+
+    assertThat(healthcheck)
+        .containsEntry("test", List.of("CMD-SHELL", "valkey-cli ping | grep -q PONG"));
+  }
+
+  /**
    * The app reaches Valkey by its service name, and starts once the stores and the token issuer it
    * calls answer (plan 5 Task 13).
    */
@@ -75,8 +98,7 @@ class ComposeFileTest {
   void startsTheAppOnValkeyOnceValkeyAndKeycloakAreHealthy() throws IOException {
     Map<String, Object> app = ComposeFile.services().get("app");
 
-    assertThat((Map<String, Object>) app.get("environment"))
-        .containsEntry("SPRING_DATA_REDIS_HOST", "valkey");
+    assertThat(ComposeFile.environment("app")).containsEntry("SPRING_DATA_REDIS_HOST", "valkey");
     assertThat((Map<String, Object>) app.get("depends_on"))
         .containsEntry("valkey", Map.of("condition", "service_healthy"))
         .containsEntry("keycloak", Map.of("condition", "service_healthy"));
@@ -103,17 +125,34 @@ class ComposeFileTest {
   }
 
   /**
-   * The user's decision of 2026-11-15: the admin token comes from a client, not a console login.
+   * Keycloak starts with no administrator console account, under either generation of its
+   * variables: an admin token comes from a realm client, not from a console login (the user's
+   * decision of 2026-11-15).
    */
   @Test
-  @SuppressWarnings("unchecked")
   void givesKeycloakNoAdministratorAccount() throws IOException {
-    Map<String, Object> environment =
-        (Map<String, Object>) ComposeFile.services().get("keycloak").get("environment");
-
-    assertThat(environment.keySet())
+    assertThat(ComposeFile.environment("keycloak").keySet())
         .noneMatch(
             name -> name.startsWith("KC_BOOTSTRAP_ADMIN") || name.startsWith("KEYCLOAK_ADMIN"));
+  }
+
+  /**
+   * The password of the realm's {@code admin} user is a demo default that the shell or a {@code
+   * .env} file overrides, as the client secret is (spec 6.6): compose hands Keycloak the variable,
+   * and the realm file reads it at import.
+   */
+  @Test
+  void letsTheShellOverrideTheDemoPasswordOfTheRealmsAdmin() throws IOException {
+    JsonNode admin =
+        StreamSupport.stream(JSON.readTree(REALM.toFile()).path("users").spliterator(), false)
+            .filter(user -> user.path("username").asString().equals("admin"))
+            .findFirst()
+            .orElseThrow();
+
+    assertThat(ComposeFile.environment("keycloak"))
+        .containsEntry("ADMIN_USER_PASSWORD", "${ADMIN_USER_PASSWORD:-demo-admin-password}");
+    assertThat(admin.path("credentials").path(0).path("value").asString())
+        .isEqualTo("${ADMIN_USER_PASSWORD:demo-admin-password}");
   }
 
   /**
@@ -122,12 +161,29 @@ class ComposeFileTest {
    * Grafana's default and cannot sign in (sign-in is off, {@code GrafanaProvisioningTest}).
    */
   @Test
-  @SuppressWarnings("unchecked")
   void givesGrafanaNoAdministratorAccount() throws IOException {
-    Map<String, Object> environment =
-        (Map<String, Object>) ComposeFile.services().get("grafana").get("environment");
+    assertThat(ComposeFile.environment("grafana").keySet())
+        .noneMatch(name -> name.startsWith("GF_SECURITY_ADMIN_"));
+  }
 
-    assertThat(environment.keySet()).noneMatch(name -> name.startsWith("GF_SECURITY_ADMIN_"));
+  /**
+   * Neither store is published: only the app reaches PostgreSQL and Valkey, on compose's network,
+   * since anyone who reached Valkey could reset any client's rate-limit counter (plan 5 Task 13).
+   * The app, the dashboard, Keycloak and the mock providers are published on the loopback interface
+   * only (README, "Run the aggregator").
+   */
+  @Test
+  void publishesNeitherStoreAndTheRestOnTheLoopbackOnly() throws IOException {
+    Map<String, Object> ports = new HashMap<>();
+    ComposeFile.services().forEach((name, service) -> ports.put(name, service.get("ports")));
+
+    assertThat(ports)
+        .containsEntry("postgres", null)
+        .containsEntry("valkey", null)
+        .containsEntry("app", List.of("127.0.0.1:8080:8080"))
+        .containsEntry("frontend", List.of("127.0.0.1:3000:8080"))
+        .containsEntry("keycloak", List.of("127.0.0.1:8180:8080"))
+        .containsEntry("mock-gds", List.of("127.0.0.1:8081:8080"));
   }
 
   /**
