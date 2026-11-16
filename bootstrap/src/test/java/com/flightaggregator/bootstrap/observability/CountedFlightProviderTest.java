@@ -128,6 +128,29 @@ class CountedFlightProviderTest {
     assertThat(calls("quote", "UNEXPECTED")).isEqualTo(1);
   }
 
+  /**
+   * The provider is named once, when the counter is built: neither {@code provider()} nor the count
+   * of a refused call asks the delegate again, so a limit that also refused {@code provider()} (an
+   * interface proxy loses its exemptions) could not stop a call from being counted (plan 5 Task 2,
+   * C2).
+   */
+  @Test
+  void namesItsProviderWithoutAskingTheDelegateAgain() {
+    FlightProvider limited =
+        new NamedOnce(
+            new Scripted(
+                () -> null,
+                origin -> null,
+                flight -> {
+                  throw new RejectedExecutionException("Concurrency limit reached");
+                }));
+    FlightProvider counted = counted(limited);
+
+    assertThat(counted.provider()).isEqualTo(Provider.ALPHA);
+    assertThatThrownBy(() -> counted.quote(FLIGHT)).isInstanceOf(RejectedExecutionException.class);
+    assertThat(calls("quote", "REJECTED")).isEqualTo(1);
+  }
+
   private FlightProvider counted(FlightProvider provider) {
     return new CountedFlightProvider(provider, meters);
   }
@@ -138,6 +161,41 @@ class CountedFlightProviderTest {
         .tags("provider", "ALPHA", "operation", operation, "outcome", outcome)
         .counter()
         .count();
+  }
+
+  /** A provider that names itself once, then refuses {@code provider()} as an exhausted limit. */
+  private static final class NamedOnce implements FlightProvider {
+
+    private final FlightProvider delegate;
+    private boolean named;
+
+    NamedOnce(FlightProvider delegate) {
+      this.delegate = delegate;
+    }
+
+    @Override
+    public Provider provider() {
+      if (named) {
+        throw new RejectedExecutionException("Concurrency limit reached");
+      }
+      named = true;
+      return delegate.provider();
+    }
+
+    @Override
+    public ProviderDownload download() {
+      return delegate.download();
+    }
+
+    @Override
+    public ProviderDownload downloadFrom(Airport origin) {
+      return delegate.downloadFrom(origin);
+    }
+
+    @Override
+    public Optional<Leg> quote(LegKey flight) {
+      return delegate.quote(flight);
+    }
   }
 
   /** Alpha, answering each call with the test's function. */

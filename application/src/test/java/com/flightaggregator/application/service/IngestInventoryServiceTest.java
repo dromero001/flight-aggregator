@@ -49,6 +49,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -242,6 +243,30 @@ class IngestInventoryServiceTest {
     assertThat(alphaReport.cause()).containsSame(boom);
     assertThat(store.replacedProviders()).containsExactly(GAMMA);
     assertThat(store.offers(GAMMA)).isEqualTo(gammaLegs);
+  }
+
+  /**
+   * A download refused by its provider's concurrency limit is a capacity limit, not a bug: it is
+   * {@code REJECTED} in the report, as the provider's call counter says, never {@code UNEXPECTED}.
+   */
+  @Test
+  void reportsADownloadOverItsProvidersLimitAsRejected() {
+    RejectedExecutionException overTheLimit =
+        new RejectedExecutionException("Concurrency limit reached");
+    FakeFlightProvider alpha =
+        new FakeFlightProvider(
+            ALPHA,
+            () -> {
+              throw overTheLimit;
+            });
+    FakeFlightProvider gamma =
+        new FakeFlightProvider(GAMMA, () -> download(leg(GAMMA, 9, "BCN", "LHR")));
+
+    ProviderReport alphaReport = service(alpha, gamma).ingest().providers().getFirst();
+
+    assertThat(alphaReport.status()).isEqualTo(ProviderReport.Status.KEPT);
+    assertThat(alphaReport.failure()).contains(FailureReason.REJECTED);
+    assertThat(alphaReport.cause()).containsSame(overTheLimit);
   }
 
   /** An error in a download's thread is the run's, as it was thrown, never a failed provider. */
