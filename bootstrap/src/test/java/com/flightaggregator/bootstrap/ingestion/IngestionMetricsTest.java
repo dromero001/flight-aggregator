@@ -9,16 +9,20 @@ import static com.flightaggregator.domain.Provider.ALPHA;
 import static com.flightaggregator.domain.Provider.BETA;
 import static com.flightaggregator.domain.Provider.GAMMA;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.flightaggregator.application.port.in.IngestionReport;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.domain.Provider;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 class IngestionMetricsTest {
@@ -154,6 +158,23 @@ class IngestionMetricsTest {
     for (Provider provider : Provider.values()) {
       assertThat(lastFreshSeconds(provider)).as(provider.name()).isNaN();
     }
+  }
+
+  /**
+   * Every run outcome is counted from zero, registered before the first run, so Prometheus's {@code
+   * rate} and {@code increase} see the startup run, which they would miss on a counter the run
+   * creates (E-T6-1, built on 2026-11-16).
+   */
+  @Test
+  void registersEveryRunOutcomeAtZeroBeforeTheFirstRun() {
+    assertThat(meters.find("ingestion.runs").counters())
+        .extracting(counter -> counter.getId().getTag("outcome"), Counter::count)
+        .containsExactlyInAnyOrderElementsOf(
+            Stream.concat(
+                    Arrays.stream(IngestionReport.Outcome.values()).map(Enum::name),
+                    Stream.of("FAILED"))
+                .map(outcome -> tuple(outcome, 0.0))
+                .toList());
   }
 
   private double gauge(String name) {

@@ -8,7 +8,9 @@ import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.LegKey;
 import com.flightaggregator.domain.Provider;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Consumer;
@@ -23,7 +25,9 @@ import org.slf4j.LoggerFactory;
  * {@code outcome} is {@code OK}, {@code NOT_SOLD} for a quote of a flight no longer sold, the
  * {@code FailureReason} of a provider that failed, or {@code REJECTED} for a call over the
  * provider's concurrency limit; a call that fails any other way is {@code UNEXPECTED}, so every
- * call is counted. The answer or the failure passes through unchanged.
+ * call is counted. The answer or the failure passes through unchanged. Every operation and outcome
+ * is registered at zero when the provider is wrapped, so Prometheus's {@code rate} sees the startup
+ * run's calls (E-T6-1).
  *
  * <p>An {@code UNEXPECTED} quote is also one {@code ERROR} line with its stack trace: it is a bug,
  * and the re-price that asked treats it as the provider failing (§6.5), so nothing else reports it.
@@ -37,6 +41,10 @@ public final class CountedFlightProvider implements FlightProvider {
 
   private static final String OK = "OK";
   private static final String NOT_SOLD = "NOT_SOLD";
+
+  private static final String DOWNLOAD = "download";
+  private static final String ORIGIN_DOWNLOAD = "origin-download";
+  private static final String QUOTE = "quote";
 
   private final FlightProvider provider;
 
@@ -52,6 +60,13 @@ public final class CountedFlightProvider implements FlightProvider {
     this.provider = provider;
     this.name = provider.provider();
     this.meters = meters;
+    for (String operation : List.of(DOWNLOAD, ORIGIN_DOWNLOAD, QUOTE)) {
+      calls(operation, OK);
+      for (FailureReason reason : FailureReason.values()) {
+        calls(operation, reason.name());
+      }
+    }
+    calls(QUOTE, NOT_SOLD);
   }
 
   @Override
@@ -67,19 +82,19 @@ public final class CountedFlightProvider implements FlightProvider {
 
   @Override
   public ProviderDownload download() {
-    return counted("download", provider::download, download -> OK, unexpected -> {});
+    return counted(DOWNLOAD, provider::download, download -> OK, unexpected -> {});
   }
 
   @Override
   public ProviderDownload downloadFrom(Airport origin) {
     return counted(
-        "origin-download", () -> provider.downloadFrom(origin), download -> OK, unexpected -> {});
+        ORIGIN_DOWNLOAD, () -> provider.downloadFrom(origin), download -> OK, unexpected -> {});
   }
 
   @Override
   public Optional<Leg> quote(LegKey flight) {
     return counted(
-        "quote",
+        QUOTE,
         () -> provider.quote(flight),
         quote -> quote.isPresent() ? OK : NOT_SOLD,
         unexpected ->
@@ -114,9 +129,11 @@ public final class CountedFlightProvider implements FlightProvider {
   }
 
   private void count(String operation, String outcome) {
-    meters
-        .counter(
-            "provider.calls", "provider", name.name(), "operation", operation, "outcome", outcome)
-        .increment();
+    calls(operation, outcome).increment();
+  }
+
+  private Counter calls(String operation, String outcome) {
+    return meters.counter(
+        "provider.calls", "provider", name.name(), "operation", operation, "outcome", outcome);
   }
 }

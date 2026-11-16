@@ -5,6 +5,7 @@ import com.flightaggregator.application.port.in.ProviderReport;
 import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.domain.Provider;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
@@ -21,7 +22,8 @@ import java.util.function.ToDoubleFunction;
  * published with no provider fresh) and how old each provider's data is (§6.5), and the partitions'
  * health (§4.3). A gauge whose value is not known, before the first publication or while a provider
  * has nothing stored, reads {@code NaN}. A provider's age comes from its stored offers, so the
- * first run after a restart restores it.
+ * first run after a restart restores it. Every outcome of {@code ingestion.runs} is registered at
+ * zero here, so Prometheus's {@code rate} and {@code increase} see the startup run (E-T6-1).
  */
 public final class IngestionMetrics {
 
@@ -45,6 +47,10 @@ public final class IngestionMetrics {
     publicationGauge("ingestion.partitions.days.ahead", this::partitionDaysAhead);
     Gauge.builder("ingestion.consecutive.failures", consecutiveFailures, AtomicInteger::get)
         .register(meters);
+    for (IngestionReport.Outcome outcome : IngestionReport.Outcome.values()) {
+      runs(outcome.name());
+    }
+    runs(FAILED);
     for (Provider provider : Provider.values()) {
       AtomicReference<Instant> quote = new AtomicReference<>();
       newestQuote.put(provider, quote);
@@ -93,12 +99,16 @@ public final class IngestionMetrics {
 
   /** Counts the run under its outcome; a run that succeeded ends the failures in a row. */
   private void ended(String outcome, boolean succeeded) {
-    meters.counter("ingestion.runs", "outcome", outcome).increment();
+    runs(outcome).increment();
     if (succeeded) {
       consecutiveFailures.set(0);
     } else {
       consecutiveFailures.incrementAndGet();
     }
+  }
+
+  private Counter runs(String outcome) {
+    return meters.counter("ingestion.runs", "outcome", outcome);
   }
 
   /** A gauge of the last publication, {@code NaN} until there is one. */

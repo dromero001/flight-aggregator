@@ -259,6 +259,25 @@ class GrafanaProvisioningTest {
   }
 
   /**
+   * The application registers its counters at zero when it starts (E-T6-1, built on 2026-11-16), so
+   * {@code increase} and {@code rate} count the startup run from that zero: no panel adds a series
+   * in full the hour it first appears ({@code x unless x offset 1h}), a term that also counted a
+   * whole counter again after a restart of Prometheus.
+   */
+  @Test
+  void countsNoSeriesInFullTheHourItAppears() throws IOException, InterruptedException {
+    List<String> expressions =
+        dashboard()
+            .path("panels")
+            .valueStream()
+            .flatMap(panel -> panel.path("targets").valueStream())
+            .map(target -> target.path("expr").asString())
+            .toList();
+
+    assertThat(expressions).isNotEmpty().noneMatch(expression -> expression.contains("offset"));
+  }
+
+  /**
    * The application's log lines one click from the dashboard (plan 7 extra E4): a logs panel on
    * Loki's one stream of the application, where a line's details still link to its trace.
    */
