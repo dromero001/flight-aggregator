@@ -89,7 +89,7 @@ One dashboard, "Flight aggregator" (uid `flight-aggregator`), provisioned from `
 | Alerts | Prometheus's rules and their state, healthy ones as Normal: each alert's rule on its value and its `gauge: unknown` rule, as on Prometheus's alerts page |
 | Logs | the application's lines from Loki, newest first; a line's details hold **View trace** |
 
-The gauge tiles (freshness, partitions) are instant queries: a gauge that reads `NaN` or is missing shows "unknown" in the colour of the alert that fires on it, never its last healthy value. Counters created on their first use (`ingestion.runs`, `ingestion.records.discarded`) are counted in full the first hour they exist, so the startup run shows; `provider.calls` uses `rate`, which misses a counter's first increment, so the startup run's calls show from the second run on.
+The gauge tiles (freshness, partitions) are instant queries: a gauge that reads `NaN` or is missing shows "unknown" in the colour of the alert that fires on it, never its last healthy value. Counters created on their first use (`ingestion.runs`, `ingestion.records.discarded`) are counted in full the first hour they exist, so the startup run shows; `provider.calls` uses `rate`, which misses a counter's first increment, so the startup run's calls show from the second run on. The HTTP requests panel's `rate` misses a first request the same way: Micrometer creates each series (one route, method and outcome) on its first request, so that request is not drawn.
 
 ## Traces
 
@@ -133,7 +133,7 @@ The reverse jump (plan 7 extra E1): the Tempo datasource links a trace to Loki w
 
 ## What is not collected
 
-- The mock providers, nginx, Keycloak, PostgreSQL and Valkey send no telemetry; only the aggregator's is collected (spec §6.10). PostgreSQL and Valkey exporters and a JVM dashboard are plan 7's optional Task 8, "only if time remains".
+- The mock providers, nginx, Keycloak, PostgreSQL and Valkey send no telemetry; only the aggregator's is collected (spec §6.10). PostgreSQL and Valkey exporters and a JVM dashboard were plan 7's optional Task 8, "only if time remains", and were not built.
 - No Alertmanager, notification channel or SLO burn-rate alert, and no trace id in error responses (rejected, spec §6.10). No tracing in the browser (plan 7, out of scope).
 - Metrics are not pushed over OTLP: the OpenTelemetry starter's OTLP meter registry is turned off, so Prometheus's scrape is their one path (`TracingEndToEndTest.pushesNoMetrics`).
 

@@ -11,7 +11,7 @@
       "id": 1,
       "type": "timeseries",
       "title": "Provider calls",
-      "description": "Calls to each provider per second, by outcome (spec 6.5).",
+      "description": "Calls to each provider per second, by outcome (spec 6.5). rate misses a counter's first increment, and each counter is created on its first call, so the startup run's calls show from the second run on.",
       "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
@@ -71,7 +71,7 @@
       "id": 3,
       "type": "stat",
       "title": "Data freshness",
-      "description": "Age of each provider's newest data, the youngest over the instances (spec 6.5). Red from 90 minutes, when ProviderDataStale fires. Unknown, in red, when no instance holds a number for it (NaN until an instance's first run, or no instance scraped), which ProviderDataStale counts as stale and fires on after 15 minutes.",
+      "description": "Age of each provider's newest data, the youngest over the instances (spec 6.5). Red from 90 minutes, when ProviderDataStale fires. Unknown, in red, when no instance holds a number for it (NaN until an instance's first run or while a provider has nothing stored, or no instance scraped), which ProviderDataStale counts as stale and fires on after 15 minutes.",
       "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "options": {
@@ -287,7 +287,7 @@
       "id": 8,
       "type": "timeseries",
       "title": "HTTP requests",
-      "description": "Requests to the search (GET /api/itineraries) and the re-price (POST /api/itineraries/{id}/reprice) per second, by outcome: CLIENT_ERROR (4xx, such as a bad parameter or the rate limit) in orange, SERVER_ERROR (5xx) in red. On the right axis, dashed, each route's mean latency over the interval and its slowest request in the last two minutes or so. Admin calls and health checks are left out.",
+      "description": "Requests to the search (GET /api/itineraries) and the re-price (POST /api/itineraries/{id}/reprice) per second, by outcome: CLIENT_ERROR (4xx, such as a bad parameter or the rate limit) in orange, SERVER_ERROR (5xx) in red. On the right axis, dashed, each route's mean latency over the interval and its slowest request in the last two minutes or so. Admin calls and health checks are left out. rate misses a series' first request: Micrometer creates each series (one route, method and outcome) on its first request, so that request is not drawn.",
       "gridPos": { "x": 0, "y": 24, "w": 12, "h": 10 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
