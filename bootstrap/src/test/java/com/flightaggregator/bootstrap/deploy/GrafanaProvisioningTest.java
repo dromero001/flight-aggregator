@@ -207,11 +207,11 @@ class GrafanaProvisioningTest {
   }
 
   /**
-   * One dashboard with every metric the spec promises (spec 6.10; plan 7 Task 6), read as the
-   * anonymous Viewer reads it.
+   * One dashboard with every metric the spec promises (spec 6.10; plan 7 Task 6), then the approved
+   * extras' panels (plan 7 E4), read as the anonymous Viewer reads it.
    */
   @Test
-  void loadsTheDashboardWithItsSevenPanels() throws IOException, InterruptedException {
+  void loadsTheDashboardWithItsPanels() throws IOException, InterruptedException {
     JsonNode dashboard = dashboard();
 
     assertThat(dashboard.path("title").asString()).isEqualTo("Flight aggregator");
@@ -223,16 +223,25 @@ class GrafanaProvisioningTest {
             "Ingestion",
             "Cache hit ratio",
             "Discarded records",
-            "Partitions");
+            "Partitions",
+            "Logs");
   }
 
   /**
-   * Each panel's expressions name only metrics Prometheus stores, so a misspelt or renamed meter
-   * leaves no panel silently empty (spec 6.10; plan 7 Task 6).
+   * Each Prometheus panel's expressions name only metrics Prometheus stores, so a misspelt or
+   * renamed meter leaves no panel silently empty (spec 6.10; plan 7 Task 6). The logs panel has its
+   * own test.
    */
   @Test
   void everyPanelQueriesAKnownMetric() throws IOException, InterruptedException {
-    for (JsonNode panel : dashboard().path("panels")) {
+    List<JsonNode> metricPanels =
+        dashboard()
+            .path("panels")
+            .valueStream()
+            .filter(panel -> panel.at("/datasource/uid").asString().equals("prometheus"))
+            .toList();
+    assertThat(metricPanels).as("panels on Prometheus").isNotEmpty();
+    for (JsonNode panel : metricPanels) {
       String title = panel.path("title").asString();
       assertThat(panel.path("targets").valueStream()).as("queries of %s", title).isNotEmpty();
       for (JsonNode target : panel.path("targets")) {
@@ -247,6 +256,20 @@ class GrafanaProvisioningTest {
   }
 
   /**
+   * The application's log lines one click from the dashboard (plan 7 extra E4): a logs panel on
+   * Loki's one stream of the application, where a line's details still link to its trace.
+   */
+  @Test
+  void showsTheApplicationsLogLines() throws IOException, InterruptedException {
+    JsonNode logs = panel("Logs");
+
+    assertThat(logs.path("type").asString()).isEqualTo("logs");
+    assertThat(logs.at("/datasource/uid").asString()).isEqualTo("loki");
+    assertThat(logs.path("targets").valueStream().map(target -> target.path("expr").asString()))
+        .containsExactly("{service_name=\"flight-aggregator\"}");
+  }
+
+  /**
    * A gauge's tile reads "unknown" when no instance reports a number for it, as its alert counts it
    * (plan 7 Task 3: NaN or missing is stale), never its last healthy value in green. The query is
    * instant, so a gauge that went missing leaves no older value to show; NaN, and no series at all,
@@ -256,8 +279,6 @@ class GrafanaProvisioningTest {
    */
   @Test
   void showsAnUnknownGaugeAsUnknownNeverAsItsLastValue() throws IOException, InterruptedException {
-    Map<String, JsonNode> panels = new LinkedHashMap<>();
-    dashboard().path("panels").forEach(panel -> panels.put(panel.path("title").asString(), panel));
     List<GaugeTile> tiles =
         List.of(
             new GaugeTile("Data freshness", "A", "red"),
@@ -265,7 +286,7 @@ class GrafanaProvisioningTest {
             new GaugeTile("Partitions", "B", "orange"));
 
     for (GaugeTile tile : tiles) {
-      JsonNode panel = panels.get(tile.panel());
+      JsonNode panel = panel(tile.panel());
       JsonNode target =
           panel
               .path("targets")
@@ -348,6 +369,16 @@ class GrafanaProvisioningTest {
         .filter(datasource -> datasource.path("uid").asString().equals(uid))
         .findFirst()
         .orElseThrow();
+  }
+
+  /** A panel of the dashboard by its title; a missing one fails naming it. */
+  private static JsonNode panel(String title) throws IOException, InterruptedException {
+    return dashboard()
+        .path("panels")
+        .valueStream()
+        .filter(panel -> panel.path("title").asString().equals(title))
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("No panel titled " + title));
   }
 
   private static JsonNode dashboard() throws IOException, InterruptedException {

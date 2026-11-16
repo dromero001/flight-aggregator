@@ -282,6 +282,28 @@
           "range": false
         }
       ]
+    },
+    {
+      "id": 8,
+      "type": "logs",
+      "title": "Logs",
+      "description": "The application's log lines from Loki, newest first. Click a line for its details: its level, its key-value pairs, and View trace, which opens the line's trace in Tempo.",
+      "gridPos": { "x": 0, "y": 32, "w": 24, "h": 10 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{service_name=\"flight-aggregator\"}"
+        }
+      ]
     }
   ]
 }
