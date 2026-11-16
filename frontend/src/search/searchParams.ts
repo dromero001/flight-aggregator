@@ -13,13 +13,27 @@ export type SearchFilters = Omit<SearchCriteria, 'sort'>;
 export type FilterField = 'origin' | 'destination' | 'carrier' | 'maxPrice';
 export type FieldErrors = Partial<Record<FilterField, string>>;
 
-const FILTER_FIELDS: FilterField[] = ['origin', 'destination', 'carrier', 'maxPrice'];
+/** The brief's four filters, in the order the form shows them. */
+export const FILTER_FIELDS: readonly FilterField[] = [
+  'origin',
+  'destination',
+  'carrier',
+  'maxPrice',
+];
 
-const AIRPORT_ERROR = 'Enter a 3-letter airport code, like MAD';
+interface Rule {
+  isValid: (value: string) => boolean;
+  message: string;
+}
 
-const RULES: Record<FilterField, { isValid: (value: string) => boolean; message: string }> = {
-  origin: { isValid: (value) => /^[A-Z]{3}$/.test(value), message: AIRPORT_ERROR },
-  destination: { isValid: (value) => /^[A-Z]{3}$/.test(value), message: AIRPORT_ERROR },
+const AIRPORT: Rule = {
+  isValid: (value) => /^[A-Z]{3}$/.test(value),
+  message: 'Enter a 3-letter airport code, like MAD',
+};
+
+const RULES: Record<FilterField, Rule> = {
+  origin: AIRPORT,
+  destination: AIRPORT,
   carrier: {
     isValid: (value) => /^[A-Z0-9]{2}$/.test(value),
     message: 'Enter a 2-character airline code, like IB',
@@ -53,10 +67,11 @@ export function parseSearch(params: URLSearchParams): {
   return { criteria, errors };
 }
 
+/** The URL of a search, its values normalised as `parseSearch` reads them; empty ones left out. */
 export function toSearchParams(criteria: SearchCriteria): URLSearchParams {
   const params = new URLSearchParams();
   for (const field of FILTER_FIELDS) {
-    const value = criteria[field];
+    const value = normalise(field, criteria[field] ?? null);
     if (value) params.set(field, value);
   }
   if (criteria.sort !== 'price') params.set('sort', criteria.sort);

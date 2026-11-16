@@ -1,4 +1,4 @@
-import { focusManager, QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, onlineManager, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
@@ -39,6 +39,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   focusManager.setFocused(undefined);
+  onlineManager.setOnline(true);
 });
 
 function Location() {
@@ -64,7 +65,7 @@ function renderAt(url: string) {
   // Retries keep the app's rule but not its wait, so a test does not sleep through them.
   const defaults = queryClient.getDefaultOptions();
   queryClient.setDefaultOptions({ ...defaults, queries: { ...defaults.queries, retryDelay: 0 } });
-  return render(
+  const rendered = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[url]}>
         <SearchPage />
@@ -72,6 +73,19 @@ function renderAt(url: string) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { ...rendered, queryClient };
+}
+
+/**
+ * The window loses and regains the focus, which makes TanStack refetch what it counts stale. The
+ * refetch starts a few microtasks after the event, which `act` lets run.
+ */
+async function refocus() {
+  await act(async () => {
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await Promise.resolve();
+  });
 }
 
 test('has no accessibility violations with results on the page', async () => {
@@ -180,6 +194,30 @@ test('searches again when the sort changes', async () => {
   expect(searched[1]?.get('origin')).toBe('MAD');
 });
 
+test('stops loading a search the customer has left', async () => {
+  // A hung API: the request of the sort left behind must not keep a connection open.
+  const user = userEvent.setup();
+  let abandoned: AbortSignal | undefined;
+  server.use(
+    http.get(SEARCH, async ({ request }) => {
+      if (new URL(request.url).searchParams.get('sort') !== 'duration') {
+        abandoned = request.signal;
+        await delay('infinite');
+      }
+      return HttpResponse.json(page({ itineraries: flights(1) }));
+    }),
+  );
+  renderAt('/?origin=MAD');
+  await waitFor(() => {
+    expect(abandoned).toBeDefined();
+  });
+
+  await user.click(screen.getByRole('radio', { name: 'Duration' }));
+
+  expect(await screen.findByText('Showing 1 flight')).toBeInTheDocument();
+  expect(abandoned?.aborted).toBe(true);
+});
+
 test('shows the empty state', async () => {
   // The default handler answers an empty last page.
   renderAt('/?origin=MAD&maxPrice=10');
@@ -249,6 +287,33 @@ test('tries a failed search again', async () => {
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
+test('cannot try again while a failed next page is being tried again', async () => {
+  // TanStack keeps the error while the repeat runs (the list has data): a second click would
+  // abort the request in flight and send another, each one counted by the rate limit.
+  const user = userEvent.setup();
+  let appUp = true;
+  server.use(
+    http.get(SEARCH, async ({ request }) => {
+      if (new URL(request.url).searchParams.get('cursor') !== 'page-2') {
+        return HttpResponse.json(page({ itineraries: flights(1), nextCursor: 'page-2' }));
+      }
+      if (!appUp) return new HttpResponse(null, { status: 502 });
+      await delay('infinite');
+      return HttpResponse.json(page());
+    }),
+  );
+  renderAt('/?origin=MAD');
+  await screen.findByText('Showing 1 flight');
+  appUp = false;
+  await user.click(screen.getByRole('button', { name: 'Load more' }));
+  await screen.findByRole('alert');
+
+  appUp = true;
+  await user.click(screen.getByRole('button', { name: 'Try again' }));
+
+  expect(screen.getByRole('button', { name: 'Try again' })).toBeDisabled();
+});
+
 test('tries a failed next page again', async () => {
   const user = userEvent.setup();
   let appUp = true;
@@ -276,6 +341,45 @@ test('tries a failed next page again', async () => {
   // The page that failed is read again, not the one already shown.
   expect(await screen.findByText('Showing 2 flights')).toBeInTheDocument();
   expect(cursors).toEqual(['page-2']);
+});
+
+test('does not offer Load more again after a rate-limited next page', async () => {
+  // A click during the wait would spend the limit again, as "Try again" would.
+  const user = userEvent.setup();
+  server.use(
+    http.get(SEARCH, ({ request }) =>
+      new URL(request.url).searchParams.get('cursor') === 'page-2'
+        ? problem(429, 'Too many requests from this address.', { 'Retry-After': '30' })
+        : HttpResponse.json(page({ itineraries: flights(1), nextCursor: 'page-2' })),
+    ),
+  );
+  renderAt('/?origin=MAD');
+  await user.click(await screen.findByRole('button', { name: 'Load more' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Too many searches from your connection. Try again in 30 seconds.',
+  );
+  expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+});
+
+test('shows a next-page failure where Load more was', async () => {
+  // The customer pressed "Load more" at the bottom of the list, so the failure is shown there.
+  const user = userEvent.setup();
+  server.use(
+    http.get(SEARCH, ({ request }) =>
+      new URL(request.url).searchParams.get('cursor') === 'page-2'
+        ? new HttpResponse(null, { status: 502 })
+        : HttpResponse.json(page({ itineraries: flights(1), nextCursor: 'page-2' })),
+    ),
+  );
+  renderAt('/?origin=MAD');
+  await user.click(await screen.findByRole('button', { name: 'Load more' }));
+
+  const failure = await screen.findByRole('alert');
+  const list = screen.getByRole('list');
+  expect(list.compareDocumentPosition(failure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
 });
 
 test('does not retry a rate-limited search', async () => {
@@ -336,18 +440,18 @@ test('keeps the shown results when the same filters are searched again', async (
       return HttpResponse.json(page({ itineraries: flights(1) }));
     }),
   );
-  renderAt('/?origin=MAD');
+  const { queryClient } = renderAt('/?origin=MAD');
   await screen.findByText('Showing 1 flight');
 
   await user.click(screen.getByRole('button', { name: 'Search' }));
-  // Long enough for a request the page should not have sent to arrive.
-  await new Promise((resolve) => setTimeout(resolve, 50));
 
-  // Only a failed search is asked again; "Reload" is the way to fresh results (Q4-A).
+  // Only a failed search is asked again; "Reload" is the way to fresh results (Q4-A). A request
+  // the click started would be in flight or counted by now.
+  expect(queryClient.isFetching()).toBe(0);
   expect(requests).toBe(1);
 });
 
-test('does not search while a filter is invalid', async () => {
+test('does not search while a filter is invalid', () => {
   let requests = 0;
   server.use(
     http.get(SEARCH, () => {
@@ -355,11 +459,11 @@ test('does not search while a filter is invalid', async () => {
       return HttpResponse.json(page({ itineraries: flights(1) }));
     }),
   );
-  renderAt('/?origin=MADR&maxPrice=-1&sort=best');
+  const { queryClient } = renderAt('/?origin=MADR&maxPrice=-1&sort=best');
 
   expect(screen.getByLabelText('From')).toBeInvalid();
-  // Long enough for a request the page should not have sent to arrive.
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  // An enabled query starts fetching as the page mounts.
+  expect(queryClient.isFetching()).toBe(0);
   expect(requests).toBe(0);
   expect(screen.queryByText('Loading flights…')).not.toBeInTheDocument();
   expect(screen.queryByRole('article')).not.toBeInTheDocument();
@@ -391,6 +495,36 @@ test('offers a reload when the inventory changed', async () => {
   expect(screen.queryByText('Results updated.')).not.toBeInTheDocument();
 });
 
+test('reloads only the search shown', async () => {
+  // A cached search whose filters include the shown one's must survive its "Reload".
+  const user = userEvent.setup();
+  const toNewYork: string[] = [];
+  server.use(
+    http.get(SEARCH, ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      if (params.get('destination') === 'JFK') {
+        toNewYork.push(request.url);
+        return HttpResponse.json(page({ itineraries: flights(1) }));
+      }
+      return params.get('cursor') === 'page-2'
+        ? HttpResponse.json(page({ itineraries: flights(1, 1), inventoryChanged: true }))
+        : HttpResponse.json(page({ itineraries: flights(1), nextCursor: 'page-2' }));
+    }),
+  );
+  renderAt('/?origin=MAD&destination=JFK');
+  await screen.findByText('Showing 1 flight');
+  await user.clear(screen.getByLabelText('To'));
+  await user.click(screen.getByRole('button', { name: 'Search' }));
+  await user.click(await screen.findByRole('button', { name: 'Load more' }));
+  await user.click(await screen.findByRole('button', { name: 'Reload' }));
+  await screen.findByRole('button', { name: 'Load more' });
+
+  await user.click(screen.getByRole('button', { name: 'Back' }));
+
+  expect(await screen.findByText('Showing 1 flight')).toBeInTheDocument();
+  expect(toNewYork).toHaveLength(1);
+});
+
 test('does not reload the results by itself when the window regains focus', async () => {
   // Q4-A: the page offers a reload; it never swaps the list under the customer's eyes.
   let requests = 0;
@@ -400,14 +534,48 @@ test('does not reload the results by itself when the window regains focus', asyn
       return HttpResponse.json(page({ itineraries: flights(1) }));
     }),
   );
-  renderAt('/?origin=MAD');
+  const { queryClient } = renderAt('/?origin=MAD');
   await screen.findByRole('article');
 
-  act(() => {
-    focusManager.setFocused(false);
-    focusManager.setFocused(true);
+  await refocus();
+
+  expect(queryClient.isFetching()).toBe(0);
+  expect(requests).toBe(1);
+});
+
+test('does not search again when the window regains focus after a failure', async () => {
+  // During a rate limit's wait, a tab switch must not spend the limit again.
+  let requests = 0;
+  server.use(
+    http.get(SEARCH, () => {
+      requests += 1;
+      return problem(429, 'Too many requests from this address.', { 'Retry-After': '30' });
+    }),
+  );
+  renderAt('/?origin=MAD');
+  await screen.findByRole('alert');
+
+  await refocus();
+
+  expect(requests).toBe(1);
+});
+
+test('does not search again when the connection comes back after a failure', async () => {
+  let requests = 0;
+  server.use(
+    http.get(SEARCH, () => {
+      requests += 1;
+      return problem(429, 'Too many requests from this address.', { 'Retry-After': '30' });
+    }),
+  );
+  renderAt('/?origin=MAD');
+  await screen.findByRole('alert');
+
+  await act(async () => {
+    onlineManager.setOnline(false);
+    onlineManager.setOnline(true);
+    await Promise.resolve();
   });
-  await new Promise((resolve) => setTimeout(resolve, 50));
 
   expect(requests).toBe(1);
 });
@@ -426,6 +594,32 @@ test('restores the previous search on back', async () => {
   expect(screen.getByLabelText('location')).toHaveTextContent('?origin=MAD&sort=departure');
   expect(screen.getByLabelText('From')).toHaveValue('MAD');
   expect(screen.getByRole('radio', { name: 'Departure' })).toBeChecked();
+});
+
+test('adds no history entry for the search already shown', async () => {
+  // "mad" normalises to the MAD already in the URL: Back must not seem to do nothing.
+  const user = userEvent.setup();
+  renderAt('/');
+  await user.type(screen.getByLabelText('From'), 'MAD');
+  await user.click(screen.getByRole('button', { name: 'Search' }));
+  await user.clear(screen.getByLabelText('From'));
+  await user.type(screen.getByLabelText('From'), 'mad');
+  await user.click(screen.getByRole('button', { name: 'Search' }));
+
+  await user.click(screen.getByRole('button', { name: 'Back' }));
+
+  expect(screen.getByLabelText('location')).toBeEmptyDOMElement();
+});
+
+test('shows the normalised value when the search is already shown', async () => {
+  const user = userEvent.setup();
+  renderAt('/?origin=MAD');
+  await user.clear(screen.getByLabelText('From'));
+  await user.type(screen.getByLabelText('From'), ' mad ');
+
+  await user.click(screen.getByRole('button', { name: 'Search' }));
+
+  expect(screen.getByLabelText('From')).toHaveValue('MAD');
 });
 
 test('restores the previous sort on back', async () => {

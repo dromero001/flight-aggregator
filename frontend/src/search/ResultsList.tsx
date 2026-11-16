@@ -1,11 +1,10 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../api/apiError';
 import { ItineraryCard } from '../itinerary/ItineraryCard';
 import { useNow } from '../time/useNow';
 import styles from './ResultsList.module.css';
 import { mergePages } from './mergePages';
 import type { SearchCriteria } from './searchParams';
-import { itinerarySearchKey, useItinerarySearch } from './useItinerarySearch';
+import { useItinerarySearch, useSearchResets } from './useItinerarySearch';
 
 /** How often the cards' "Updated N min ago" is worked out again (Q7). */
 const FRESHNESS_TICK_MS = 60_000;
@@ -44,8 +43,8 @@ interface ResultsListProps {
 }
 
 export function ResultsList({ criteria, enabled }: ResultsListProps) {
-  const queryClient = useQueryClient();
   const search = useItinerarySearch(criteria, enabled);
+  const { reload } = useSearchResets();
   const now = useNow(FRESHNESS_TICK_MS);
   const { itineraries, inventoryChanged } = mergePages(search.data?.pages ?? []);
   const failure = search.error && describeFailure(search.error);
@@ -55,32 +54,40 @@ export function ResultsList({ criteria, enabled }: ResultsListProps) {
     void (search.isFetchNextPageError ? search.fetchNextPage() : search.refetch());
   }
 
-  function reload() {
-    // Drops every loaded page and reads the first one again, on the current generation.
-    void queryClient.resetQueries({ queryKey: itinerarySearchKey(criteria) });
-  }
+  const failureNotice = failure && (
+    <div className={styles.failure}>
+      <p role="alert">{failure.message}</p>
+      {failure.canTryAgain && (
+        <button
+          className={styles.button}
+          type="button"
+          disabled={search.isFetching}
+          onClick={tryAgain}
+        >
+          Try again
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <section className={styles.results} aria-label="Flights" aria-busy={search.isLoading}>
       <p className={styles.status} role="status">
         {statusText(search.isLoading, search.data ? itineraries.length : undefined)}
       </p>
-      {failure && (
-        <div className={styles.failure}>
-          <p role="alert">{failure.message}</p>
-          {failure.canTryAgain && (
-            <button className={styles.button} type="button" onClick={tryAgain}>
-              Try again
-            </button>
-          )}
-        </div>
-      )}
+      {!search.isFetchNextPageError && failureNotice}
       {/* Always in the page, so the notice is announced when it appears. */}
       <div aria-live="polite">
         {inventoryChanged && (
           <p className={styles.notice}>
             <span>Results updated.</span>
-            <button className={styles.button} type="button" onClick={reload}>
+            <button
+              className={styles.button}
+              type="button"
+              onClick={() => {
+                reload(criteria);
+              }}
+            >
               Reload
             </button>
           </p>
@@ -93,18 +100,21 @@ export function ResultsList({ criteria, enabled }: ResultsListProps) {
           </li>
         ))}
       </ol>
-      {search.hasNextPage && (
-        <button
-          className={`${styles.button} ${styles.loadMore}`}
-          type="button"
-          disabled={search.isFetchingNextPage}
-          onClick={() => {
-            void search.fetchNextPage();
-          }}
-        >
-          {search.isFetchingNextPage ? 'Loading…' : 'Load more'}
-        </button>
-      )}
+      {/* A failed "Load more" is shown where it was pressed, in its place (one way to ask again). */}
+      {search.isFetchNextPageError
+        ? failureNotice
+        : search.hasNextPage && (
+            <button
+              className={`${styles.button} ${styles.loadMore}`}
+              type="button"
+              disabled={search.isFetchingNextPage}
+              onClick={() => {
+                void search.fetchNextPage();
+              }}
+            >
+              {search.isFetchingNextPage ? 'Loading…' : 'Load more'}
+            </button>
+          )}
     </section>
   );
 }
