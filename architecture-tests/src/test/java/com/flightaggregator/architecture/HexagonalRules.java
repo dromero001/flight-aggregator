@@ -127,6 +127,20 @@ final class HexagonalRules {
                 .as("read the clock or randomness"));
   }
 
+  // Jackson 3 (tools.jackson) is the application's JSON library. springdoc brings Jackson 2 onto
+  // bootstrap's compile classpath through swagger-core, so an import of Jackson 2's ObjectMapper
+  // would compile and bypass the mapper Boot configures (plan 5's closing round 2, m3). Jackson 3
+  // keeps its annotations in com.fasterxml.jackson.annotation, which stays allowed.
+  static ArchRule nothingUsesJacksonTwo(String rootPackage) {
+    return noClasses()
+        .that()
+        .resideInAPackage(rootPackage + "..")
+        .should()
+        .dependOnClassesThat()
+        .resideInAnyPackage("com.fasterxml.jackson.databind..", "com.fasterxml.jackson.core..")
+        .as("no class uses Jackson 2's databind or core");
+  }
+
   private static DescribedPredicate<JavaCall<?>> callToNowOfAJavaTimeClass() {
     return target(owner(resideInAPackage("java.time.."))).and(target(name("now")));
   }
@@ -149,6 +163,7 @@ final class HexagonalRules {
         adaptersAreIndependent(rootPackage),
         nothingDependsOnBootstrap(rootPackage),
         everyClassResidesInALayer(rootPackage),
-        domainNeverReadsTheClockOrRandomness(rootPackage));
+        domainNeverReadsTheClockOrRandomness(rootPackage),
+        nothingUsesJacksonTwo(rootPackage));
   }
 }
