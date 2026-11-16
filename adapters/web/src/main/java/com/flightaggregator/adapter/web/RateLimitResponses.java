@@ -46,7 +46,9 @@ public final class RateLimitResponses implements OperationCustomizer {
                 .addMediaType(
                     org.springframework.http.MediaType.APPLICATION_PROBLEM_JSON_VALUE,
                     new MediaType()
-                        .schema(new Schema<>().$ref("#/components/schemas/ProblemDetail"))));
+                        .schema(
+                            new Schema<>()
+                                .$ref("#/components/schemas/" + ProblemDetailSchema.NAME))));
   }
 
   /** The requests one action counts, as a client reads them. */

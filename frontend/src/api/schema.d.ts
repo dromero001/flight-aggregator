@@ -105,18 +105,22 @@ export interface components {
       amount: string;
       currency: string;
     };
+    /** @description An RFC 9457 problem: what went wrong with the request */
     ProblemDetail: {
-      detail?: string;
-      /** Format: uri */
-      instance?: string;
-      properties?: {
-        [key: string]: unknown;
-      };
-      /** Format: int32 */
-      status?: number;
-      title?: string;
-      /** Format: uri */
-      type?: string;
+      /** @description What went wrong and what to do, naming the parameter at fault */
+      detail: string;
+      /**
+       * Format: uri-reference
+       * @description The path of the request, such as /api/itineraries
+       */
+      instance: string;
+      /**
+       * Format: int32
+       * @description The HTTP status code
+       */
+      status: number;
+      /** @description The status's reason phrase, such as "Bad Request" */
+      title: string;
     };
     ProviderStatusResponse: {
       /** @enum {string} */
