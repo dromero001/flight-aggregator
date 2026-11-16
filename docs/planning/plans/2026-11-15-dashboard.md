@@ -110,7 +110,13 @@ Texts: headings "Find flights" and "Provider status"; "Showing 1 flight"; field 
 | Keycloak stays on its own origin; the realm gains client `dashboard` (Q7) with redirect `http://localhost:3000/admin*` and web origin `http://localhost:3000` | Plan 5's issuer is `localhost:8180`; "the dashboard's client comes with plan 6" | (§6.6; plan 5 Task 11) |
 | `/admin` starts the Keycloak login when there is no session | An admin page has nothing to show before it | (§6.8 "Keycloak login") |
 | Sort tabs are a radio group; a card's summary is a disclosure button; opening it re-prices it | Native keyboard behaviour; "clicking a card expands its legs and re-prices it" | (§5.4; §6.8) |
-| End to end: Chromium only, one worker, the real rate limits; projects ordered smoke → search → re-price → accessibility → admin → rate-limit | The admin run changes the generation and the rate-limit test spends the window, so both go last | (minimum for §6.11 step 5) |
+| End to end: Chromium, Firefox and WebKit (E6, approved later; run in the Linux Playwright image), one worker, the real rate limits; projects ordered smoke → search → re-price → accessibility → admin → rate-limit | The admin run changes the generation and the rate-limit test spends the window, so both go last | (minimum for §6.11 step 5) |
+
+## Decided by the user at the close of plan 6 (2026-11-16, about 08:58)
+
+- The new copy written during Tasks 5–8 and the closing round is **approved as it is**: "Price confirmed: €…", "Price changed: now €…", "Never", "Provider status could not be loaded. Retrying every 10 seconds.", "The ingestion could not be started. Try again in a moment.", "Legs", "Alternative legs", "The API refused your session. Sign out and try again."
+- **Accepted and documented as limitations** in `dashboard.md`: a failed sign-out is silent (code M4); with Keycloak down when a token must be renewed, the tab goes to the browser's error page (risk M-2).
+- **Accepted as a recorded process lesson:** about five branches in Tasks 6–8, integrated without a per-task review by the speed rule, were written before their test and later shown covered by mutation (code M5).
 
 ## ⚠ Extras — your call
 
@@ -289,7 +295,7 @@ Booking (§6.8: "Select" goes no further); `SOLUTION.md`, Grafana and the final 
 **Interfaces:**
 - `interface AppConfig { oidcAuthority: string; oidcClientId: string }`; `loadConfig(): Promise<AppConfig>` reads `/config.json`, only on the admin screen; a missing field throws naming it.
 - `interface AuthClient { getUser(): Promise<User | null>; signinRedirect(): Promise<void>; signinRedirectCallback(): Promise<User>; signinSilent(): Promise<User | null> }` (the part of `oidc-client-ts`'s `UserManager` the app uses); `createAuthClient(config: AppConfig): AuthClient` with `redirect_uri` `${location.origin}/admin`, `response_type: 'code'` (PKCE `S256`), `scope: 'openid'`, `userStore` an `InMemoryWebStorage`.
-- `AdminSession({ auth, children })`: completes `/admin?code=…&state=…` and replaces the URL with `/admin`; with no user, `signinRedirect()`; provides `useAdminToken(): () => Promise<string | null>`.
+- `AdminSession({ auth, children })`: completes `/admin?code=…&state=…` and replaces the URL with `/admin`; with no user, `signinRedirect()`; provides `useAdminToken(): () => Promise<string | null>` (removed in the closing round: since Task 8, `useAdminClient()` is the only caller's need).
 - `adminClient(auth: AuthClient): Client<paths>`: attaches `Authorization: Bearer`; on a 401, one `signinSilent()` and one repeat; a second 401 or a failed renewal → `signinRedirect()`. `api` never sends a token.
 - Realm client `dashboard` per Q7 and the decisions table: `publicClient: true`, `standardFlowEnabled: true`, `directAccessGrantsEnabled: false`, `pkce.code.challenge.method: S256`.
 

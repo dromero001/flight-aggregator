@@ -160,6 +160,10 @@ Closing round 2's report listed five Minors as the user's call; the user took th
 - **T7-F3, no ceiling on a refresh:** **a refresh gets the run's ceiling (R7)**, reusing the run's check, with a test; built in closing round 3.
 - **T8-F3, a provider failure of an unnamed kind fails the whole re-price:** **treated as that provider failing**, as ingestion does (`UNEXPECTED`): logged at ERROR with its stack trace, and the re-price tries the next offer or the alternative (§6.5, "always try"); built in closing round 3, test first.
 - **M3, Valkey mixes the cache with coordination under `allkeys-lru`:** **accepted and documented as a limitation** next to §6.2's decision (a filled cache can evict refresh claims, freshness marks and rate-limit counters; production would give coordination its own instance or memory budget); written in closing round 3 with `search-api.md`.
+
+## Decided by the user on the health probe's time (2026-11-16, about 08:58)
+
+With the 2 s connection wait (N3), `/health` answered DOWN in about 4 s (Boot's `db` component and the inventory's each wait 2 s) against compose's 5 s health-check timeout. **Option A:** Boot's `db` component leaves the API port's `/health` group; the inventory's component already reports DOWN when PostgreSQL is unreachable, and `db` stays in the management port's `/actuator/health`. This narrows plan 7 Task 2's "`/health` takes every component". Built in closing round 3, test first.
 ## Out of scope
 
 - The dashboard, its Keycloak client and login, and the TypeScript types (plan 6). Prometheus, Grafana, alerts and OTel (plan 7). Plan 4's extras are decided (E4–E8, E11, E13 and E14 built in plan 4; the rest rejected).
