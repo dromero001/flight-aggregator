@@ -9,3 +9,14 @@ global:
 # unit tests for them (*.rules.test.yaml) sit beside them and are not rule files.
 rule_files:
   - rules/*.rules.yaml
+
+scrape_configs:
+  # The app's metrics, on its management port, which only compose's network reaches; no token (spec
+  # 6.6). Compose's DNS answers the service name with every replica, so each is a target with its
+  # own instance label, which the rules combine (plan 7, "Decisions").
+  - job_name: app
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: [app]
+        type: A
+        port: 8079
