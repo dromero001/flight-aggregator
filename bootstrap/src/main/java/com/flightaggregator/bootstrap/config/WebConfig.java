@@ -12,7 +12,11 @@ import com.flightaggregator.application.port.in.RateLimit;
 import com.flightaggregator.application.port.in.RateLimitedAction;
 import com.flightaggregator.application.port.out.RequestCounter;
 import com.flightaggregator.application.service.RateLimitService;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.servers.Server;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springdoc.core.customizers.OperationCustomizer;
@@ -55,6 +59,26 @@ class WebConfig {
   @Bean
   OperationCustomizer rateLimitResponses() {
     return new RateLimitResponses();
+  }
+
+  /**
+   * The contract's name, version and description, which springdoc merges with what it reads from
+   * the controllers. Its one server is relative, the host that serves the contract, so Swagger UI
+   * and any client try the API where they found it, not on the address it was generated on.
+   */
+  @Bean
+  OpenAPI flightAggregatorApi() {
+    return new OpenAPI()
+        .info(
+            new Info()
+                .title("Flight aggregator API")
+                .version("1.0.0")
+                .description(
+                    "Searches the flights aggregated from every provider and re-prices a chosen"
+                        + " itinerary live, both public and rate-limited per client address; with"
+                        + " a token holding the ADMIN role, reads the inventory's and each"
+                        + " provider's status and starts an ingestion."))
+        .servers(List.of(new Server().url("/").description("The host serving this contract")));
   }
 
   /** The problem schema every error response refers to, as the API writes it. */

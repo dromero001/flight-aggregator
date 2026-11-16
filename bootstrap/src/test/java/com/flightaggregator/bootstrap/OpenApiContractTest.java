@@ -297,6 +297,23 @@ class OpenApiContractTest {
     }
   }
 
+  /**
+   * The contract names the API, its version and what it serves, instead of springdoc's defaults
+   * ("OpenAPI definition", "v0"); its server is the host that serves it, a relative URL, not the
+   * address the contract was generated on ({@code http://localhost}). G1, the user's decision of
+   * 2026-11-16.
+   */
+  @Test
+  void namesTheApiAndServesItFromItsOwnHost() throws Exception {
+    JsonNode contract = contract();
+
+    assertThat(contract.at("/info/title").asString()).isEqualTo("Flight aggregator API");
+    assertThat(contract.at("/info/version").asString()).isEqualTo("1.0.0");
+    assertThat(contract.at("/info/description").asString()).isNotBlank();
+    assertThat(contract.path("servers").valueStream().map(server -> server.path("url").asString()))
+        .containsExactly("/");
+  }
+
   /** Every endpoint of the API (plan 5 Tasks 9, 10 and 12) is in the contract, and no other. */
   @Test
   void documentsEveryEndpoint() throws Exception {
