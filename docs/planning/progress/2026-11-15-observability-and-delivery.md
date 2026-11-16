@@ -1354,3 +1354,42 @@ Review group G1, "search and API: what an evaluator can touch", built on 2026-11
 - Startup failures: "Every rate-limited action needs a limit; none is set for [REPRICE]", "A rate limit must admit at least 1 request, not 0", "A rate limit needs a window".
 - `WARN` log line: "A read of the inventory got no pooled connection within the pool's wait".
 - A pool timeout answers the existing `503` detail, "The flights could not be read in time: try again after the seconds in Retry-After."; Spring MVC's own errors carry Spring's default titles and details.
+
+## G1 — review and round 2
+
+The review of G1's branch: **Functional APPROVED, Code APPROVED**, and the user approved its user-facing texts. Its Minors 1 to 4 and 6 to 8 were fixed in the same worktree, one at a time, a commit after each; Minor 5 (two `WARN` lines per health probe while PostgreSQL is down) is left as recorded, by the coordinator's instruction. Minors 6 and 7 pin behaviour that already held, so each test passed at once and its red was seen by mutation.
+
+### Minor 1 — one unknown parameter in the singular
+- Test: `SearchControllerTest.answersAProblemNamingTheOneUnknownParameter` (`?orign=MAD`).
+- Red: `JSON path "$.detail" expected:<Unknown parameter: orign. The search takes ...> but was:<Unknown parameters: orign. The search takes ...>`.
+- Green: the prefix is "Unknown parameter: " for one, "Unknown parameters: " for several. `:adapters:web:test` 13/13 in `SearchControllerTest`.
+
+### Minor 2 — names in the docs' and dashboard's order
+- Tests: both unknown-parameter tests in `SearchControllerTest` now expect "origin, destination, carrier, maxPrice, sort, limit and cursor".
+- Red: `JSON path "$.detail" expected:<... origin, destination, carrier, maxPrice, sort, limit and cursor.> but was:<... origin, destination, maxPrice, carrier, sort, limit and cu...>` (both).
+- Green: `SearchParameters`' components reordered (carrier before maxPrice), the controller's and `SearchParametersTest`'s positional calls swapped. `:adapters:web:test` green (13 + 23). `search-api.md` already lists this order; the contract is unchanged (the controller's parameters keep their order).
+
+### Minor 6 — a limit of 1 is accepted
+- Test: `RateLimitTest.acceptsALimitOfOneRequest`. It pins existing behaviour, so it passed at once.
+- Red, by mutation (`requests < 1` → `requests < 2`): `Expecting code not to raise a throwable but caught "java.lang.IllegalArgumentException: A rate limit must admit at least 1 request, not 1"`. Reverted; green (7/7).
+
+### Minor 7 — any other failure to connect is rethrown
+- Test: `JdbcItineraryReaderTest.leavesAnyOtherFailureToConnectAsItIs` (a pool failing with `SQLException("password authentication failed", "28P01")`); the failing-pool reader is now one helper shared with the 503 test. It pins existing behaviour, so it passed at once.
+- Red, by mutation (the cause check in `BoundedSnapshot` disabled): `Expecting actual throwable to be an instance of: org.springframework.transaction.CannotCreateTransactionException but was: com.flightaggregator.application.port.in.InventoryUnavailableException`. Restored; green (18/18).
+
+### Minor 4 — the `detail` description fits every status
+- `ProblemDetailSchema`: "What went wrong, and what to do about it".
+- Red: `OpenApiContractTest.servedContractMatchesTheCommittedOne`, `the committed contract differs from the served one: regenerate it ...`.
+- Green: contract regenerated (`-Dopenapi.write=true`, 39/39), `npm run api:generate` (the description reaches `schema.d.ts`'s comment), `npm run verify` exit 0.
+
+### Minors 3 and 8 — wording (no behaviour, no test)
+- search-api.md: "Spring Security decides before Spring MVC does, so an anonymous client meets these only in a request it permits, such as a public endpoint called with its own method: any other path or method, `PUT /api/itineraries` included, answers `401` first."
+- `RateLimitConfigTest`'s class Javadoc rewritten; `RateLimitConfigTest` green.
+- Minor 5 (two WARN lines per health probe while PostgreSQL is down) left as recorded, by the coordinator's instruction.
+
+### Rebase on `main` (G2)
+`git rebase main` onto `826881c`: one conflict, this report, resolved by keeping `main`'s sections first (G2's evidence and review, the requirements audit) and G1's after them, with nothing removed. The backlog merged by itself, with both G1's note and G2's. `openapi.json` and `schema.d.ts` merged without conflict; the contract-drift test then passed on the merged code (39/39), and `npm run api:generate` and `npm run api:check` left both files unchanged: the contract holds G2's `ingestionRunning` and G1's problem schema, metadata and `currency` enum.
+
+### Gates after the rebase
+- `./gradlew build`: BUILD SUCCESSFUL, 1,138 tests, none failed or skipped.
+- `npm run verify` in `frontend/`: exit 0, 174 tests in 22 files.
