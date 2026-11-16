@@ -34,7 +34,7 @@ class BetaProviderTest {
   private static final Instant FIRST_ARRIVAL = Instant.parse("2026-11-15T10:00:00Z");
 
   private static final String QUOTE =
-      "/beta/segments?page=1&pageSize=1&carrier=IB&flightNumber=3170&origin=MAD&destination=LHR"
+      "/beta/segments?page=1&pageSize=2&carrier=IB&flightNumber=3170&origin=MAD&destination=LHR"
           + "&departure=2026-11-20T07%3A15%3A00Z";
 
   private WireMockServer server;
