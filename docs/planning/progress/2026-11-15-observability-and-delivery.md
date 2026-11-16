@@ -974,3 +974,57 @@ Each is an HTML comment `<!-- TODO(plan N Task M): … -->` in `SOLUTION.md`; th
 - Self-review against the outline and `brief-scope`: every paragraph traces to the spec, a plan, a session or a progress report; no requirement is added or dropped; the open cadence reason is left to the user instead of being decided here.
 
 Extras: none.
+
+## Task 9 — evidence
+
+The placeholders that later tasks could fill are filled, and the text is brought up to date with what changed since the draft. Rebased first on `main` at `9377e02`, then at `d37b894`, `e8e8228` and `9ad9528` (docs only). Twice the same conflict, this report (append-only): `main`'s sections first, then the draft's. The user's four review points stay as applied (`59dcb9a`). The `writing-clearly-and-concisely` skill applied to every new sentence. No design decision is taken here.
+
+### Placeholders filled, each from its report
+
+| Placeholder | Section | Filled with | Source |
+|---|---|---|---|
+| Link to `search-api.md` | 1, "Four flows" | the link | `docs/architecture/search-api.md` |
+| One stale-origin refresh | 3, the refresh | Madrid: 15.0 s, 530,603 of 1,033,722 itineraries, the row held 13.9 s; 2 of 3 refreshes at once failed | plan 5 progress, "Task 13 — evidence", Step 3 |
+| Load time with six indexes against plan 4's 12 to 14 s | 4, indexes | 23.8 to 27.5 s; one run's `COPY` 15.0 s and `ANALYZE` 5.1 s | same |
+| `EXPLAIN` figures and search latency | 4, merge | 39 partitions; `Limit` over `Merge Append`, no sequential scan; warm 23 of 24 statements 0.2 to 14.7 ms, the slowest 42 ms (departure, origin alone, before V8); up to 321 ms over a refresh's dead rows; HTTP uncached 9 to 60 ms (first 104 ms), cached 4.6 to 6.8 ms; 50 pages, 1,000 distinct rows, median 5.0 ms (price) and 16.8 ms (departure from Madrid) | same |
+| V8 and V9 (origin and destination alone) | 4, indexes | without V8 JFK by price 948 ms warm, up to 1,351 ms cold; without V9 3 to 4 s on the re-review's host; with them 0.3 to 7.1 ms warm; twelve indexes: runs 34.9 to 41.6 s, 31.4 to 33.6 s with V9's dropped | plan 5 progress, "End-of-plan fix round 1 — Importants" and "— re-review fixes" |
+| Search with Valkey stopped | 5, Valkey | 12 repeats 3.8 to 10.7 ms (4.4 to 28.9 ms with Valkey up); two new searches 15 and 29 ms; `DEGRADED` with 200; back on its own | plan 5 progress, "Task 13 — evidence" |
+| Re-price: confirmed, Beta failing, all stopped | 5, re-price | 0.13 to 1.03 s; `PRICE_CHANGED` from another offer 5.8 s, `ALTERNATIVE` 1.5 s; `503` with `Retry-After: 60` in 13.8, 1.35 and 0.02 s, kept as built by the user | same; plan 5, "Decided by the user at the end-of-plan review" |
+| Link to `observability.md` | 5, observability | the link | `docs/architecture/observability.md` |
+
+"Beta stopped" in the draft's placeholder is "Beta failing every request" in the run (its error rate set to 1), and the text says so.
+
+### Text brought up to date
+
+- `/health` without `db`, about 2 s instead of 4 s (§5, outages; plan 5, "Decided by the user on the health probe's time").
+- One refresh at a time, skipped before downloading, and the run's ceiling on a refresh (§3; plan 5 decisions, closing rounds 1 and 3), with the burst of 32 origins.
+- Twelve indexes per slot instead of six, and why (§4).
+- The dashboard's airport and airline suggestions (§2, reference data; `dashboard.md`).
+- The `-alpha` appender as the user's exception to the version rule (§1, the stack; plan 7 Global Constraints).
+- M1 and M4 as known security limits (§7), linking the backlog's "Left by plan 5's closing round 3"; §5's `X-Forwarded-For` sentence now says "a client on the internet" and points to them.
+- The `admin-service` client named in §5's security paragraph, for the Interfaces item "Admin access".
+- Eight ArchUnit rules in §6, not seven: closing round 3 added the ban on Jackson 2 (`HexagonalRules.nothingUsesJacksonTwo`). §1's "seven rules enforce the packages" still holds.
+- Logs in Loki with the jump to Tempo were in the draft already. Extras E1, E4 and E5 are not on `main` (it was at `9ad9528` when this was written), so §5 holds a `TODO(plan 7 Task 10)` naming them.
+
+### Step 2 — check
+
+- **Every Interfaces item has its section:** as in the draft's table, plus "Admin access" in §5's security paragraph (the `admin-service` client, client credentials, the README's commands).
+- **Every relative link resolves.** A script (in the session's scratch folder, out of git) reads each `](…)` target outside code fences, checks that the file or folder exists and, for a `#fragment`, that the file has a heading with that GitHub slug, numbering repeated headings. Shown red first on a test file: `MISSING ANCHOR t.md#nope`, `MISSING FILE none.md`, exit 1. On `SOLUTION.md`: **134 relative links, 0 broken**, exit 0.
+- **Every new figure matches its report:** each was read again from the rows and lines named in the first table above.
+- **Formatting:** Prettier checks `frontend/` only, so no format gate applies to `SOLUTION.md`.
+
+### Left for Task 10
+
+- The top "Draft" note (its `TODO` now names Task 10).
+- Final test counts and coverage (§6). Its `TODO` now also notes CI's first full end-to-end run in the new order: 10 min, run 43847065593 on `d37b894` (`continuation.md`), to cite from a progress report.
+- The session record after session 09 (§8).
+- E1, E4 and E5 in §5, if they reach `main`.
+
+### For the user
+
+- **§4's index history.** Q6 rejected adding indexes "only where a measurement shows a slow query"; the end-of-plan review then measured two slow cases and the user added V8 and V9. The paragraph tells it in that order. Check that it reads as you want.
+- **§3's refresh.** "The user chose this over the other options Task 13 listed" names the options Task 13 put to you; the decision itself names no rejected option.
+- **§3's cadence** still cites plan 4's 12 to 14 s, as review point 1 set it; a run now takes 24 to 55 s on the hosts measured (§4 gives the figures), which leaves "the database is not what limits the cadence" true.
+- **§7 now has eight limitations,** the plan's six and M1 and M4.
+
+Extras: none.
