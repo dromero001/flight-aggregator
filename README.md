@@ -10,7 +10,7 @@ How it is built and why, with its assumptions and limitations: [SOLUTION.md](SOL
 
 - **Docker with Compose v2** (the `docker compose` command): Docker Desktop on macOS and Windows, Docker Engine with its Compose plugin on Linux. The images build the Java and the frontend code themselves, so nothing else is needed to run the stack.
 - **At least 4 GB of memory for Docker.** Measured with `docker stats` on 2026-11-16 ([progress](docs/planning/progress/2026-11-15-observability-and-delivery.md#task-10--delivery-docs)): a stack just started from a clean clone used about 1.85 GB, and a stack running for hours used 1.8 to 2.3 GiB over nine minutes that included an ingestion run, its containers' peaks adding up to 2.6 GiB. The aggregator, Keycloak and Grafana take about half a gigabyte each. The rest leaves room for the image build, which was not measured. In Docker Desktop, this is its memory limit.
-- **Free host ports:** 3000, 3001, 8080, 8081, 8180 and 9090, each published on `127.0.0.1` only ([the services](#run-the-aggregator)). They cannot be changed: Keycloak's issuer and the dashboard's sign-in also name 8180 and 3000. If 8180 is taken, Keycloak does not start, and neither do the aggregator and the dashboard, which wait for it.
+- **Free host ports:** 3000, 3001, 8080, 8081, 8180 and 9090, each published on `127.0.0.1` only ([the services](#run-the-aggregator)). Only 3000 and 8180 are fixed, because Keycloak's hostname, the realm's redirect URIs and the token issuer name them; the others can be moved in a `compose.override.yaml` (for example `ports: !override ["127.0.0.1:18080:8080"]` under `app`). If 8180 is taken, Keycloak does not start, and neither do the aggregator and the dashboard, which wait for it.
 - **Linux with SELinux enforcing** (Fedora, RHEL): the configuration files are mounted read-only without a relabel, so Keycloak and the telemetry services cannot read them. Relabel the folder once with `chcon -R -t container_file_t deploy`, or, for a demo only, run `sudo setenforce 0`.
 - **amd64 or arm64.** Every image `compose.yaml` pins, and every base image of the three Dockerfiles, is a multi-arch image with both. The stack has run on macOS arm64 (the author's Mac) and on Linux amd64 (CI's `e2e` job builds and starts it from a clean checkout on every push).
 
@@ -215,7 +215,7 @@ The same `docker compose up --build` starts the telemetry services, provisioned 
 
 **See an ingestion run as a trace,** in three steps:
 
-1. Start a run: the one at startup, "Run ingestion now" on the dashboard's admin screen, or `POST /api/admin/ingestions` with a token ([Admin access](#admin-access)). A run takes under a minute ([Run the aggregator](#run-the-aggregator)).
+1. Start a run: the one at startup, "Run ingestion now" on the dashboard's admin screen, or `POST /api/admin/ingestions` with a token ([Admin access](#admin-access)). A run takes about a minute, more on a loaded host: on CI, 86 s for the startup run and 78 s for a manual one ([progress](docs/planning/progress/2026-11-15-observability-and-delivery.md#final-review--fix-round-frontend-and-docs)).
 2. Open Grafana's Explore (`http://localhost:3001/explore`), choose the **Loki** datasource, and run `{service_name="flight-aggregator"} |= "Ingestion run ended"`.
 3. Click the run's line to open its details, then **View trace**: the trace opens beside the logs, with the run (`ingestion.run`) and one request per provider page to Alpha, Beta and Gamma.
 
