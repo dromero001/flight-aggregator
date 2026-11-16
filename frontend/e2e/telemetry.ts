@@ -185,12 +185,19 @@ export async function alertRules(since: Date): Promise<AlertRule[]> {
   });
 }
 
-/** A panel of a provisioned dashboard, with the queries it runs; an alert list runs none. */
+/** A panel of a provisioned dashboard; an alert list has no datasource and runs no query. */
 export interface Panel {
   id: number;
   title: string;
   datasource?: { uid: string };
   targets?: ({ refId: string } & Record<string, unknown>)[];
+}
+
+/** A panel that runs queries on one datasource. */
+export type QueryPanel = Panel & Required<Pick<Panel, 'datasource' | 'targets'>>;
+
+export function runsQueries(panel: Panel): panel is QueryPanel {
+  return panel.datasource !== undefined && panel.targets !== undefined;
 }
 
 /** The panels of a dashboard, as Grafana serves it to the anonymous Viewer. */
@@ -201,9 +208,11 @@ export async function dashboardPanels(uid: string): Promise<Panel[]> {
   return dashboard.panels;
 }
 
-/** One panel of a dashboard, alone on the page, as its "View" menu item shows it. */
-export function panelUrl(dashboardUid: string, panelId: number): string {
-  return `${GRAFANA_URL}/d/${dashboardUid}?orgId=1&viewPanel=panel-${String(panelId)}`;
+/** One panel of a dashboard, by its title, alone on the page as its "View" menu item shows it. */
+export async function panelUrl(dashboardUid: string, title: string): Promise<string> {
+  const panel = (await dashboardPanels(dashboardUid)).find((each) => each.title === title);
+  if (!panel) throw new Error(`No panel titled ${title} on dashboard ${dashboardUid}`);
+  return `${GRAFANA_URL}/d/${dashboardUid}?orgId=1&viewPanel=panel-${String(panel.id)}`;
 }
 
 /** Grafana's answer to `/api/ds/query`: data frames, each column's values in an array. */

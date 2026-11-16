@@ -9,6 +9,7 @@ import {
   lokiLabels,
   lokiLines,
   panelUrl,
+  runsQueries,
   tempoExploreUrl,
   tempoTrace,
 } from './telemetry.js';
@@ -123,13 +124,13 @@ test('feeds every dashboard panel', async ({ request }) => {
   }
 
   // The alert list runs no query of its own; the next test reads it.
-  const panels = (await dashboardPanels('flight-aggregator')).filter((panel) => panel.targets);
+  const panels = (await dashboardPanels('flight-aggregator')).filter(runsQueries);
   expect(panels.length, 'panels of the dashboard with queries').toBeGreaterThan(0);
   // Every query of every panel at once, so a minute's wait covers them all.
-  const queries = panels.flatMap(({ title, datasource, targets = [] }) =>
-    targets.map((target) => ({
-      name: `${title}/${target.refId}`,
-      answer: grafanaQuery(datasource?.uid ?? '', target),
+  const queries = panels.flatMap((panel) =>
+    panel.targets.map((target) => ({
+      name: `${panel.title}/${target.refId}`,
+      answer: grafanaQuery(panel.datasource.uid, target),
     })),
   );
   const answers = await Promise.allSettled(queries.map(({ answer }) => answer));
@@ -140,12 +141,8 @@ test('feeds every dashboard panel', async ({ request }) => {
 });
 
 test('lists the alert rules on the dashboard', async ({ page }) => {
-  const panels = await dashboardPanels('flight-aggregator');
-  const alerts = panels.find((panel) => panel.title === 'Alerts');
-  expect(alerts, 'the alert list').toBeDefined();
-
   // No sign-in: the panel lists Prometheus's rules, healthy ones included, as Normal.
-  await page.goto(panelUrl('flight-aggregator', alerts?.id ?? 0));
+  await page.goto(await panelUrl('flight-aggregator', 'Alerts'));
   for (const rule of ALERTS) {
     await expect(page.getByText(rule, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
   }

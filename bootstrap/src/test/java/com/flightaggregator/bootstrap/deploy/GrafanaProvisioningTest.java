@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -293,15 +294,14 @@ class GrafanaProvisioningTest {
                 assertThat(expression).contains("{uri=~\"/api/itineraries(/.+/reprice)?\"}"));
     assertThat(expressions).anySatisfy(expression -> assertThat(expression).contains("outcome"));
     assertThat(
-            expressions.stream().flatMap(expression -> StoredMetrics.namedIn(expression).stream()))
-        .containsOnly(
-            "http_server_requests_seconds_count",
-            "http_server_requests_seconds_sum",
-            "http_server_requests_seconds_max")
-        .contains(
-            "http_server_requests_seconds_count",
-            "http_server_requests_seconds_sum",
-            "http_server_requests_seconds_max");
+            expressions.stream()
+                .flatMap(expression -> StoredMetrics.namedIn(expression).stream())
+                .collect(Collectors.toSet()))
+        .isEqualTo(
+            Set.of(
+                "http_server_requests_seconds_count",
+                "http_server_requests_seconds_sum",
+                "http_server_requests_seconds_max"));
   }
 
   /**
