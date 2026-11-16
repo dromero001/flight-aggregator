@@ -12,6 +12,7 @@ import com.flightaggregator.application.port.out.RefreshScheduler;
 import com.flightaggregator.application.service.RefreshStaleRouteService;
 import com.flightaggregator.bootstrap.refresh.BackgroundRefresh;
 import java.util.List;
+import net.javacrumbs.shedlock.core.LockingTaskExecutor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -36,7 +37,11 @@ class RefreshConfig {
   }
 
   @Bean
-  RefreshScheduler refreshScheduler(RefreshStaleRoute refreshes) {
-    return new BackgroundRefresh(refreshes);
+  RefreshScheduler refreshScheduler(
+      RefreshStaleRoute refreshes,
+      LockingTaskExecutor locks,
+      RefreshCoordination coordination,
+      Clock clock) {
+    return new BackgroundRefresh(refreshes, locks, coordination, clock);
   }
 }

@@ -2,12 +2,18 @@ package com.flightaggregator.bootstrap.refresh;
 
 import com.flightaggregator.application.port.in.RefreshReport;
 import com.flightaggregator.application.port.in.RefreshStaleRoute;
+import com.flightaggregator.application.port.out.Clock;
+import com.flightaggregator.application.port.out.RefreshCoordination;
 import com.flightaggregator.application.port.out.RefreshScheduler;
 import com.flightaggregator.bootstrap.observability.CorrelationId;
 import com.flightaggregator.domain.Airport;
+import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import net.javacrumbs.shedlock.core.LockConfiguration;
+import net.javacrumbs.shedlock.core.LockingTaskExecutor;
+import net.javacrumbs.shedlock.core.LockingTaskExecutor.TaskResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -15,20 +21,46 @@ import org.slf4j.spi.LoggingEventBuilder;
 
 /**
  * Starts each stale origin's refresh (§4.1, §6.4) on a virtual thread of its own and returns at
- * once, so the search that asked neither waits for it nor fails with it. Every line of one refresh
- * carries a correlation id of its own, as a run's lines carry the run's. Its report is one {@code
- * INFO} line; whatever it throws, an error included, is one {@code ERROR} line with its stack trace
- * and goes no further. Search asks only after winning the origin's claim (§6.2), so the claim, not
- * this class, bounds the refreshes of one origin.
+ * once, so the search that asked neither waits for it nor fails with it.
+ *
+ * <p>One refresh at a time runs in the whole application (plan 5's end-of-plan review, I2): each
+ * holds ShedLock's {@code refresh} row until it ends, as a run holds {@code ingestion}. A refresh
+ * asked for while another runs is skipped before it downloads anything, with one {@code INFO} line,
+ * and gives its origin's claim back, so the next search that finds the origin stale asks again;
+ * nothing is queued. Search asks only after winning the origin's claim (§6.2), so the claim bounds
+ * the refreshes of one origin, and the lock those of all origins.
+ *
+ * <p>Every line of one refresh carries a correlation id of its own, as a run's lines carry the
+ * run's. Its report is one {@code INFO} line; whatever it throws, taking the lock included, an
+ * error too, is one {@code ERROR} line with its stack trace and goes no further.
  */
 public final class BackgroundRefresh implements RefreshScheduler {
 
   private static final Logger LOG = LoggerFactory.getLogger(BackgroundRefresh.class);
 
-  private final RefreshStaleRoute refreshes;
+  /** The ShedLock row that one refresh at a time holds, on any instance. */
+  private static final String LOCK = "refresh";
 
-  public BackgroundRefresh(RefreshStaleRoute refreshes) {
+  /**
+   * Should an instance die holding the lock: longer than one refresh (15 to 19 s measured for a
+   * hub), as the refresh claim's 2 min (Q9).
+   */
+  private static final Duration LOCK_AT_MOST_FOR = Duration.ofMinutes(2);
+
+  private final RefreshStaleRoute refreshes;
+  private final LockingTaskExecutor locks;
+  private final RefreshCoordination coordination;
+  private final Clock clock;
+
+  public BackgroundRefresh(
+      RefreshStaleRoute refreshes,
+      LockingTaskExecutor locks,
+      RefreshCoordination coordination,
+      Clock clock) {
     this.refreshes = refreshes;
+    this.locks = locks;
+    this.coordination = coordination;
+    this.clock = clock;
   }
 
   @Override
@@ -40,7 +72,18 @@ public final class BackgroundRefresh implements RefreshScheduler {
     // Removed in the finally, after the catch, so that the ERROR line carries it too.
     MDC.put(CorrelationId.MDC_KEY, UUID.randomUUID().toString());
     try {
-      log(refreshes.refresh(origin));
+      TaskResult<RefreshReport> refresh =
+          locks.executeWithLock(
+              () -> refreshes.refresh(origin),
+              new LockConfiguration(clock.now(), LOCK, LOCK_AT_MOST_FOR, Duration.ZERO));
+      if (refresh.wasExecuted()) {
+        log(refresh.getResult());
+      } else {
+        coordination.release(origin);
+        LOG.atInfo()
+            .addKeyValue("origin", origin.code())
+            .log("Skipped the refresh of a stale origin: another refresh is running");
+      }
     } catch (Throwable e) {
       // An error too: the refresh's own thread ends here, so nothing above it would report it.
       LOG.atError()
