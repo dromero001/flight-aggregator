@@ -48,6 +48,7 @@ import org.springframework.dao.QueryTimeoutException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DelegatingDataSource;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.core.json.JsonFactory;
 
@@ -438,21 +439,41 @@ class JdbcItineraryReaderTest {
     SQLTransientConnectionException noConnection =
         new SQLTransientConnectionException(
             "HikariPool-1 - Connection is not available, request timed out after 2000ms");
-    DataSource exhausted =
-        new DelegatingDataSource(dataSource) {
-          @Override
-          public Connection getConnection() throws SQLException {
-            throw noConnection;
-          }
-        };
-    JdbcItineraryReader exhaustedReader =
-        new JdbcItineraryReader(new DataSourceTransactionManager(exhausted), new JsonFactory());
+    JdbcItineraryReader exhaustedReader = readerWhosePoolFailsWith(noConnection);
 
     assertThat(
             catchThrowable(
                 () -> exhaustedReader.page(EVERYTHING_BY_PRICE, Optional.empty(), 10, NOW)))
         .isInstanceOf(InventoryUnavailableException.class)
         .hasRootCause(noConnection);
+  }
+
+  /**
+   * Only the pool's wait is the inventory busy: any other failure to open a connection, such as a
+   * refused login, stays what it is, a 500 to look into, not a 503 to retry (G1's review, Minor 7).
+   */
+  @Test
+  void leavesAnyOtherFailureToConnectAsItIs() {
+    SQLException refused = new SQLException("password authentication failed", "28P01");
+    JdbcItineraryReader refusedReader = readerWhosePoolFailsWith(refused);
+
+    assertThat(
+            catchThrowable(
+                () -> refusedReader.page(EVERYTHING_BY_PRICE, Optional.empty(), 10, NOW)))
+        .isInstanceOf(CannotCreateTransactionException.class)
+        .hasCause(refused);
+  }
+
+  /** A reader over a pool whose every connection request fails with {@code failure}. */
+  private JdbcItineraryReader readerWhosePoolFailsWith(SQLException failure) {
+    DataSource failing =
+        new DelegatingDataSource(dataSource) {
+          @Override
+          public Connection getConnection() throws SQLException {
+            throw failure;
+          }
+        };
+    return new JdbcItineraryReader(new DataSourceTransactionManager(failing), new JsonFactory());
   }
 
   static Stream<Named<Consumer<JdbcItineraryReader>>> everyRead() {
