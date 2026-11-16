@@ -220,11 +220,12 @@ class IngestionJobTest {
   }
 
   /**
-   * The lock ends with the run, but never before a minute, so that a second instance cannot run
-   * again straight after, nor after 29 minutes, before the next run is due.
+   * The lock ends with the run, with no minimum (the user's decision of 2026-11-16, as for a run on
+   * demand), so "An ingestion is already running." is answered only while a run is running; and
+   * never after 29 minutes, before the next run is due.
    */
   @Test
-  void takesTheIngestionLockForAtMost29MinutesAndAtLeastOne() {
+  void takesTheIngestionLockForAtMost29MinutesWithNoMinimum() {
     List<LockConfiguration> taken = new ArrayList<>();
     IngestionJob job =
         new IngestionJob(
@@ -245,7 +246,7 @@ class IngestionJobTest {
             configuration -> {
               assertThat(configuration.getName()).isEqualTo("ingestion");
               assertThat(configuration.getLockAtMostFor()).isEqualTo(Duration.ofMinutes(29));
-              assertThat(configuration.getLockAtLeastFor()).isEqualTo(Duration.ofMinutes(1));
+              assertThat(configuration.getLockAtLeastFor()).isEqualTo(Duration.ZERO);
               assertThat(configuration.getLockAtMostUntil())
                   .isEqualTo(STARTED_AT.plus(Duration.ofMinutes(29)));
             });
