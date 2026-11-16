@@ -38,7 +38,9 @@ function Report({ report, now }: { report: StatusReport; now: Date }) {
   // The API schedules the next run from the end of the last one: without it, none has ended.
   if (report.nextIngestionAt === null) {
     return (
-      <p>{report.ingestionRunning ? 'Ingestion in progress.' : 'No ingestion has run yet.'}</p>
+      <p>
+        {report.ingestionRunning ? 'First ingestion in progress.' : 'No ingestion has run yet.'}
+      </p>
     );
   }
   return (
