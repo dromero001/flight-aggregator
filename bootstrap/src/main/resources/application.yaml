@@ -92,6 +92,12 @@ logging:
     format:
       # Boot's structured JSON (§6.10): the key-value pairs of a log event become fields.
       console: ecs
+    json:
+      rename:
+        # Micrometer Tracing puts the current trace and span ids in the MDC as traceId and spanId;
+        # each line carries them under their ECS names, so a line leads to its trace (§6.10).
+        "[traceId]": trace.id
+        "[spanId]": span.id
 
 management:
   server:
