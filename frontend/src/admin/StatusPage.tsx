@@ -1,20 +1,11 @@
 import type { StatusReport } from '../api/types';
-import { minutesUntil, timeAgo } from '../time/relative';
+import { hoursAndMinutes, minutesUntil, timeAgo } from '../time/relative';
 import { useNow } from '../time/useNow';
 import { adminFailure } from './adminFailure';
 import { ProviderTable } from './ProviderTable';
 import { RunIngestionButton } from './RunIngestionButton';
 import styles from './StatusPage.module.css';
 import { STATUS_REFRESH_MS, useInventoryStatus } from './useInventoryStatus';
-
-/** "18 min", or "1 h 30 min" and "2 h" from an hour on. */
-function hoursAndMinutes(minutes: number): string {
-  if (minutes < 60) {
-    return `${String(minutes)} min`;
-  }
-  const hours = `${String(Math.floor(minutes / 60))} h`;
-  return minutes % 60 === 0 ? hours : `${hours} ${String(minutes % 60)} min`;
-}
 
 /** "Next ingestion in 18 min", or "Next ingestion due" once its time has come (plan 6, Q7). */
 function nextIngestion(at: string, now: Date): string {
