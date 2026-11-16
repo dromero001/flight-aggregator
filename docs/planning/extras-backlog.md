@@ -27,6 +27,7 @@ The user chose to build two more groups before delivery, in parallel worktrees, 
 
 - **G3, dashboard, end to end and CI:** a date on the alternative's legs; one shared renewal for concurrent 401s; `npm run dev` signs in; `openapi-typescript --check` instead of `schema.test.ts`; Playwright's browsers cached in CI; screenshots and traces of failed end-to-end tests kept; `E2E_BROWSERS`; `E2E_BASE_URL`.
 - **G4a, backend logs and metrics:** Valkey with `--save ""`; a `NOTHING_FRESH` refresh at WARN; each kept provider's failure reason in a refresh's report; refresh metrics; a counter of skipped refreshes; the three counters registered at zero at startup, and Grafana's `unless … offset 1h` terms dropped.
+- **`npm run dev` signs in, moved back to the backlog (the user's decision, about 18:55):** the controller's ruling (Vite on port 3000 with `strictPort`) does not fail when the compose dashboard holds the port: on macOS Node resolves `localhost` to `::1`, so Vite binds `[::1]:3000` beside Docker's `127.0.0.1:3000` and silently shadows the dashboard; binding `127.0.0.1` makes it fail but then advertises an address the realm refuses. Left: an IPv4 port check before Vite starts, or the realm allowing `5173`.
 - **Not chosen:** G4b (health before the first run, rescheduling from the last run, awaiting a manual run on shutdown) and G5 (M1, M4); every other row stays in the backlog.
 
 ## Plan 5, search API

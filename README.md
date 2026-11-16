@@ -273,6 +273,7 @@ The pipeline, the alert rules, the dashboard's panels, what is not collected and
   - [5 — Search API](docs/planning/plans/2026-11-15-search-api.md)
   - [6 — Dashboard](docs/planning/plans/2026-11-15-dashboard.md)
   - [7 — Observability and delivery](docs/planning/plans/2026-11-15-observability-and-delivery.md)
+- [Increments](docs/planning/increments.md): each plan and delivery group with its tag, first and closing commit, review verdicts and CI run
 - [Continuation point](docs/planning/continuation.md): what is in flight and what comes next, for a session that takes over
 - [Extras backlog](docs/planning/extras-backlog.md): extras proposed during plans 5, 6 and 7, out of the delivery, kept in case time remains
 - Progress reports:

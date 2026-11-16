@@ -1410,6 +1410,12 @@ CI run 43896079441 on `3d9dbd1` (docs only) failed in the `frontend` job: `Admin
 
 CI run 43903138832 on `dc58627`: `backend`, `frontend`, `images` and `e2e` green. Annotated tag `v1.0.0` on `dc58627`, pushed. Later commits (this record included) touch only the planning docs.
 
+## Increments made visible (the user's decisions, 2026-11-16, about 18:15)
+
+Every task was built on its own branch and worktree (pushed as `wip/…`), reviewed, and reached `main` by fast-forward, so GitHub shows a linear history with no pull requests or merge commits. To make the increments visible without rewriting history (the ruleset forbids it anyway): an annotated tag on each plan's closing commit; [`increments.md`](../increments.md), one row per plan with its commit range, tasks, review verdicts and CI run; G3 and G4a integrated through pull requests with merge commits; and the `wip/*` branches kept on GitHub as the record of each task's work (no longer deleted after delivery).
+
+Also decided: quoted prompts in `docs/ai/sessions/` keep only the English translation, and only prompts that add value to the project are kept (routine approvals are summarised without a quote); session 09 corrected accordingly.
+
 ## G3 — evidence
 
 The user's choice of about 17:55 ([extras backlog](../extras-backlog.md)), built in its own worktree on `8e9451c` and pushed as `wip/g3-extras`. Seven of the eight extras are built; `npm run dev` signing in is not (below).
