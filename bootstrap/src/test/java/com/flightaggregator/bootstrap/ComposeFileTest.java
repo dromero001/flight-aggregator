@@ -16,7 +16,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -38,6 +40,9 @@ class ComposeFileTest {
 
   /** A Dockerfile's {@code FROM} instruction; any other line, a continuation too, is not one. */
   private static final Pattern FROM = Pattern.compile("\\s*FROM\\s", Pattern.CASE_INSENSITIVE);
+
+  /** A BuildKit cache mount, with its options. */
+  private static final Pattern CACHE_MOUNT = Pattern.compile("--mount=type=cache\\S*");
 
   @Test
   void runsThePostgresImageTheTestsRun() throws IOException {
@@ -156,17 +161,49 @@ class ComposeFileTest {
     }
   }
 
-  @SuppressWarnings("unchecked")
+  /**
+   * {@code docker compose up --build} builds the images at once, and their Gradle cache mounts are
+   * one cache: unless each mount is locked, two Gradle runs share its journal and one times out
+   * waiting for the other's lock (CI's first end-to-end run, 2026-11-16).
+   */
+  @Test
+  void locksEveryGradleCacheTheImageBuildsShare() throws IOException {
+    List<String> mounts = new ArrayList<>();
+    for (Map<String, Object> service : ComposeFile.services().values()) {
+      for (Path dockerfile : dockerfileOf(service).stream().toList()) {
+        for (String line : Files.readAllLines(dockerfile)) {
+          Matcher mount = CACHE_MOUNT.matcher(line);
+          while (mount.find()) {
+            mounts.add(dockerfile + ": " + mount.group());
+          }
+        }
+      }
+    }
+    assertThat(mounts)
+        .isNotEmpty()
+        .allSatisfy(mount -> assertThat(mount).contains("sharing=locked"));
+  }
+
   private static List<String> imagesOf(Map<String, Object> service) throws IOException {
-    Object build = service.get("build");
-    if (build == null) {
+    Optional<Path> dockerfile = dockerfileOf(service);
+    if (dockerfile.isEmpty()) {
       return Stream.ofNullable((String) service.get("image")).toList();
     }
+    return baseImages(dockerfile.get());
+  }
+
+  /** The Dockerfile compose builds the service from, if it builds one. */
+  @SuppressWarnings("unchecked")
+  private static Optional<Path> dockerfileOf(Map<String, Object> service) {
+    Object build = service.get("build");
+    if (build == null) {
+      return Optional.empty();
+    }
     if (build instanceof String context) {
-      return baseImages(REPOSITORY.resolve(context).resolve("Dockerfile"));
+      return Optional.of(REPOSITORY.resolve(context).resolve("Dockerfile"));
     }
     Map<String, Object> definition = (Map<String, Object>) build;
-    return baseImages(
+    return Optional.of(
         REPOSITORY
             .resolve((String) definition.getOrDefault("context", "."))
             .resolve((String) definition.getOrDefault("dockerfile", "Dockerfile")));

@@ -734,3 +734,7 @@ The double review (`.superpowers/sdd/2026-11-15-dashboard/task-10-review.md`) an
 - C-M2: the 16-project dependency chain skips every later project after one failure.
 - C-M3: the keyboard test's "Load more" can race a refresh of MAD on a stack older than 10 min.
 - C-M4: the card-reading helpers are split between `cards.ts` and `search.spec.ts`.
+
+## The first CI end-to-end run (controller, 2026-11-16)
+
+CI's first `e2e` job (run 43809886722, on `8882d86`) failed before any test: `docker compose up --build` builds `app` and `mock-gds` at once, and both Dockerfiles mounted the same BuildKit cache at `/root/.gradle/caches` without a lock, so one Gradle run timed out on the other's journal lock (`Timeout waiting to lock journal cache`). Fix, test first: `ComposeFileTest.locksEveryGradleCacheTheImageBuildsShare` (red: `Expecting actual ".././bootstrap/Dockerfile: --mount=type=cache,target=/root/.gradle/caches" to contain "sharing=locked"`), then `sharing=locked` on both Dockerfiles' Gradle cache mounts (green). `docker compose build --no-cache app mock-gds` then built both images in parallel with no lock timeout; `./gradlew build` green.

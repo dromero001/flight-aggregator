@@ -18,7 +18,7 @@ COPY bootstrap bootstrap
 # Tests run in CI, not here. No JDK download: the base image must hold the toolchain's JDK, so a
 # mismatch fails the build instead of fetching an unpinned JDK. The caches hold only Gradle's
 # dependencies and its wrapper, never /root/.gradle/jdks, so no JDK from an earlier build is reused.
-RUN --mount=type=cache,target=/root/.gradle/caches --mount=type=cache,target=/root/.gradle/wrapper ./gradlew :bootstrap:bootJar --no-daemon -Porg.gradle.java.installations.auto-download=false
+RUN --mount=type=cache,target=/root/.gradle/caches,sharing=locked --mount=type=cache,target=/root/.gradle/wrapper,sharing=locked ./gradlew :bootstrap:bootJar --no-daemon -Porg.gradle.java.installations.auto-download=false
 
 FROM eclipse-temurin:25.0.4.1_1-jre-noble@sha256:ce8543ddd3070ccbeaac2106a74c9387ddeb8d47a1c43348345715c1ef245c7f
 RUN useradd --system --uid 10001 --no-create-home aggregator
