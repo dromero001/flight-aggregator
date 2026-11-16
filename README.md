@@ -275,7 +275,7 @@ The pipeline, the alert rules, the dashboard's panels, what is not collected and
   - [7 — Observability and delivery](docs/planning/plans/2026-11-15-observability-and-delivery.md)
 - [Increments](docs/planning/increments.md): each plan and delivery group with its tag, first and closing commit, review verdicts and CI run
 - [Continuation point](docs/planning/continuation.md): what is in flight and what comes next, for a session that takes over
-- [Extras backlog](docs/planning/extras-backlog.md): extras proposed during plans 5, 6 and 7, out of the delivery, kept in case time remains
+- [Extras backlog](docs/planning/extras-backlog.md): extras proposed during plans 5, 6 and 7 and on delivery day: those built later in G1 to G4a, those still out with their reasons, and the Minors the reviews deferred
 - Progress reports:
   - [2026-11-13](docs/planning/progress/2026-11-13.md)
   - [2026-11-14](docs/planning/progress/2026-11-14.md)
