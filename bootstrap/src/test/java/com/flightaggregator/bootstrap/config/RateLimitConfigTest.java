@@ -17,10 +17,10 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 
 /**
- * Q9's rate limits, read from what the use case WebConfig declares admits, over a counter the test
- * holds: one count per bucket, and the window each request asked for.
+ * Q9's rate limits, read from what the use case RateLimitConfig declares admits, over a counter the
+ * test holds: one count per bucket, and the window each request asked for.
  */
-class WebConfigTest {
+class RateLimitConfigTest {
 
   private static final String ADDRESS = "203.0.113.7";
 
@@ -33,7 +33,7 @@ class WebConfigTest {
         return new WindowCount(counts.merge(bucket, 1L, Long::sum), window);
       };
 
-  private final AdmitRequest admitRequest = new WebConfig().admitRequest(counter);
+  private final AdmitRequest admitRequest = new RateLimitConfig().admitRequest(counter);
 
   @Test
   void admitsSixtySearchesAMinuteFromOneAddress() {
