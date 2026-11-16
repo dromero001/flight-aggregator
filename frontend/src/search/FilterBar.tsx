@@ -11,13 +11,13 @@ import {
   type SearchFilters,
 } from './searchParams';
 
-/** Every filter's control (spec 6.8): a new filter in `FILTER_FIELDS` cannot compile without one. */
-const CONTROLS: Record<
-  FilterField,
-  { label: string; inputMode?: 'decimal'; suggestsAirports?: true }
-> = {
-  origin: { label: 'From', suggestsAirports: true },
-  destination: { label: 'To', suggestsAirports: true },
+/**
+ * Every filter's control (spec 6.8): a new filter in `FILTER_FIELDS` cannot compile without one.
+ * An `airport` field suggests the dataset's airports and searches a city's name by its code.
+ */
+const CONTROLS: Record<FilterField, { label: string; inputMode?: 'decimal'; airport?: true }> = {
+  origin: { label: 'From', airport: true },
+  destination: { label: 'To', airport: true },
   carrier: { label: 'Airline' },
   maxPrice: { label: 'Max price', inputMode: 'decimal' },
 };
@@ -53,15 +53,14 @@ export function FilterBar({ criteria, errors, onSubmit }: FilterBarProps) {
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    const sent = {
-      ...draft,
-      origin: airportCodeOf(draft.origin),
-      destination: airportCodeOf(draft.destination),
-    };
+    const sent = { ...draft };
+    for (const field of FILTER_FIELDS) {
+      if (CONTROLS[field].airport) sent[field] = airportCodeOf(draft[field]);
+    }
     onSubmit(sent);
-    // The inputs show what was searched, normalised (" mad " is MAD), as the URL will read it.
-    // Not the URL's current values: the router applies a new search's URL in a transition, after
-    // this render, so they would show the previous search for a moment.
+    // The inputs show what was searched, normalised (" mad " and "madrid" are MAD), as the URL
+    // will read it. Not the URL's current values: the router applies a new search's URL in a
+    // transition, after this render, so they would show the previous search for a moment.
     const searched = parseSearch(toSearchParams({ ...sent, sort: criteria.sort })).criteria;
     setDraft(draftFrom(searched));
   }
@@ -69,7 +68,7 @@ export function FilterBar({ criteria, errors, onSubmit }: FilterBarProps) {
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
       {FILTER_FIELDS.map((field) => {
-        const { label, inputMode, suggestsAirports } = CONTROLS[field];
+        const { label, inputMode, airport } = CONTROLS[field];
         const error = errors[field];
         const errorId = `${field}-error`;
         return (
@@ -81,7 +80,7 @@ export function FilterBar({ criteria, errors, onSubmit }: FilterBarProps) {
                 name={field}
                 type="text"
                 inputMode={inputMode}
-                list={suggestsAirports ? airportsId : undefined}
+                list={airport ? airportsId : undefined}
                 value={draft[field]}
                 onChange={(event) => {
                   setDraft({ ...draft, [field]: event.target.value });
