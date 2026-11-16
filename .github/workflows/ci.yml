@@ -94,7 +94,7 @@ jobs:
         working-directory: .
         run: docker compose up --build -d --wait
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run e2e
       # cancelled() too: a job that hits timeout-minutes is cancelled, and its reports matter most.
       - if: failure() || cancelled()
