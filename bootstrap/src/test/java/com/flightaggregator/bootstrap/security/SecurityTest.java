@@ -25,7 +25,10 @@ import com.nimbusds.jwt.SignedJWT;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -40,6 +43,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /** Spec §6.6: search and re-price are public; the admin side needs a token with the ADMIN role. */
 @SpringBootTest(
@@ -56,10 +61,13 @@ import org.springframework.test.web.servlet.MvcResult;
 @AutoConfigureMockMvc
 class SecurityTest {
 
+  /** The issuer application.yaml ships, read from there: no test setting stands in for it. */
   private static final String ISSUER = "http://localhost:8180/realms/flight-aggregator";
 
   /** Keycloak's key endpoint, served by WireMock; the tokens are signed with its private key. */
   private static final RSAKey KEY = signingKey();
+
+  private static final JsonMapper JSON = JsonMapper.builder().build();
 
   private static final WireMockServer KEYS = new WireMockServer(options().dynamicPort());
 
@@ -70,7 +78,6 @@ class SecurityTest {
         WireMock.get("/certs").willReturn(okJson(new JWKSet(KEY.toPublicJWK()).toString())));
     registry.add(
         "spring.security.oauth2.resourceserver.jwt.jwk-set-uri", () -> KEYS.baseUrl() + "/certs");
-    registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> ISSUER);
   }
 
   @AfterAll
@@ -95,7 +102,7 @@ class SecurityTest {
   void healthNeedsNoTokenAndShowsNoDetails() throws Exception {
     mvc.perform(get("/actuator/health"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.status").isString())
+        .andExpect(jsonPath("$.status").value("DEGRADED"))
         .andExpect(jsonPath("$.components").doesNotExist());
   }
 
@@ -181,6 +188,50 @@ class SecurityTest {
             request(HttpMethod.valueOf(method), path)
                 .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_user"))))
         .andExpect(status().isForbidden());
+  }
+
+  /**
+   * The contract and the filter chain say the same (plan 5 Task 13's C1): an anonymous request to
+   * each operation the served contract documents answers 401 exactly where that operation names the
+   * bearer scheme, so neither can change without the other.
+   */
+  @Test
+  void asksForATokenExactlyWhereTheContractNamesTheBearerScheme() throws Exception {
+    JsonNode paths =
+        JSON.readTree(
+                mvc.perform(get("/v3/api-docs"))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString())
+            .path("paths");
+    Map<String, Boolean> namesTheBearer = new TreeMap<>();
+    Map<String, Boolean> answers401 = new TreeMap<>();
+    for (String path : paths.propertyNames()) {
+      for (String method : paths.path(path).propertyNames()) {
+        String operation = method.toUpperCase(Locale.ROOT) + " " + path;
+        namesTheBearer.put(
+            operation,
+            paths
+                .path(path)
+                .path(method)
+                .path("security")
+                .valueStream()
+                .anyMatch(requirement -> requirement.has("bearer")));
+        int status =
+            mvc.perform(
+                    request(
+                        HttpMethod.valueOf(method.toUpperCase(Locale.ROOT)),
+                        path.replace("{id}", UUID.randomUUID().toString())))
+                .andReturn()
+                .getResponse()
+                .getStatus();
+        answers401.put(operation, status == 401);
+      }
+    }
+
+    assertThat(namesTheBearer).containsValues(true, false);
+    assertThat(answers401).isEqualTo(namesTheBearer);
   }
 
   /** The admin's status reaches the endpoint, wired in the application. */
