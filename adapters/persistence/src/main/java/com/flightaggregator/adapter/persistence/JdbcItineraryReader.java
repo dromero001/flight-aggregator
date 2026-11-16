@@ -2,6 +2,7 @@ package com.flightaggregator.adapter.persistence;
 
 import static java.util.Objects.requireNonNull;
 
+import com.flightaggregator.application.port.in.InventoryUnavailableException;
 import com.flightaggregator.application.port.in.SearchCriteria;
 import com.flightaggregator.application.port.in.SeekPosition;
 import com.flightaggregator.application.port.out.InventoryState;
@@ -15,6 +16,9 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -29,13 +33,16 @@ import tools.jackson.core.json.JsonFactory;
  * the active slot and bumps the generation in one transaction (Q2-B) commits between the two
  * statements. {@code READ COMMITTED} takes a snapshot per statement and would label the refresh's
  * rows with the generation before it. Each read's statements are bounded by {@link
- * StatementTimeout#SEARCH_READ}: a read that takes longer fails with Spring's {@code
- * QueryTimeoutException} and rolls back, so it never holds its connection, or its lock on the slot
- * that a run's {@code TRUNCATE} waits for, past the bound. A read must not run inside another
- * transaction: it would join it, lose its own snapshot, and bound the rest of that transaction's
- * statements at 2 s. Every table name comes from {@link Slot}.
+ * StatementTimeout#SEARCH_READ}: a read that takes longer rolls back, so it never holds its
+ * connection, or its lock on the slot that a run's {@code TRUNCATE} waits for, past the bound, and
+ * fails with the port's {@link InventoryUnavailableException}, logged at WARN, which the API
+ * answers with 503 and {@code Retry-After} (plan 5's end-of-plan review, I1). A read must not run
+ * inside another transaction: it would join it, lose its own snapshot, and bound the rest of that
+ * transaction's statements at 2 s. Every table name comes from {@link Slot}.
  */
 public final class JdbcItineraryReader implements ItineraryReader {
+
+  private static final Logger LOG = LoggerFactory.getLogger(JdbcItineraryReader.class);
 
   private final TransactionTemplate snapshot;
   private final JdbcClient jdbc;
@@ -84,11 +91,16 @@ public final class JdbcItineraryReader implements ItineraryReader {
 
   /** The statements of one read, in one bounded snapshot. */
   private <T> T read(Supplier<T> statements) {
-    return snapshot.execute(
-        status -> {
-          StatementTimeout.SEARCH_READ.boundTheTransaction(jdbc);
-          return statements.get();
-        });
+    try {
+      return snapshot.execute(
+          status -> {
+            StatementTimeout.SEARCH_READ.boundTheTransaction(jdbc);
+            return statements.get();
+          });
+    } catch (QueryTimeoutException e) {
+      LOG.warn("A read of the inventory outran its bound and was cancelled", e);
+      throw new InventoryUnavailableException("A read of the inventory outran its bound", e);
+    }
   }
 
   private Itinerary itinerary(ResultSet rs, int rowNum) throws SQLException {

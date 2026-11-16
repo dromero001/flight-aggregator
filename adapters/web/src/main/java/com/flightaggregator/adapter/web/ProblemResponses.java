@@ -1,6 +1,7 @@
 package com.flightaggregator.adapter.web;
 
 import com.flightaggregator.application.port.in.InvalidCursorException;
+import com.flightaggregator.application.port.in.InventoryUnavailableException;
 import java.time.Duration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -17,6 +18,17 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  */
 @RestControllerAdvice
 public final class ProblemResponses {
+
+  /** A search or a re-price whose read of the inventory was cut by its bound. */
+  static final String INVENTORY_UNAVAILABLE =
+      "The flights could not be read in time: try again after the seconds in Retry-After.";
+
+  /**
+   * The plan's one 503 wait (Q9: re-price's, the providers' breakers' 60 s open time), so a client
+   * waits the same for either 503. A read cut by its 2 s bound means PostgreSQL is overloaded,
+   * which an immediate retry would only add to.
+   */
+  static final Duration RETRY_INVENTORY_UNAVAILABLE = Duration.ofSeconds(60);
 
   /** A parameter or a cursor the client sent is not valid; the message names it. */
   @ExceptionHandler({InvalidParameterException.class, InvalidCursorException.class})
@@ -36,12 +48,27 @@ public final class ProblemResponses {
     return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
   }
 
-  /** The client may ask again after {@code Retry-After}, in seconds. */
+  /**
+   * The inventory could not be read in time, for a search or a re-price (plan 5's end-of-plan
+   * review, I1): the request is sound, so it is a 503 to retry, not a 500.
+   */
+  @ExceptionHandler(InventoryUnavailableException.class)
+  ResponseEntity<ProblemDetail> inventoryUnavailable() {
+    return retryAfter(
+        HttpStatus.SERVICE_UNAVAILABLE, INVENTORY_UNAVAILABLE, RETRY_INVENTORY_UNAVAILABLE);
+  }
+
   @ExceptionHandler(RetryLaterException.class)
   ResponseEntity<ProblemDetail> retryLater(RetryLaterException exception) {
-    return ResponseEntity.status(exception.status())
-        .header(HttpHeaders.RETRY_AFTER, Long.toString(wholeSeconds(exception.retryAfter())))
-        .body(ProblemDetail.forStatusAndDetail(exception.status(), exception.getMessage()));
+    return retryAfter(exception.status(), exception.getMessage(), exception.retryAfter());
+  }
+
+  /** The client may ask again after {@code Retry-After}, in seconds. */
+  private static ResponseEntity<ProblemDetail> retryAfter(
+      HttpStatus status, String detail, Duration wait) {
+    return ResponseEntity.status(status)
+        .header(HttpHeaders.RETRY_AFTER, Long.toString(wholeSeconds(wait)))
+        .body(ProblemDetail.forStatusAndDetail(status, detail));
   }
 
   /**

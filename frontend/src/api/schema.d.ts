@@ -294,6 +294,17 @@ export interface operations {
           'application/problem+json': components['schemas']['ProblemDetail'];
         };
       };
+      /** @description The search took too long to read; try again after Retry-After */
+      503: {
+        headers: {
+          /** @description How many seconds to wait before asking again */
+          'Retry-After': number;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['ProblemDetail'];
+        };
+      };
     };
   };
   reprice: {

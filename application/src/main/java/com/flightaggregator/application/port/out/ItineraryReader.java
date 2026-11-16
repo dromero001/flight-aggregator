@@ -7,7 +7,10 @@ import com.flightaggregator.domain.ItineraryId;
 import java.time.Instant;
 import java.util.Optional;
 
-/** Reads the itineraries of the active generation, the ones search serves. */
+/**
+ * Reads the itineraries of the active generation, the ones search serves. A read that outruns its
+ * bound throws {@link com.flightaggregator.application.port.in.InventoryUnavailableException}.
+ */
 public interface ItineraryReader {
 
   /** The active generation, and when the last full run was published. */
