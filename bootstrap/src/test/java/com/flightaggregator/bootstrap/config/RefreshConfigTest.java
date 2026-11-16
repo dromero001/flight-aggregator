@@ -14,6 +14,7 @@ import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.application.port.out.RefreshCoordination;
 import com.flightaggregator.application.port.out.RefreshScheduler;
 import com.flightaggregator.application.port.out.StoreOutcome;
+import com.flightaggregator.application.port.out.StoreTransactions;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Carrier;
 import com.flightaggregator.domain.Itinerary;
@@ -29,6 +30,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import net.javacrumbs.shedlock.core.DefaultLockingTaskExecutor;
 import net.javacrumbs.shedlock.core.LockingTaskExecutor;
 import org.junit.jupiter.api.Test;
@@ -69,6 +71,7 @@ class RefreshConfigTest {
           .withBean(DiscardedRecords.class, () -> (provider, record) -> {})
           .withBean(ItineraryRepository.class, () -> new Rewrites())
           .withBean(RefreshCoordination.class, NothingRefreshed::new)
+          .withBean(StoreTransactions.class, NoTransaction::new)
           .withBean(
               LockingTaskExecutor.class,
               () -> new DefaultLockingTaskExecutor(configuration -> Optional.of(() -> {})))
@@ -117,13 +120,16 @@ class RefreshConfigTest {
     }
   }
 
-  /** No offer stored yet; a refresh writes none. */
+  /** No offer stored yet; a refresh's fresh offers are not kept. */
   private static final class NothingStored implements OfferStore {
 
     @Override
     public void replace(Provider provider, List<Leg> offers) {
-      throw new UnsupportedOperationException("A refresh stores no offer");
+      throw new UnsupportedOperationException("A refresh replaces no provider's every offer");
     }
+
+    @Override
+    public void replaceFrom(Provider provider, Airport origin, List<Leg> offers) {}
 
     @Override
     public List<Leg> offers(Provider provider) {
@@ -133,6 +139,15 @@ class RefreshConfigTest {
     @Override
     public List<Leg> offersOf(LegKey flight) {
       throw new UnsupportedOperationException("A refresh quotes nothing");
+    }
+  }
+
+  /** Runs the work as it is given: the test's stores keep nothing to roll back. */
+  private static final class NoTransaction implements StoreTransactions {
+
+    @Override
+    public <T> T inOne(Supplier<T> work) {
+      return work.get();
     }
   }
 

@@ -11,6 +11,7 @@ import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.OfferStore;
 import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.application.port.out.RefreshCoordination;
+import com.flightaggregator.application.port.out.StoreTransactions;
 import com.flightaggregator.application.service.ProviderDownloads.CheckedDownload;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Deduplication;
@@ -44,6 +45,7 @@ public final class RefreshStaleRouteService implements RefreshStaleRoute {
   private final OfferStore store;
   private final ItineraryRepository repository;
   private final RefreshCoordination coordination;
+  private final StoreTransactions transactions;
   private final Clock clock;
   private final long maxItineraries;
 
@@ -54,6 +56,7 @@ public final class RefreshStaleRouteService implements RefreshStaleRoute {
       DiscardedRecords discardedRecords,
       ItineraryRepository repository,
       RefreshCoordination coordination,
+      StoreTransactions transactions,
       Clock clock,
       long maxItineraries,
       ThreadFactory threads) {
@@ -61,6 +64,7 @@ public final class RefreshStaleRouteService implements RefreshStaleRoute {
     this.store = store;
     this.repository = repository;
     this.coordination = coordination;
+    this.transactions = transactions;
     this.clock = clock;
     this.maxItineraries = maxItineraries;
   }
@@ -85,14 +89,20 @@ public final class RefreshStaleRouteService implements RefreshStaleRoute {
         .forEach(downloads::discardConflicting);
     try {
       Publication publication =
-          repository.replaceThrough(
-              origin,
-              sink ->
-                  IngestionCeiling.writeAtMost(
-                      maxItineraries,
-                      ItineraryBuilder.build(deduplication, now)
-                          .filter(itinerary -> hasALegFrom(itinerary, origin)),
-                      sink));
+          transactions.inOne(
+              () -> {
+                Publication rewritten =
+                    repository.replaceThrough(
+                        origin,
+                        sink ->
+                            IngestionCeiling.writeAtMost(
+                                maxItineraries,
+                                ItineraryBuilder.build(deduplication, now)
+                                    .filter(itinerary -> hasALegFrom(itinerary, origin)),
+                                sink));
+                fresh.forEach((provider, offers) -> store.replaceFrom(provider, origin, offers));
+                return rewritten;
+              });
       coordination.refreshed(origin, now);
       return new RefreshReport(
           origin,

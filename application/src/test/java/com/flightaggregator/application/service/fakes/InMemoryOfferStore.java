@@ -1,6 +1,7 @@
 package com.flightaggregator.application.service.fakes;
 
 import com.flightaggregator.application.port.out.OfferStore;
+import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.LegKey;
 import com.flightaggregator.domain.Provider;
@@ -26,6 +27,16 @@ public final class InMemoryOfferStore implements OfferStore {
   public synchronized void replace(Provider provider, List<Leg> offers) {
     replaced.add(provider);
     stored.put(provider, List.copyOf(offers));
+  }
+
+  @Override
+  public synchronized void replaceFrom(Provider provider, Airport origin, List<Leg> offers) {
+    List<Leg> kept = new ArrayList<>();
+    stored.getOrDefault(provider, List.of()).stream()
+        .filter(offer -> !offer.origin().equals(origin))
+        .forEach(kept::add);
+    kept.addAll(offers);
+    stored.put(provider, List.copyOf(kept));
   }
 
   @Override

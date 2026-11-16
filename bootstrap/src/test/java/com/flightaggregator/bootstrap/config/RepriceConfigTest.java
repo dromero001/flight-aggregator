@@ -204,6 +204,11 @@ class RepriceConfigTest {
     }
 
     @Override
+    public void replaceFrom(Provider provider, Airport origin, List<Leg> offers) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public List<Leg> offers(Provider provider) {
       throw new UnsupportedOperationException();
     }
