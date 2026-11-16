@@ -20,10 +20,10 @@ interface PageFormat {
   }
 
   /**
-   * The quote of one flight: its listing, on one page of one record, the most a quote may answer,
-   * so a second record fails the page.
+   * The quote of one flight: its listing, on one page with room for two records, so that a provider
+   * holding two offers of the flight shows both on the page instead of signalling a next page.
    */
   default PageRequest quoting(LegKey flight) {
-    return page(ListingQuery.of(flight), Optional.empty(), 1);
+    return page(ListingQuery.of(flight), Optional.empty(), 2);
   }
 }

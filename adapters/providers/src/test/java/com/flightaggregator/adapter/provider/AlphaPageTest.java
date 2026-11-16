@@ -190,7 +190,7 @@ class AlphaPageTest {
 
   /**
    * A quote is the listing with the flight's five key parts (Task 1), the departure a UTC instant
-   * ending in {@code Z}, and a page of one record: the most a quote may answer.
+   * ending in {@code Z}, and a page with room for two records, so a second offer shows.
    */
   @Test
   void buildsTheQuotePath() {
@@ -198,7 +198,7 @@ class AlphaPageTest {
 
     assertThat(path(request))
         .isEqualTo(
-            "/alpha/legs?limit=1&carrier=IB&flightNumber=3170&origin=MAD&destination=LHR"
+            "/alpha/legs?limit=2&carrier=IB&flightNumber=3170&origin=MAD&destination=LHR"
                 + "&departure=2026-11-20T07%3A15%3A00Z");
   }
 

@@ -102,10 +102,15 @@ public class PagedProvider implements FlightProvider {
   }
 
   /**
-   * The page's record of the flight, none when it no longer sells it. The quote's page holds one
-   * record at most ({@link PageFormat#quoting}), so a second one has already failed it.
+   * The page's record of the flight, none when it no longer sells it. A page with more than one
+   * record contradicts the quote: the provider holds two offers of one flight ({@link
+   * PageFormat#quoting} leaves room for the second to show).
    */
   private static Optional<Leg> quoted(LegKey flight, ParsedPage page) {
+    int records = page.legs().size() + page.discarded().size();
+    if (records > 1) {
+      throw new PageMalformed("Asked for the quote of " + flight + ", got " + records + " records");
+    }
     if (!page.discarded().isEmpty()) {
       throw new PageMalformed(
           "Asked for the quote of "

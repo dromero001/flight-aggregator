@@ -33,7 +33,7 @@ class GammaProviderTest {
   private static final Instant FIRST_ARRIVAL = Instant.parse("2026-11-15T10:00:00Z");
 
   private static final String QUOTE =
-      "/gamma/legs.csv?offset=0&limit=1&carrier=IB&flightNumber=3170&origin=MAD&destination=LHR"
+      "/gamma/legs.csv?offset=0&limit=2&carrier=IB&flightNumber=3170&origin=MAD&destination=LHR"
           + "&departure=2026-11-20T07%3A15%3A00Z";
 
   private WireMockServer server;
