@@ -1405,3 +1405,7 @@ After G1, G2 and Keycloak's start period, Step 6 again on a fresh GitHub clone a
 ## CI flake on `3d9dbd1` — the signed-in URL read too early
 
 CI run 43896079441 on `3d9dbd1` (docs only) failed in the `frontend` job: `AdminSession.test.tsx > completes the sign-in on the way back and cleans the URL`, `Expected element to have text content: /^\/admin$/ Received: /admin?state=the-state&session_state=the-session&code=the-code`. The same code passed on `d1d80d1`. Root cause: `AdminSession` replaces the URL with `void navigate(pathname, { replace: true })`, not awaited, so on a loaded runner the admin screen renders before the URL changes; `c1967e7` fixed the same race in the sibling "shows a sign-in failure" test with `waitFor`, but not this one. Fix: the same `waitFor` around the location assertion (test only; the component's behaviour is unchanged). `npm run verify`: exit 0, 174 tests in 22 files.
+
+## E10 — the delivered version tagged
+
+CI run 43903138832 on `dc58627`: `backend`, `frontend`, `images` and `e2e` green. Annotated tag `v1.0.0` on `dc58627`, pushed. Later commits (this record included) touch only the planning docs.
