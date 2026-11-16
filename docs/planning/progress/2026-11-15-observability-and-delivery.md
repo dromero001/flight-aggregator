@@ -1499,3 +1499,25 @@ Both reviews asked for changes on extra 6 (`.superpowers/sdd/2026-11-16-extras/r
 - The review's Minors are not fixed in this round (project rule). G4a-F-m2 and G4a-C-m1 went with the revert.
 - `git merge origin/main` (`cc2e22c`, a merge commit): one conflict, this report, resolved append-only with `main`'s sections first.
 - `./gradlew build` from the worktree root on `cc2e22c`: BUILD SUCCESSFUL, exit 0, 1,148 tests, none failed or skipped (1,152 less the four tests of extra 6).
+
+## User manual
+
+A user manual in English, apart from the three documentation blocks: [`docs/user-manual/README.md`](../../user-manual/README.md), with a PDF generated from it, [`user-manual.pdf`](../../user-manual/user-manual.pdf). Documentation and images only: no code, test or configuration changed.
+
+### The user's decisions
+
+- 2026-11-16, about 10:40: a user manual in English, as a document of its own apart from the rest of the documentation, with a section for the customer (the search) and one for the admin (the provider status and "Run ingestion now"), with screenshots, among them a flight with stops whose legs and layovers can be seen; assembled as a PDF.
+- 2026-11-16, about 21:25: as complete as possible, documenting only what is implemented; sections Customer, Admin, Monitoring (Grafana), API (Swagger UI) and Troubleshooting; Markdown in the repository plus a PDF generated from it; indexed in the documentation (README and `CLAUDE.md`); tagged `v1.2.0` after its merge.
+
+### How it was produced
+
+- **Screenshots:** 29 PNGs in `docs/user-manual/images/`, 2.2 MB in all, taken on 2026-11-16 from the compose stack running `v1.1.0` on the Mac, by throwaway Playwright scripts outside the repository (Playwright 1.64.1 from `frontend/node_modules`, its headless Chromium). Desktop shots at 1280 × 800 with a device scale of 1, cropped to the dashboard's column or to one card where that reads better; the two phone shots at 390 × 844 with a scale of 2. Locale `en-GB`, time zone `Europe/Madrid` (the dashboard's times are each airport's own, whatever the browser's zone; Grafana's follow the browser's).
+- **States produced on the running stack:** the search, its filters, both sorts, "Load more", a field error, no match, the EDI → BOG itinerary with two stops, its layovers, its legs and "+1 day", "Price changed" (the mock's prices drift after each run), "Price confirmed" (the same card opened a second time), "Select", "Results updated." (a search opened, a run on demand published, then "Load more"), the search's 429 (65 searches sent through nginx from the same address within the minute), the Keycloak sign-in (username only, never the password), the provider status, "Ingestion started." with "Ingestion in progress", the 409 "An ingestion is already running.", Grafana's dashboard, its Ingestion panel viewed alone, a run's log line and its trace, and Swagger UI's search tried and its empty Authorize dialog.
+- **States produced by stopping `mock-gds`** (`docker compose stop mock-gds` and `start mock-gds` from the main checkout, nothing else touched): the re-price's 503 sentence, every breaker open, a provider "Degraded" with its breaker half-open (the providers started again, 70 s waited, one re-price let one trial call through Gamma's breaker), and every provider "Down" with "Kept from the last good ingestion" (a run with the providers stopped, generation 30 → 31). Then the providers were started again, 70 s waited and a run on demand published generation 32 with every provider "Up" and every breaker "Closed"; `/health` answered `UP`.
+- **The PDF:** GitHub's Markdown renderer (`gh api markdown`, mode `gfm`) turned the README into HTML; links to other repository files were pointed at GitHub and heading ids made to match the manual's own anchors; Playwright Chromium's `page.pdf()` printed it on A4, with page numbers in the footer, the Contents list as its table of contents with working links, and the PDF's outline from the headings. The scripts stay outside the repository.
+
+### What could not be shown, and why
+
+- **The airport and airline suggestions open.** The browser draws a `<datalist>`'s list as its own popup, outside the page, and a page screenshot does not include it; the manual describes the list ("MAD — Madrid", "IB — Iberia") in its steps instead.
+- **The `ALTERNATIVE` answer.** It needs one provider to fail a flight that no other provider sells while the others answer; the demo stack does not do that without a `mock-gds` configuration override, so the manual describes it in its table of answers.
+- **The re-price's 429, the 404 "no longer available", a search's 503, "No ingestion has run yet." and the admin screen's error messages** are described in text: each needs another state than the healthy stack's (a spent re-price window, an id no longer on sale, a database too slow, a stack before its first run, an account without the role).
