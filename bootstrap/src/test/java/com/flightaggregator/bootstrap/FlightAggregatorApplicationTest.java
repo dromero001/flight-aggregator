@@ -126,7 +126,8 @@ class FlightAggregatorApplicationTest {
             tuple("5", MigrationState.SUCCESS),
             tuple("6", MigrationState.SUCCESS),
             tuple("7", MigrationState.SUCCESS),
-            tuple("8", MigrationState.SUCCESS));
+            tuple("8", MigrationState.SUCCESS),
+            tuple("9", MigrationState.SUCCESS));
   }
 
   /**
