@@ -2,6 +2,7 @@ package com.flightaggregator.bootstrap.config;
 
 import com.flightaggregator.application.port.in.InventoryStatus;
 import com.flightaggregator.application.port.in.TriggerIngestion;
+import com.flightaggregator.application.port.out.IngestionLock;
 import com.flightaggregator.application.port.out.IngestionStatusStore;
 import com.flightaggregator.application.port.out.ItineraryReader;
 import com.flightaggregator.application.service.InventoryStatusService;
@@ -21,8 +22,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 
 /**
  * The admin side's use cases (§6.6, §6.8): each provider's status, from the runs' records (Q7-B)
- * and the providers' breakers (plan 4's registry), and the manual run, through the ingestion job,
- * so that it takes the scheduled runs' lock.
+ * and the providers' breakers (plan 4's registry), with whether a run holds the ingestion's lock,
+ * and the manual run, through the ingestion job, so that it takes the scheduled runs' lock.
  */
 @Configuration(proxyBeanMethods = false)
 class AdminConfig {
@@ -32,9 +33,10 @@ class AdminConfig {
       IngestionStatusStore statuses,
       ItineraryReader inventory,
       CircuitBreakerRegistry circuitBreakers,
+      IngestionLock lock,
       @Value("${ingestion.interval}") Duration interval) {
     return new InventoryStatusService(
-        statuses, inventory, new RegistryProviderBreakers(circuitBreakers), interval);
+        statuses, inventory, new RegistryProviderBreakers(circuitBreakers), lock, interval);
   }
 
   @Bean

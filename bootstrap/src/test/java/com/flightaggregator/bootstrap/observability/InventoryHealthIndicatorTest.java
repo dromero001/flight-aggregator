@@ -94,6 +94,7 @@ class InventoryHealthIndicatorTest {
         7,
         Optional.of(PUBLISHED_AT),
         Optional.of(PUBLISHED_AT.plusSeconds(1800)),
+        false,
         List.of(providers));
   }
 

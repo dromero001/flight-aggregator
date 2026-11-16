@@ -5,6 +5,7 @@ import com.flightaggregator.application.port.in.ProviderReport;
 import com.flightaggregator.application.port.in.ProviderStatus;
 import com.flightaggregator.application.port.in.ProviderStatus.Health;
 import com.flightaggregator.application.port.in.StatusReport;
+import com.flightaggregator.application.port.out.IngestionLock;
 import com.flightaggregator.application.port.out.IngestionStatusStore;
 import com.flightaggregator.application.port.out.InventoryState;
 import com.flightaggregator.application.port.out.ItineraryReader;
@@ -25,16 +26,19 @@ public final class InventoryStatusService implements InventoryStatus {
   private final IngestionStatusStore statuses;
   private final ItineraryReader inventory;
   private final ProviderBreakers breakers;
+  private final IngestionLock lock;
   private final Duration ingestionInterval;
 
   public InventoryStatusService(
       IngestionStatusStore statuses,
       ItineraryReader inventory,
       ProviderBreakers breakers,
+      IngestionLock lock,
       Duration ingestionInterval) {
     this.statuses = statuses;
     this.inventory = inventory;
     this.breakers = breakers;
+    this.lock = lock;
     this.ingestionInterval = ingestionInterval;
   }
 
@@ -46,6 +50,7 @@ public final class InventoryStatusService implements InventoryStatus {
         state.generation(),
         state.publishedAt(),
         run.map(latest -> latest.finishedAt().plus(ingestionInterval)),
+        lock.isHeld(),
         run.stream().flatMap(latest -> latest.providers().stream()).map(this::status).toList());
   }
 

@@ -14,7 +14,7 @@ import java.util.Optional;
 final class RecordingAdmin implements InventoryStatus, TriggerIngestion {
 
   private static final StatusReport NOTHING_YET =
-      new StatusReport(0, Optional.empty(), Optional.empty(), List.of());
+      new StatusReport(0, Optional.empty(), Optional.empty(), false, List.of());
 
   private StatusReport status = NOTHING_YET;
   private TriggerOutcome outcome = TriggerOutcome.STARTED;

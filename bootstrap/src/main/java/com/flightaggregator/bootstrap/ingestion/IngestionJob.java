@@ -36,8 +36,11 @@ public final class IngestionJob implements IngestionLauncher {
 
   private static final Logger LOG = LoggerFactory.getLogger(IngestionJob.class);
 
-  /** The ShedLock row that one instance at a time holds while it runs (§6.2). */
-  private static final String LOCK = "ingestion";
+  /**
+   * The ShedLock row that one instance at a time holds while it runs (§6.2), which the status
+   * screen reads too.
+   */
+  public static final String LOCK = "ingestion";
 
   /** Before the next run is due, should an instance die holding the lock. */
   private static final Duration LOCK_AT_MOST_FOR = Duration.ofMinutes(29);
