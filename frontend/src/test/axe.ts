@@ -1,6 +1,7 @@
 import { expect } from 'vitest';
 import { configureAxe } from 'vitest-axe';
 import * as matchers from 'vitest-axe/matchers';
+import { AXE_TAGS } from './axeTags';
 
 /**
  * axe with the rules the end-to-end tests apply (plan 6, Q7): WCAG 2.0 and 2.1, levels A and AA.
@@ -8,7 +9,7 @@ import * as matchers from 'vitest-axe/matchers';
  * the rule cannot decide here (and reaches for a canvas jsdom does not have).
  */
 export const axe = configureAxe({
-  runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
+  runOnly: { type: 'tag', values: AXE_TAGS },
   rules: { 'color-contrast': { enabled: false } },
 });
 
