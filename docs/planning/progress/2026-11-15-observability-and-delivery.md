@@ -767,3 +767,7 @@ The compose stack was not stopped or restarted, and its Grafana lets no one sign
 ### Minors left for the plan's closing round
 
 M1 (Provider calls' description misses the startup-run caveat), M2 (no test pins the dashboard's read-only provisioning), M3 (`_max` duration spikes fall between steps on long ranges), M4 (the `unless … offset 1h` term also counts in full after a Prometheus restart), M5 (`everyPanelQueriesAKnownMetric`'s Javadoc promises renames; optional `parse_query`), M6 (Discarded records legend clipped). Not fixed here, per CLAUDE.md.
+
+## Task 6 — fix round re-review
+
+Re-review of `7d45a2c..27e7866`: **Functional APPROVED, Code APPROVED** (thermo-nuclear applied). I1 closed: instant queries, `noValue: "unknown"`, a `null+nan` mapping; freshness and days ahead unknown red (their `gauge: unknown` rules), rows in DEFAULT unknown orange (its unknown is PartitionHorizonShort's, as the rule file says). The reviewer's own mutation (Partitions B not instant) turned `showsAnUnknownGaugeAsUnknownNeverAsItsLastValue` red. Minors for the closing round, with the first review's M1–M6: F-m1 the freshness description (`flight-aggregator.json:74`) leaves out "a provider with nothing stored" among the NaN causes; F-m2 `GrafanaProvisioningTest.java:228` a renamed panel gives a bare NullPointerException; F-m3 no test shows `noValue` renders in the mapping's colour (the screenshot does).
