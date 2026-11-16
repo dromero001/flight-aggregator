@@ -161,7 +161,7 @@ test('opens and closes a card with the keyboard', async () => {
 test('marks an arrival on the next local day', () => {
   const now = new Date('2026-11-15T09:05:00Z');
   const sameDay = renderWithClient(<ItineraryCard itinerary={direct()} now={now} />);
-  expect(screen.queryByText('+1')).not.toBeInTheDocument();
+  expect(screen.queryByText('+1 day')).not.toBeInTheDocument();
   sameDay.unmount();
 
   // 22:40 in Madrid, 06:15 the next morning in London.
@@ -172,7 +172,7 @@ test('marks an arrival on the next local day', () => {
   });
   renderWithClient(<ItineraryCard itinerary={overnight} now={now} />);
 
-  expect(within(screen.getByRole('article')).getByText('+1')).toBeInTheDocument();
+  expect(within(screen.getByRole('article')).getByText('+1 day')).toBeInTheDocument();
 });
 
 test('marks each leg that lands on the next local day', async () => {
@@ -207,7 +207,7 @@ test('marks each leg that lands on the next local day', async () => {
   const [first, second] = within(screen.getByRole('list', { name: 'Legs' })).getAllByRole(
     'listitem',
   );
-  expect(first).toHaveTextContent('Iberia IB 3166 MAD 22:40 to LHR 06:15 +1');
+  expect(first).toHaveTextContent('Iberia IB 3166 MAD 22:40 to LHR 06:15 +1 day');
   expect(second).toHaveTextContent('British Airways BA 117 LHR 10:50 to JFK 13:40');
-  expect(second).not.toHaveTextContent('+1');
+  expect(second).not.toHaveTextContent('+1 day');
 });

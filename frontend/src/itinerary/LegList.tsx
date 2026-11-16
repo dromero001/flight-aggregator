@@ -27,7 +27,7 @@ export function LegList({ legs, label, captioned = false }: LegListProps) {
       >
         {/* A flight may come back in one itinerary, so the position is the key. */}
         {legs.map((leg, index) => {
-          // "+1": the leg lands on a later local date than it took off, as on the card.
+          // "+1 day": the leg lands on a later local date than it took off, as on the card.
           const arrivalMark = laterDayMark(leg.departure, leg.arrival);
           return (
             <li key={index}>

@@ -85,7 +85,7 @@ export function ItineraryCard({ itinerary, now, summaryRef }: ItineraryCardProps
             <time className={styles.time} dateTime={arrival}>
               {localTime(arrival)}
             </time>
-            {/* "+1": the arrival's local date is the day after the departure's (plan 6 E1). */}
+            {/* "+1 day": the arrival's local date is after the departure's (plan 6 E1). */}
             {arrivalMark && <span className={styles.days}>{arrivalMark}</span>}
           </span>
           <span className={styles.details}>
