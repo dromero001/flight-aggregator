@@ -1,3 +1,4 @@
+import { useCallback, useState } from 'react';
 import { ApiError, rateLimitWait } from '../api/apiError';
 import { ItineraryCard } from '../itinerary/ItineraryCard';
 import { useNow } from '../time/useNow';
@@ -58,6 +59,20 @@ export function ResultsList({ criteria, enabled }: ResultsListProps) {
     search.isFetchNextPageError ? rateLimitWait(search.error) : undefined,
   );
   const showsNextPageFailure = search.isFetchNextPageError && !nextPageWaitOver;
+  // After "Load more", the first new card takes the focus as it appears, so a keyboard user
+  // carries on where the new results start. A page that adds no card moves nothing.
+  const [firstNewCard, setFirstNewCard] = useState<number | null>(null);
+  const focusFirstNewCard = useCallback((summary: HTMLButtonElement | null) => {
+    if (summary) {
+      summary.focus();
+      setFirstNewCard(null);
+    }
+  }, []);
+
+  function loadMore() {
+    setFirstNewCard(itineraries.length);
+    void search.fetchNextPage();
+  }
 
   function tryAgain() {
     // Repeats the request that failed: "Load more", or the first page.
@@ -104,9 +119,13 @@ export function ResultsList({ criteria, enabled }: ResultsListProps) {
         )}
       </div>
       <ol className={styles.list}>
-        {itineraries.map((itinerary) => (
+        {itineraries.map((itinerary, index) => (
           <li key={itinerary.id}>
-            <ItineraryCard itinerary={itinerary} now={now} />
+            <ItineraryCard
+              itinerary={itinerary}
+              now={now}
+              summaryRef={index === firstNewCard ? focusFirstNewCard : undefined}
+            />
           </li>
         ))}
       </ol>
@@ -118,9 +137,7 @@ export function ResultsList({ criteria, enabled }: ResultsListProps) {
               className={`${styles.button} ${styles.loadMore}`}
               type="button"
               disabled={search.isFetchingNextPage}
-              onClick={() => {
-                void search.fetchNextPage();
-              }}
+              onClick={loadMore}
             >
               {search.isFetchingNextPage ? 'Loading…' : 'Load more'}
             </button>

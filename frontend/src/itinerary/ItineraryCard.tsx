@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { type Ref, useId, useState } from 'react';
 import type { Itinerary } from '../api/types';
 import styles from './ItineraryCard.module.css';
 import {
@@ -20,13 +20,15 @@ import { useReprice } from './useReprice';
 interface ItineraryCardProps {
   itinerary: Itinerary;
   now: Date;
+  /** The card's summary, the button that opens it. */
+  summaryRef?: Ref<HTMLButtonElement>;
 }
 
 /**
  * One result, read like a boarding pass (plan 6, Q6): the times and airports on a route line,
  * then the date, duration, stops and flights; the price and its freshness on the stub.
  */
-export function ItineraryCard({ itinerary, now }: ItineraryCardProps) {
+export function ItineraryCard({ itinerary, now, summaryRef }: ItineraryCardProps) {
   const { origin, destination, departure, arrival, legs } = itinerary;
   const connections = layovers(legs);
   const arrivalMark = laterDayMark(departure, arrival);
@@ -59,6 +61,7 @@ export function ItineraryCard({ itinerary, now }: ItineraryCardProps) {
   return (
     <article className={styles.card}>
       <button
+        ref={summaryRef}
         className={styles.summary}
         type="button"
         aria-expanded={open}
