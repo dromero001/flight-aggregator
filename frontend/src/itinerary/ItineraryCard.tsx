@@ -11,7 +11,7 @@ import {
   localDate,
   localTime,
   price,
-  type Layover,
+  stopsSummary,
 } from './format';
 import { LegList } from './LegList';
 import { RepricePanel } from './RepricePanel';
@@ -20,18 +20,6 @@ import { useReprice } from './useReprice';
 interface ItineraryCardProps {
   itinerary: Itinerary;
   now: Date;
-}
-
-/** "Direct", "1 stop: LHR, 1h 10m", "2 stops: LHR, 1h 10m; JFK, 1h 20m" (Q6). */
-function stopsSummary(connections: Layover[]): string {
-  if (connections.length === 0) {
-    return 'Direct';
-  }
-  const count = connections.length === 1 ? '1 stop' : `${String(connections.length)} stops`;
-  const where = connections
-    .map((connection) => `${connection.airport}, ${duration(connection.minutes)}`)
-    .join('; ');
-  return `${count}: ${where}`;
 }
 
 /**
@@ -45,14 +33,22 @@ export function ItineraryCard({ itinerary, now }: ItineraryCardProps) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const reprice = useReprice();
-  // A changed price replaces the one the search showed (Q5-A).
-  const shownPrice =
-    reprice.data?.outcome === 'PRICE_CHANGED' ? reprice.data.itinerary.price : itinerary.price;
+  // The stub shows the latest quote of this itinerary with the time it was quoted: the search's or
+  // the last re-price that confirmed or changed it (Q5-A), unless the search's is newer. It is kept here
+  // rather than read from the mutation, which forgets its answer while the next opening is checked.
+  const [requote, setRequote] = useState<Itinerary | null>(null);
+  const quote =
+    requote && Date.parse(requote.quotedAt) >= Date.parse(itinerary.quotedAt) ? requote : itinerary;
 
   function toggle() {
     // Each opening asks again: a price confirmed a while ago may have changed since (spec 6.8).
     if (!open) {
-      reprice.mutate(itinerary.id);
+      reprice.mutate(itinerary.id, {
+        onSuccess: (answer) => {
+          // An alternative is another itinerary: this one's quote stays as it was.
+          if (answer.outcome !== 'ALTERNATIVE') setRequote(answer.itinerary);
+        },
+      });
     }
     setOpen(!open);
   }
@@ -97,8 +93,8 @@ export function ItineraryCard({ itinerary, now }: ItineraryCardProps) {
           </span>
         </span>
         <span className={styles.stub}>
-          <span className={styles.price}>{price(shownPrice.amount)}</span>
-          <span className={styles.freshness}>{freshness(itinerary.quotedAt, now)}</span>
+          <span className={styles.price}>{price(quote.price.amount)}</span>
+          <span className={styles.freshness}>{freshness(quote.quotedAt, now)}</span>
         </span>
       </button>
       {/* Always in the page, so the button's aria-controls names an element while closed too. */}

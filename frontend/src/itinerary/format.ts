@@ -105,6 +105,18 @@ export function layovers(legs: Leg[]): Layover[] {
   });
 }
 
+/** "Direct", "1 stop: LHR, 1h 10m", "2 stops: LHR, 1h 10m; JFK, 1h 20m" (Q6). */
+export function stopsSummary(connections: Layover[]): string {
+  if (connections.length === 0) {
+    return 'Direct';
+  }
+  const count = connections.length === 1 ? '1 stop' : `${String(connections.length)} stops`;
+  const where = connections
+    .map((connection) => `${connection.airport}, ${duration(connection.minutes)}`)
+    .join('; ');
+  return `${count}: ${where}`;
+}
+
 /**
  * "Iberia IB 3166": a leg's airline, carrier code and flight number (plan 6 E2); "ZZ 120" for a
  * carrier the bundle does not name.
