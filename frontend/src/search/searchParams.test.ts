@@ -74,6 +74,13 @@ test.each([
   expect(errors).toEqual({});
 });
 
+test('keeps an amount with a dot and a comma as typed, and rejects it', () => {
+  const { criteria, errors } = parseSearch(new URLSearchParams({ maxPrice: '1.234,5' }));
+
+  expect(criteria.maxPrice).toBe('1.234,5');
+  expect(errors).toEqual({ maxPrice: 'Enter an amount in euros above 0, like 150 or 149.99' });
+});
+
 test('keeps an amount with more than one comma as typed, and rejects it', () => {
   const { criteria, errors } = parseSearch(new URLSearchParams({ maxPrice: '1,2,3' }));
 
