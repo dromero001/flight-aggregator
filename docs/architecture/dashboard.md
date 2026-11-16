@@ -14,7 +14,7 @@ flowchart LR
 
 ## Run it
 
-`docker compose up --build` starts the dashboard with the rest of the stack on `http://localhost:3000` (loopback only), once the aggregator is healthy. The search shows flights once the first ingestion has published (about half a minute after the aggregator starts). The admin screen is `http://localhost:3000/admin`, where the realm's demo `admin` user signs in. The demo password and the frontend's npm commands are in the README ([Use the dashboard](../../README.md#use-the-dashboard)).
+`docker compose up --build` starts the dashboard with the rest of the stack on `http://localhost:3000` (loopback only), once the aggregator is healthy. The search shows flights once the first ingestion has published (about a minute after the aggregator starts, more on a loaded host; [CI's runs](../planning/progress/2026-11-15-observability-and-delivery.md#final-review--fix-round-frontend-and-docs) took 78 to 86 s). The admin screen is `http://localhost:3000/admin`, where the realm's demo `admin` user signs in. The demo password and the frontend's npm commands are in the README ([Use the dashboard](../../README.md#use-the-dashboard)).
 
 In development, Vite's dev server (`npm run dev`) proxies `/api` to the aggregator on `http://localhost:8080` as nginx does, and `public/config.json` holds the compose values for the sign-in. The realm accepts the redirect back only on `http://localhost:3000/admin`, so the admin screen signs in only when the app is served on port 3000.
 
@@ -51,7 +51,7 @@ A card's summary is one disclosure button (`aria-expanded`). Opening it shows ea
 | Answer | What the card shows |
 |---|---|
 | Pending | "Checking the price…" |
-| `CONFIRMED` | "Price confirmed: €412.60" and "Select" |
+| `CONFIRMED` | "Price confirmed: €412.60" and "Select"; a price other than the one the stub showed when the card was opened is worded "Price changed: was €412.60, now €431.00" (below) |
 | `PRICE_CHANGED` | "Price changed: was €412.60, now €431.00" and "Select"; the card's stub shows the new price and its freshness |
 | `ALTERNATIVE` | §6.5's notice, *"We couldn't confirm this flight. This is the best alternative we found."*, the alternative's legs, "Price confirmed: €…" and "Select", inside the same card (Q5-A) |
 | `503` | §6.5's *"We can't confirm the price right now. Please try again in a few minutes."* (a 502 or a network error says the same) |
@@ -61,6 +61,8 @@ A card's summary is one disclosure button (`aria-expanded`). Opening it shows ea
 "Select" goes no further, since booking is out of scope (§6.8); pressed, it says "Booking is not part of this demo." (E8).
 
 The stub always shows one quote of the itinerary with the time it was quoted: the search's, or the last re-price that confirmed or changed it, unless the search's is newer (a "Reload" after it). A reopened card keeps that quote while "Checking the price…" runs; an alternative is another itinerary and leaves the stub as it was.
+
+The API decides `CONFIRMED` or `PRICE_CHANGED` against the price it has stored, which a cached search page (up to 5 minutes) may not show yet: after another customer's re-price changed it, the API confirms the new price. So the card words a `CONFIRMED` answer against the price its stub showed when it was opened, and a different one reads as a change (final review, code I2).
 
 ### Provider status (`/admin`, admin only)
 
