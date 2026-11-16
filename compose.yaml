@@ -63,9 +63,10 @@ services:
       # The signatures are checked against Keycloak on the compose network; the issuer is its public
       # name (the issuer-uri of application.yaml stays http://localhost:8180/realms/flight-aggregator).
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/flight-aggregator/protocol/openid-connect/certs
-      # Traces go to the Collector on the compose network (spec 6.10). Nothing waits on it: an
-      # export that fails is dropped (TelemetryUnavailableTest), so `app` does not depend on it.
+      # Traces and logs go to the Collector on the compose network (spec 6.10). Nothing waits on it:
+      # an export that fails is dropped (TelemetryUnavailableTest), so `app` does not depend on it.
       MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+      MANAGEMENT_OPENTELEMETRY_LOGGING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/logs
     healthcheck:
       # DEGRADED (a provider not up, or Valkey down) still searches, so it is healthy too (plan 5,
       # Q8-A); only DOWN, PostgreSQL out of reach, is not. The API port's public /health (plan 7,
