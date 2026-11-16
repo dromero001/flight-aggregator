@@ -34,8 +34,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BinaryOperator;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -72,9 +78,15 @@ class RepriceItineraryServiceTest {
 
   private Clock clock = () -> NOW;
   private RepriceSettings settings = SETTINGS;
-  private Duration eachQuoteTakes = Duration.ZERO;
+
+  /** What each quote does after it has started and before it answers: nothing by default. */
+  private QuoteWork eachQuote = start -> {};
 
   private record Quote(Provider provider, LegKey flight) {}
+
+  private interface QuoteWork {
+    void run(Instant start) throws InterruptedException, TimeoutException, BrokenBarrierException;
+  }
 
   private RepriceItineraryService service() {
     List<FlightProvider> providers =
@@ -86,13 +98,16 @@ class RepriceItineraryServiceTest {
   }
 
   private Optional<Leg> quote(Provider provider, LegKey flight) {
-    quoteStarts.add(clock.now());
+    Instant start = clock.now();
+    quoteStarts.add(start);
     asked.add(new Quote(provider, flight));
     try {
-      Thread.sleep(eachQuoteTakes);
+      eachQuote.run(start);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException("Interrupted in a quote", e);
+    } catch (TimeoutException | BrokenBarrierException e) {
+      throw new IllegalStateException("A quote waited in vain for the other legs of its trip", e);
     }
     RuntimeException failure = failing.get(provider);
     if (failure != null) {
@@ -368,16 +383,24 @@ class RepriceItineraryServiceTest {
 
   /**
    * Each quote takes 300 ms and fails, and the budget is 500 ms. The choice's two legs are quoted
-   * at once and fail at about 300 ms, inside the budget, so the first alternative's two are quoted
-   * then; they fail at about 600 ms, past it, so the second alternative's are never asked. The
-   * clock runs in real time from {@code NOW}.
+   * at once and fail at 300 ms, inside the budget, so the first alternative's two are quoted then;
+   * they fail at 600 ms, past it, so the second alternative's are never asked. The clock moves only
+   * when a quote ends, so no stall of the machine counts: each quote waits until the other leg of
+   * its trip has started, then moves the clock to its own end. Legs quoted in turn would never
+   * meet, and the quote that waited in vain fails the re-price.
    */
   @Test
   void startsNoQuoteAfterItsBudget() {
-    long origin = System.nanoTime();
-    clock = () -> NOW.plusNanos(System.nanoTime() - origin);
+    AtomicReference<Instant> now = new AtomicReference<>(NOW);
+    clock = now::get;
     settings = new RepriceSettings(3, Duration.ofMillis(500));
-    eachQuoteTakes = Duration.ofMillis(300);
+    CyclicBarrier bothLegsStarted = new CyclicBarrier(2);
+    eachQuote =
+        start -> {
+          bothLegsStarted.await(5, TimeUnit.SECONDS);
+          now.accumulateAndGet(
+              start.plusMillis(300), BinaryOperator.maxBy(Comparator.naturalOrder()));
+        };
     List<Itinerary> route =
         List.of(
             viaLondon(50, "100.00"),
