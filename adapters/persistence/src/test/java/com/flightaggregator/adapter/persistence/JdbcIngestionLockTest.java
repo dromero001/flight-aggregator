@@ -50,6 +50,25 @@ class JdbcIngestionLockTest {
     }
   }
 
+  /** Another lock in the same table (the refresh's, plan 5) is not the ingestion's. */
+  @Test
+  void isNotHeldWhileOnlyAnotherLockIsHeld() {
+    SimpleLock other =
+        shedLock
+            .lock(
+                new LockConfiguration(
+                    Instant.now(),
+                    "refresh-" + UUID.randomUUID(),
+                    Duration.ofMinutes(29),
+                    Duration.ZERO))
+            .orElseThrow();
+    try {
+      assertThat(lock.isHeld()).isFalse();
+    } finally {
+      other.unlock();
+    }
+  }
+
   /** ShedLock keeps the row and sets its end to the release, since the job asks for no minimum. */
   @Test
   void isNotHeldOnceTheRunReleasesIt() {
