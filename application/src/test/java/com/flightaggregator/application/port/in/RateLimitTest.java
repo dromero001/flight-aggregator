@@ -1,6 +1,7 @@
 package com.flightaggregator.application.port.in;
 
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,12 @@ class RateLimitTest {
     assertThatIllegalArgumentException()
         .isThrownBy(() -> new RateLimit(60, Duration.parse(window)))
         .withMessageContaining("window");
+  }
+
+  /** One request a window is the smallest limit, and a valid one. */
+  @Test
+  void acceptsALimitOfOneRequest() {
+    assertThatNoException().isThrownBy(() -> new RateLimit(1, Duration.ofMinutes(1)));
   }
 
   /** A limit set without its window, as a setting may be, is refused by name, not by a bare NPE. */
