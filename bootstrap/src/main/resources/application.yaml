@@ -6,6 +6,12 @@ spring:
       enabled: true
   datasource:
     hikari:
+      # A request waits at most 1 s for a pooled connection, not Hikari's 30 s. With PostgreSQL out of
+      # reach, a health probe pays this wait twice (Boot's db component and the inventory one each
+      # read it), so it answers 503 DOWN in about 2 s, inside the 5 s compose gives its health check,
+      # instead of a timeout after 60 s (plan 5's end-of-plan review, F-I1). One of the ten pooled
+      # connections not free within 1 s means an overload that a longer wait would only pile up on.
+      connection-timeout: 1000
       # Passed to the PostgreSQL driver on every connection, whatever the URL (compose sets only the
       # URL): a read that waits more than 120 s for the server fails instead of blocking a run for
       # ever, and TCP keepalive notices a server that is gone. Each store's transaction also bounds
