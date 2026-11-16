@@ -13,6 +13,7 @@ import com.flightaggregator.application.service.RefreshStaleRouteService;
 import com.flightaggregator.bootstrap.refresh.BackgroundRefresh;
 import java.util.List;
 import net.javacrumbs.shedlock.core.LockingTaskExecutor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -31,9 +32,10 @@ class RefreshConfig {
       DiscardedRecords discarded,
       ItineraryRepository itineraries,
       RefreshCoordination coordination,
-      Clock clock) {
+      Clock clock,
+      @Value("${ingestion.max-itineraries}") long maxItineraries) {
     return new RefreshStaleRouteService(
-        providers, offers, airports, discarded, itineraries, coordination, clock);
+        providers, offers, airports, discarded, itineraries, coordination, clock, maxItineraries);
   }
 
   @Bean

@@ -72,7 +72,9 @@ class RefreshConfigTest {
           .withBean(
               LockingTaskExecutor.class,
               () -> new DefaultLockingTaskExecutor(configuration -> Optional.of(() -> {})))
-          .withBean(Clock.class, () -> () -> NOW);
+          .withBean(Clock.class, () -> () -> NOW)
+          // The run's ceiling, which the refresh shares (R7): one, exactly what Madrid builds.
+          .withPropertyValues("ingestion.max-itineraries=1");
 
   /**
    * A refresh asked for is downloaded and rewritten in the background: the scheduler search holds

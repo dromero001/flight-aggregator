@@ -66,8 +66,14 @@ class BackgroundRefreshTest {
         }
       };
 
+  /** The logger's own level before the test, restored after it. */
+  private Level configuredLevel;
+
+  /** Captured down to DEBUG, the level of a skipped refresh's line. */
   @BeforeEach
   void captureTheLog() {
+    configuredLevel = logger.getLevel();
+    logger.setLevel(Level.DEBUG);
     log.start();
     logger.addAppender(log);
   }
@@ -75,6 +81,7 @@ class BackgroundRefreshTest {
   @AfterEach
   void releaseTheLog() {
     logger.detachAppender(log);
+    logger.setLevel(configuredLevel);
   }
 
   /** The lines logged, once there are this many. */
@@ -181,7 +188,8 @@ class BackgroundRefreshTest {
 
   /**
    * One refresh at a time in the whole application (plan 5's end-of-plan review, I2): one asked for
-   * while another runs is skipped before it downloads anything, and says so at INFO.
+   * while another runs is skipped before it downloads anything, and says so at DEBUG: while a
+   * refresh runs, every search on a stale origin asks, so an INFO line would be one per search.
    */
   @Test
   void skipsARefreshAskedForWhileAnotherRuns() throws Exception {
@@ -192,7 +200,7 @@ class BackgroundRefreshTest {
             ILoggingEvent::getLevel, ILoggingEvent::getFormattedMessage, line -> fields(line))
         .containsExactly(
             tuple(
-                Level.INFO,
+                Level.DEBUG,
                 "Skipped the refresh of a stale origin: another refresh is running",
                 "origin=LHR"));
     assertThat(refreshed).containsExactly(MADRID);
@@ -211,11 +219,12 @@ class BackgroundRefreshTest {
 
   /**
    * The lock is ShedLock's row {@code refresh}: released as soon as the refresh ends, so the next
-   * search's refresh may start at once, and held at most 2 minutes, longer than one refresh, should
-   * the instance die holding it.
+   * search's refresh may start at once, and held at most 7 minutes, should the instance die holding
+   * it: longer than a refresh's worst case, a 60 s download then a rewrite under the store's 5
+   * minute statement bound.
    */
   @Test
-  void holdsTheRefreshLockUntilTheRefreshEndsAndAtMostTwoMinutes() throws Exception {
+  void holdsTheRefreshLockUntilTheRefreshEndsAndAtMostSevenMinutes() throws Exception {
     List<LockConfiguration> taken = new CopyOnWriteArrayList<>();
     LockingTaskExecutor recording =
         new DefaultLockingTaskExecutor(
@@ -234,9 +243,9 @@ class BackgroundRefreshTest {
             configuration -> {
               assertThat(configuration.getName()).isEqualTo("refresh");
               assertThat(configuration.getLockAtLeastFor()).isZero();
-              assertThat(configuration.getLockAtMostFor()).isEqualTo(Duration.ofMinutes(2));
+              assertThat(configuration.getLockAtMostFor()).isEqualTo(Duration.ofMinutes(7));
               assertThat(configuration.getLockAtMostUntil())
-                  .isEqualTo(NOW.plus(Duration.ofMinutes(2)));
+                  .isEqualTo(NOW.plus(Duration.ofMinutes(7)));
             });
   }
 
