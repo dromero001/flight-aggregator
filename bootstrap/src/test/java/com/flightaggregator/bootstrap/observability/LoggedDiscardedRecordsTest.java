@@ -10,9 +10,7 @@ import ch.qos.logback.core.read.ListAppender;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
 import com.flightaggregator.domain.Provider;
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import java.util.Arrays;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,40 +48,13 @@ class LoggedDiscardedRecordsTest {
 
     assertThat(count(Provider.ALPHA, DiscardReason.PRICE)).isEqualTo(2);
     assertThat(count(Provider.GAMMA, DiscardReason.SHAPE)).isEqualTo(1);
-    // Nothing else counted: every other provider and reason stays at its registered zero.
-    assertThat(
-            meters.find("ingestion.records.discarded").counters().stream()
-                .mapToDouble(Counter::count)
-                .sum())
-        .isEqualTo(3);
+    assertThat(meters.find("ingestion.records.discarded").counters()).hasSize(2);
     assertThat(log.list)
         .extracting(ILoggingEvent::getLevel, LoggedDiscardedRecordsTest::fields)
         .containsExactly(
             tuple(Level.WARN, "provider=ALPHA reason=PRICE excerpt={\"p\":-1}"),
             tuple(Level.WARN, "provider=ALPHA reason=PRICE excerpt={\"p\":\"x\"}"),
             tuple(Level.WARN, "provider=GAMMA reason=SHAPE excerpt=IB;3170"));
-  }
-
-  /**
-   * Every provider and reason is counted from zero, registered before the first record, so
-   * Prometheus's {@code increase} sees the startup run's discards (E-T6-1, built on 2026-11-16).
-   */
-  @Test
-  void registersEveryProviderAndReasonAtZeroBeforeTheFirstRecord() {
-    new LoggedDiscardedRecords(meters);
-
-    assertThat(meters.find("ingestion.records.discarded").counters())
-        .extracting(
-            counter -> counter.getId().getTag("provider"),
-            counter -> counter.getId().getTag("reason"),
-            Counter::count)
-        .containsExactlyInAnyOrderElementsOf(
-            Arrays.stream(Provider.values())
-                .flatMap(
-                    provider ->
-                        Arrays.stream(DiscardReason.values())
-                            .map(reason -> tuple(provider.name(), reason.name(), 0.0)))
-                .toList());
   }
 
   private double count(Provider provider, DiscardReason reason) {

@@ -11,7 +11,7 @@
       "id": 1,
       "type": "timeseries",
       "title": "Provider calls",
-      "description": "Calls to each provider per second, by outcome (spec 6.5). Every provider, operation and outcome is counted from zero, registered when the application starts, so the startup run's calls show once Prometheus has scraped that zero.",
+      "description": "Calls to each provider per second, by outcome (spec 6.5). rate misses a counter's first increment, and each counter is created on its first call, so the startup run's calls show from the second run on.",
       "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
@@ -112,7 +112,7 @@
       "id": 4,
       "type": "timeseries",
       "title": "Ingestion",
-      "description": "Runs in the last hour by outcome and failed runs in a row (max over the instances) on the right axis; each run's duration on the left axis, against the 30-minute cadence (spec 6.4, 6.5). Every outcome is counted from zero, registered when the application starts, so the startup run counts once Prometheus has scraped that zero.",
+      "description": "Runs in the last hour by outcome and failed runs in a row (max over the instances) on the right axis; each run's duration on the left axis, against the 30-minute cadence (spec 6.4, 6.5). A counter first seen within the hour counts in full.",
       "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
@@ -149,7 +149,7 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum by (outcome) (increase(ingestion_runs_total[1h]))",
+          "expr": "sum by (outcome) ((ingestion_runs_total unless ingestion_runs_total offset 1h) or increase(ingestion_runs_total[1h]))",
           "legendFormat": "Runs {{outcome}} (last hour)"
         },
         {
@@ -190,7 +190,7 @@
       "id": 6,
       "type": "timeseries",
       "title": "Discarded records",
-      "description": "Provider records discarded in the last hour, by provider and reason (spec 6.7). Every provider and reason is counted from zero, registered when the application starts.",
+      "description": "Provider records discarded in the last hour, by provider and reason (spec 6.7). A counter first seen within the hour counts in full.",
       "gridPos": { "x": 8, "y": 16, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "min": 0 }, "overrides": [] },
@@ -198,7 +198,7 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum by (provider, reason) (increase(ingestion_records_discarded_total[1h]))",
+          "expr": "sum by (provider, reason) ((ingestion_records_discarded_total unless ingestion_records_discarded_total offset 1h) or increase(ingestion_records_discarded_total[1h]))",
           "legendFormat": "{{provider}} {{reason}}"
         }
       ]

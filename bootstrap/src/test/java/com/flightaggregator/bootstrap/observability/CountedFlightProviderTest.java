@@ -2,7 +2,6 @@ package com.flightaggregator.bootstrap.observability;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.tuple;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -18,17 +17,14 @@ import com.flightaggregator.domain.Carrier;
 import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.LegKey;
 import com.flightaggregator.domain.Provider;
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
@@ -153,34 +149,6 @@ class CountedFlightProviderTest {
     assertThat(counted.provider()).isEqualTo(Provider.ALPHA);
     assertThatThrownBy(() -> counted.quote(FLIGHT)).isInstanceOf(RejectedExecutionException.class);
     assertThat(calls("quote", "REJECTED")).isEqualTo(1);
-  }
-
-  /**
-   * Every operation and outcome of the provider is counted from zero, registered when it is
-   * wrapped, so Prometheus's {@code rate} sees the startup run's calls (E-T6-1, built on
-   * 2026-11-16): each operation ends {@code OK} or with any {@code FailureReason}, and a quote also
-   * {@code NOT_SOLD}.
-   */
-  @Test
-  void registersEveryOperationAndOutcomeAtZeroBeforeTheFirstCall() {
-    ProviderDownload none = new ProviderDownload(List.of(), List.of());
-    counted(new Scripted(() -> none, origin -> none, flight -> Optional.empty()));
-
-    List<Tuple> expected = new ArrayList<>();
-    for (String operation : List.of("download", "origin-download", "quote")) {
-      expected.add(tuple("ALPHA", operation, "OK", 0.0));
-      for (FailureReason reason : FailureReason.values()) {
-        expected.add(tuple("ALPHA", operation, reason.name(), 0.0));
-      }
-    }
-    expected.add(tuple("ALPHA", "quote", "NOT_SOLD", 0.0));
-    assertThat(meters.find("provider.calls").counters())
-        .extracting(
-            counter -> counter.getId().getTag("provider"),
-            counter -> counter.getId().getTag("operation"),
-            counter -> counter.getId().getTag("outcome"),
-            Counter::count)
-        .containsExactlyInAnyOrderElementsOf(expected);
   }
 
   private FlightProvider counted(FlightProvider provider) {

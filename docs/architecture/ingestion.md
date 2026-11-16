@@ -101,7 +101,7 @@ Each run logs one line, `Ingestion run ended`, as ECS JSON: at `INFO` for `PUBLI
 
 Each state transition of a provider's circuit breaker is one `WARN` line, `A provider's circuit breaker changed state`, with `provider`, `from` and `to`.
 
-Metrics use low-cardinality tags only (`provider`, `reason`, `outcome`, `status`, `operation`). `provider.calls`, `ingestion.runs`, `ingestion.records.discarded`, `refresh.runs` and `refresh.duration` are registered at zero for every tag value their enums allow when the application starts, so `rate` and `increase` count the startup run ([Observability](observability.md#the-dashboard)):
+Metrics use low-cardinality tags only (`provider`, `reason`, `outcome`, `status`, `operation`):
 
 | Meter | Meaning |
 |---|---|

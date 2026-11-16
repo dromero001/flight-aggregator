@@ -266,10 +266,7 @@ class IngestionJobTest {
               assertThat(event.getFormattedMessage())
                   .isEqualTo("Skipped an ingestion run: another run holds its lock");
             });
-    // Every outcome stays at the zero it was registered at.
-    assertThat(meters.find("ingestion.runs").counters())
-        .isNotEmpty()
-        .allSatisfy(counter -> assertThat(counter.count()).isZero());
+    assertThat(meters.find("ingestion.runs").counters()).isEmpty();
   }
 
   /**
