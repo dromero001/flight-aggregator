@@ -23,6 +23,18 @@ const apiErrors: Middleware = {
  */
 const baseUrl = window.location.origin;
 
+/**
+ * The body of a call's 2xx answer (a non-2xx one has already thrown its `ApiError`). A 2xx with no
+ * body is not in the contract; it fails rather than letting a screen render nothing.
+ */
+export async function bodyOf<T>(call: Promise<{ data?: T }>): Promise<T> {
+  const { data } = await call;
+  if (data === undefined) {
+    throw new Error('The API answered without a body');
+  }
+  return data;
+}
+
 /** The public API. It never sends a token. */
 export const api = createClient<paths>({ baseUrl });
 api.use(apiErrors);

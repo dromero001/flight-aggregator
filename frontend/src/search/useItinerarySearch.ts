@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { api } from '../api/client';
+import { api, bodyOf } from '../api/client';
 import type { SearchResponse } from '../api/types';
 import type { SearchCriteria } from './searchParams';
 
@@ -12,15 +12,10 @@ export function itinerarySearchKey(criteria: SearchCriteria) {
 export function useItinerarySearch(criteria: SearchCriteria, enabled: boolean) {
   return useInfiniteQuery({
     queryKey: itinerarySearchKey(criteria),
-    queryFn: async ({ pageParam }): Promise<SearchResponse> => {
-      const { data } = await api.GET('/api/itineraries', {
-        params: { query: { ...criteria, cursor: pageParam } },
-      });
-      if (data === undefined) {
-        throw new Error('The search answered without a body');
-      }
-      return data;
-    },
+    queryFn: ({ pageParam }): Promise<SearchResponse> =>
+      bodyOf(
+        api.GET('/api/itineraries', { params: { query: { ...criteria, cursor: pageParam } } }),
+      ),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled,
