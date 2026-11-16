@@ -65,6 +65,41 @@ class JdbcOfferStoreTest {
         leg.quotedAt());
   }
 
+  /** The same offer departing from another origin. */
+  private static Leg from(String origin, Leg leg) {
+    return new Leg(
+        leg.carrier(),
+        leg.flightNumber(),
+        new Airport(origin),
+        leg.destination(),
+        leg.departure(),
+        leg.arrival(),
+        leg.price(),
+        leg.provider(),
+        leg.quotedAt());
+  }
+
+  /**
+   * A refresh's fresh offers of one origin take the place of the provider's stored ones from it,
+   * after its offers from other origins, which stay; another provider's offers from the origin stay
+   * too.
+   */
+  @Test
+  void replacesOnlyTheProvidersOffersFromTheOrigin() {
+    Leg madrid = leg(ALPHA, 1, "2026-11-20T07:00:00Z", "50.00");
+    Leg barcelona = from("BCN", leg(ALPHA, 2, "2026-11-20T08:00:00Z", "60.00"));
+    Leg betaMadrid = leg(BETA, 3, "2026-11-20T09:00:00Z", "70.00");
+    store.replace(ALPHA, List.of(madrid, barcelona));
+    store.replace(BETA, List.of(betaMadrid));
+    Leg madridNow = leg(ALPHA, 1, "2026-11-20T07:00:00Z", "80.00");
+    Leg anotherMadrid = leg(ALPHA, 4, "2026-11-20T10:00:00Z", "90.00");
+
+    store.replaceFrom(ALPHA, new Airport("MAD"), List.of(madridNow, anotherMadrid));
+
+    assertThat(store.offers(ALPHA)).containsExactly(barcelona, madridNow, anotherMadrid);
+    assertThat(store.offers(BETA)).containsExactly(betaMadrid);
+  }
+
   /**
    * Every provider's offer of one flight, the cheapest first, read back exactly. The same number
    * departing at another time, or flying to another destination, is another flight.
