@@ -883,3 +883,21 @@ The six together on the restored stack, on the final files: `6 passed (1.1m)` (s
 - `./gradlew build`: exit 0, `BUILD SUCCESSFUL`; 1,104 tests, none failed or skipped (no backend change; the test tasks came from the build cache); again after the rebase, exit 0, every task up to date (main's six commits touched no backend file). After the last end-to-end run Prettier reflowed one line of `telemetry.ts` (format only).
 - Self-review (thermo-nuclear) of the diff: `telemetry.ts` regrouped by backend; one `json()` request helper (10 s limit, a non-2xx answer an error naming the URL) instead of three copies; an unused `spanId` removed; a custom `poll` kept because Playwright's `expect.poll` does not return the value it waited for. No existing helper for client-credentials tokens or telemetry reads in `frontend/e2e/`. Nothing fails silently: every read that finds nothing within its minute throws, naming what it waited for; a Grafana query error throws at once.
 - Throwaway stack: `docker compose -p p7t7 … down -v`, exit 0; no container, volume or network of `p7t7` left; the user's `flight-aggregator` stack still running, 11 services, untouched.
+
+## Review group 1
+
+One reviewer, functional then code, over `3a57b73..9377e02` on `main` (plan 5's C1/F3/F5/F6; the airport and airline suggestions, the decimal comma, the WebKit keyboard e2e; plan 7 Tasks 5 and 7; CI concurrency), by the user's decision of reviews by group: **Functional APPROVED, Code APPROVED**; nothing Critical or Important. Ran `./gradlew build --no-build-cache --rerun-tasks` (1,104 tests), `npm ci && npm run verify` (155), read CI 43847065593 (green; e2e 10 min 8 s, 40 passed, the 6 observability tests among them) and eight mutations, each red (C1 lookup back in the `try`; name conversion off; airline conversion off; the decimal comma off; "Vueling" renamed in the mock; the Loki derived field's `$$` escape; `captureKeyValuePairAttributes` off; the ECS `traceId` rename removed). Its escalation (E1, E2, E4, E5, E7 unbuilt) was already put to the user, who chose E1, E4, E5.
+
+Minors, for Task 10's final review:
+
+| Id | Finding |
+|---|---|
+| M1 | `dashboard.md:30`: with the datalists, WebKit does not submit on Enter from From/To/Airline (Safari needs a second Enter while suggestions match; WebKit on Linux never); "Search" still works by keyboard. Told to the user |
+| M2 | `searchParams.ts:49`: "1.234,5" becomes "1.234.5" in the field and URL, next to the error: input rewritten into something never typed |
+| M3 | `FilterBar.tsx:62`, `searchParams.ts:49`: two normalisation sites; a shared `?maxPrice=55,5` is accepted while `?origin=madrid` errors (documented) |
+| M4 | `eslint.config.js:34`, `tsconfig.app.json:26`, `tsconfig.node.json:21-27`: each Node-environment test listed by hand in three files |
+| M5 | `observability.spec.ts:145`: the generation is read after the 202; a run publishing before that read makes the test wait 240 s and fail |
+| M6 | `progress/2026-11-15-dashboard.md:1025-1028,1046`: pre-rebase hashes; on `main` they are `48a066b`, `141b7cc`, `e759970`, `7223931` |
+| M7 | `continuation.md:7`: "Last updated" had grown stale and self-contradictory (rewritten by the controller at this checkpoint) |
+| M8 | `LogExportTest`, `StructuredLogsTest` repeat `TracingEndToEndTest`'s provider keys and WireMock setup |
+| M9 | `RepriceItineraryService.java:200-203`: a provider without adapter surfaces only at its first re-price; a startup check would fail earlier (optional) |
