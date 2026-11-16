@@ -19,9 +19,10 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Keeps each provider's last complete download in {@code provider_offer}. A replacement is one
- * transaction, a delete and a bulk {@code COPY}, each bounded by {@link StatementTimeout#STORE}, so
- * a failure leaves the previous offers.
+ * Keeps each provider's last complete download in {@code provider_offer}, with a refresh's fresh
+ * offers of one origin in place of the download's. A replacement is one transaction, a delete and a
+ * bulk {@code COPY}, each bounded by {@link StatementTimeout#STORE}, so a failure leaves the
+ * previous offers.
  */
 public final class JdbcOfferStore implements OfferStore {
 
@@ -65,18 +66,33 @@ public final class JdbcOfferStore implements OfferStore {
         status -> {
           StatementTimeout.STORE.boundTheTransaction(jdbc);
           jdbc.sql("DELETE FROM provider_offer WHERE provider = ?").param(provider.name()).update();
-          copy(provider, offers);
+          copy(provider, 0, offers);
         });
   }
 
+  /** The new offers take the positions after the provider's last one, as one transaction too. */
   @Override
   public void replaceFrom(Provider provider, Airport origin, List<Leg> offers) {
-    throw new UnsupportedOperationException("not yet");
+    transaction.executeWithoutResult(
+        status -> {
+          StatementTimeout.STORE.boundTheTransaction(jdbc);
+          jdbc.sql("DELETE FROM provider_offer WHERE provider = ? AND origin = ?")
+              .param(provider.name())
+              .param(origin.code())
+              .update();
+          int next =
+              jdbc.sql(
+                      "SELECT COALESCE(MAX(position) + 1, 0) FROM provider_offer WHERE provider = ?")
+                  .param(provider.name())
+                  .query(Integer.class)
+                  .single();
+          copy(provider, next, offers);
+        });
   }
 
-  private void copy(Provider provider, List<Leg> offers) {
+  private void copy(Provider provider, int firstPosition, List<Leg> offers) {
     try (CopyRows rows = CopyRows.open(dataSource, COPY)) {
-      int position = 0;
+      int position = firstPosition;
       for (Leg leg : offers) {
         rows.row(
             provider.name(),
