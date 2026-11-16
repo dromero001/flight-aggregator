@@ -240,6 +240,18 @@ class SearchControllerTest {
     assertThat(search.queries()).isEmpty();
   }
 
+  /** One unknown parameter is named in the singular (G1's review, Minor 1). */
+  @Test
+  void answersAProblemNamingTheOneUnknownParameter() throws Exception {
+    mvc.perform(get("/api/itineraries?orign=MAD"))
+        .andExpect(status().isBadRequest())
+        .andExpect(
+            jsonPath("$.detail")
+                .value(
+                    "Unknown parameter: orign. The search takes origin, destination, maxPrice,"
+                        + " carrier, sort, limit and cursor."));
+  }
+
   /** The global constraints: each bad value is a 400 whose detail names its parameter. */
   @ParameterizedTest(name = "{0}={1}")
   @CsvSource({
