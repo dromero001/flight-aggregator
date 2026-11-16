@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -16,9 +17,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * The public search (§4, §5.4, §6.6). Each parameter is read as the text the client sent and parsed
- * by {@link SearchParameters}, so a bad value is a 400 naming it; the contract documents each one
- * with that parser's own patterns and bounds. They are named request parameters, not one bound
- * object, because Spring 7 binds request headers into such an object too.
+ * by {@link SearchParameters}, so a bad value is a 400 naming it, as is a parameter the search does
+ * not take, read from the request itself; the contract documents each one with that parser's own
+ * patterns and bounds. They are named request parameters, not one bound object, because Spring 7
+ * binds request headers into such an object too.
  */
 @RestController
 public final class SearchController {
@@ -101,7 +103,9 @@ public final class SearchController {
               description = "The previous page's nextCursor, to read the page after it",
               schema = @Schema(maxLength = CursorCodec.MAXIMUM_LENGTH))
           @RequestParam(name = "cursor", required = false)
-          String cursor) {
+          String cursor,
+      HttpServletRequest request) {
+    SearchParameters.refuseUnknown(request.getParameterMap().keySet());
     SearchParameters parameters =
         new SearchParameters(origin, destination, maxPrice, carrier, sort, limit, cursor);
     return SearchResponse.of(search.search(parameters.toQuery()));

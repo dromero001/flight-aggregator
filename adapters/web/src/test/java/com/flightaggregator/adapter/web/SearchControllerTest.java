@@ -221,6 +221,25 @@ class SearchControllerTest {
         .andExpect(jsonPath("$.instance").value("/api/itineraries"));
   }
 
+  /**
+   * A misspelt parameter is refused, not ignored: {@code orign=MAD} would otherwise search every
+   * origin (G1, the user's decision of 2026-11-16). The detail names every unknown one, in the
+   * order sent, and the parameters the search takes.
+   */
+  @Test
+  void answersAProblemNamingEachUnknownParameter() throws Exception {
+    mvc.perform(get("/api/itineraries?orign=MAD&destination=JFK&page=2"))
+        .andExpect(status().isBadRequest())
+        .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+        .andExpect(
+            jsonPath("$.detail")
+                .value(
+                    "Unknown parameters: orign, page. The search takes origin, destination,"
+                        + " maxPrice, carrier, sort, limit and cursor."));
+
+    assertThat(search.queries()).isEmpty();
+  }
+
   /** The global constraints: each bad value is a 400 whose detail names its parameter. */
   @ParameterizedTest(name = "{0}={1}")
   @CsvSource({
