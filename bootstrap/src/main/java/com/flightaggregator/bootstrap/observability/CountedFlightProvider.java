@@ -28,8 +28,8 @@ import org.slf4j.LoggerFactory;
  * <p>An {@code UNEXPECTED} quote is also one {@code ERROR} line with its stack trace: it is a bug,
  * and the re-price that asked treats it as the provider failing (§6.5), so nothing else reports it.
  * A run's download failure is reported by the run, which logs each kept provider's with its stack
- * trace. A refresh's ({@code origin-download}) is only counted here: the refresh's report line
- * names the provider {@code KEPT}, with no reason and no stack trace.
+ * trace. A refresh's ({@code origin-download}) is counted here, and the refresh's report line names
+ * the provider {@code KEPT} with its reason, but no stack trace.
  */
 public final class CountedFlightProvider implements FlightProvider {
 

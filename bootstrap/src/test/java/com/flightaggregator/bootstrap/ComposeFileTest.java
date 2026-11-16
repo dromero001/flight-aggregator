@@ -80,8 +80,8 @@ class ComposeFileTest {
 
   /**
    * A cache writes nothing to disk: Valkey saves no RDB snapshot ({@code --save ""}), which its
-   * image would otherwise write into a directory it declares no volume for (plan 5 Task 13's
-   * extra, built on 2026-11-16).
+   * image would otherwise write into a directory it declares no volume for (plan 5 Task 13's extra,
+   * built on 2026-11-16).
    */
   @Test
   @SuppressWarnings("unchecked")

@@ -11,8 +11,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
-import com.flightaggregator.application.port.in.ProviderReport;
 import com.flightaggregator.application.port.in.RefreshReport;
+import com.flightaggregator.application.port.in.RefreshReport.ProviderRefresh;
 import com.flightaggregator.application.port.out.AirportCatalogue;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.DiscardedRecord;
@@ -150,17 +150,18 @@ class RefreshStaleRouteServiceTest {
                 RefreshReport.Outcome.REFRESHED,
                 FakeItineraryRepository.GENERATION,
                 4,
-                Map.of(ALPHA, ProviderReport.Status.FRESH)));
+                Map.of(ALPHA, ProviderRefresh.FRESH)));
   }
 
   /**
    * Beta's download of Madrid does not arrive, is refused by its concurrency limit, or leaves no
-   * usable leg: Beta's stored Madrid offers still build their itineraries, and Beta is kept.
+   * usable leg: Beta's stored Madrid offers still build their itineraries, and Beta is kept, for
+   * the reason a run would report (plan 5 Task 7's extra).
    */
   @ParameterizedTest(name = "{0}")
   @MethodSource("downloadsThatAreNotFresh")
   void keepsAFailedProvidersStoredOffersOfTheOrigin(
-      String download, Function<Airport, ProviderDownload> beta) {
+      String download, FailureReason reason, Function<Airport, ProviderDownload> beta) {
     Leg madCdg = leg(BETA, 7, "MAD", "CDG", "2026-11-25T08:00:00Z", QUOTED_AT);
     store.with(BETA, List.of(madCdg));
     Leg madLhrNow = leg(ALPHA, 1, "MAD", "LHR", "2026-11-25T07:15:00Z", NOW);
@@ -173,7 +174,7 @@ class RefreshStaleRouteServiceTest {
         .extracting(Itinerary::legs)
         .containsExactlyInAnyOrder(List.of(madLhrNow), List.of(madCdg));
     assertThat(report.providers())
-        .isEqualTo(Map.of(ALPHA, ProviderReport.Status.FRESH, BETA, ProviderReport.Status.KEPT));
+        .isEqualTo(Map.of(ALPHA, ProviderRefresh.FRESH, BETA, ProviderRefresh.kept(reason)));
   }
 
   /**
@@ -272,7 +273,11 @@ class RefreshStaleRouteServiceTest {
                 RefreshReport.Outcome.NOTHING_FRESH,
                 0,
                 0,
-                Map.of(ALPHA, ProviderReport.Status.KEPT, BETA, ProviderReport.Status.KEPT)));
+                Map.of(
+                    ALPHA,
+                    ProviderRefresh.kept(FailureReason.HTTP_ERROR),
+                    BETA,
+                    ProviderRefresh.kept(FailureReason.HTTP_ERROR))));
     assertThat(repository.rewrittenThrough()).isEmpty();
     assertThat(coordination.refreshedAt(MADRID)).isEmpty();
   }
@@ -297,7 +302,7 @@ class RefreshStaleRouteServiceTest {
                 RefreshReport.Outcome.CEILING_EXCEEDED,
                 0,
                 0,
-                Map.of(ALPHA, ProviderReport.Status.FRESH)));
+                Map.of(ALPHA, ProviderRefresh.FRESH)));
     assertThat(repository.rewrittenThrough()).isEmpty();
     assertThat(coordination.refreshedAt(MADRID)).isEmpty();
   }
@@ -400,18 +405,21 @@ class RefreshStaleRouteServiceTest {
     return Stream.of(
         arguments(
             "unavailable",
+            FailureReason.TIMEOUT,
             (Function<Airport, ProviderDownload>)
                 origin -> {
                   throw new ProviderUnavailableException(BETA, FailureReason.TIMEOUT, null);
                 }),
         arguments(
             "rejected",
+            FailureReason.REJECTED,
             (Function<Airport, ProviderDownload>)
                 origin -> {
                   throw new RejectedExecutionException("over Beta's limit");
                 }),
         arguments(
             "no usable leg",
+            FailureReason.EMPTY_DOWNLOAD,
             (Function<Airport, ProviderDownload>)
                 origin ->
                     new ProviderDownload(

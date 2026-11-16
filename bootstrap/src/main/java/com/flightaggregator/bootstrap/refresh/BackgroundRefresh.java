@@ -1,12 +1,14 @@
 package com.flightaggregator.bootstrap.refresh;
 
 import com.flightaggregator.application.port.in.RefreshReport;
+import com.flightaggregator.application.port.in.RefreshReport.ProviderRefresh;
 import com.flightaggregator.application.port.in.RefreshStaleRoute;
 import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.RefreshCoordination;
 import com.flightaggregator.application.port.out.RefreshScheduler;
 import com.flightaggregator.bootstrap.observability.CorrelationId;
 import com.flightaggregator.domain.Airport;
+import com.flightaggregator.domain.Provider;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
@@ -35,8 +37,9 @@ import org.slf4j.spi.LoggingEventBuilder;
  *
  * <p>Every line of one refresh carries a correlation id of its own, as a run's lines carry the
  * run's, except the circuit breakers' transition lines, logged on a download's thread. Its report
- * is one line, {@code WARN} for a refresh with nothing fresh and {@code INFO} otherwise; whatever it throws, taking the lock included, an error too, is one
- * {@code ERROR} line with its stack trace and goes no further.
+ * is one line, {@code WARN} for a refresh with nothing fresh and {@code INFO} otherwise; whatever
+ * it throws, taking the lock included, an error too, is one {@code ERROR} line with its stack trace
+ * and goes no further.
  */
 public final class BackgroundRefresh implements RefreshScheduler {
 
@@ -109,9 +112,10 @@ public final class BackgroundRefresh implements RefreshScheduler {
   }
 
   /**
-   * The report's fields, each provider's status under its name, as in {@code alpha.status}. A
-   * refresh with nothing fresh leaves search on the origin's old offers: a warning, as a run that
-   * publishes nothing is.
+   * The report's fields, and each provider's under its name, as a run's line has them: its status,
+   * as in {@code alpha.status}, and a kept one's failure, as in {@code alpha.failure}. A refresh
+   * with nothing fresh leaves search on the origin's old offers: a warning, as a run that publishes
+   * nothing is.
    */
   private static void log(RefreshReport report) {
     LoggingEventBuilder line =
@@ -122,11 +126,14 @@ public final class BackgroundRefresh implements RefreshScheduler {
             .addKeyValue("itineraries", report.itineraries());
     report.providers().entrySet().stream()
         .sorted(Map.Entry.comparingByKey())
-        .forEach(
-            provider ->
-                line.addKeyValue(
-                    provider.getKey().name().toLowerCase(Locale.ROOT) + ".status",
-                    provider.getValue().name()));
+        .forEach(provider -> addFields(line, provider.getKey(), provider.getValue()));
     line.log("The refresh of a stale origin ended");
+  }
+
+  private static void addFields(
+      LoggingEventBuilder line, Provider provider, ProviderRefresh refresh) {
+    String name = provider.name().toLowerCase(Locale.ROOT);
+    line.addKeyValue(name + ".status", refresh.status().name());
+    refresh.failure().ifPresent(reason -> line.addKeyValue(name + ".failure", reason.name()));
   }
 }

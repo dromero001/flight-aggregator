@@ -11,9 +11,10 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.classic.spi.ThrowableProxy;
 import ch.qos.logback.core.read.ListAppender;
-import com.flightaggregator.application.port.in.ProviderReport;
 import com.flightaggregator.application.port.in.RefreshReport;
+import com.flightaggregator.application.port.in.RefreshReport.ProviderRefresh;
 import com.flightaggregator.application.port.in.RefreshStaleRoute;
+import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.RefreshCoordination;
 import com.flightaggregator.bootstrap.observability.CorrelationId;
 import com.flightaggregator.domain.Airport;
@@ -143,7 +144,8 @@ class BackgroundRefreshTest {
 
   /**
    * The refresh's report is one INFO line: the origin, the outcome, the generation and the
-   * itineraries rewritten, and each provider's status under its name, as a run's line has them.
+   * itineraries rewritten, and each provider's status under its name, with the reason a kept
+   * provider's download failed, as a run's line has them (plan 5 Task 7's extra).
    */
   @Test
   void logsTheReport() throws Exception {
@@ -157,7 +159,7 @@ class BackgroundRefreshTest {
                 Level.INFO,
                 "The refresh of a stale origin ended",
                 "origin=MAD outcome=REFRESHED generation=8 itineraries=3"
-                    + " alpha.status=FRESH beta.status=KEPT"));
+                    + " alpha.status=FRESH beta.status=KEPT beta.failure=TIMEOUT"));
   }
 
   /**
@@ -173,7 +175,7 @@ class BackgroundRefreshTest {
                     RefreshReport.Outcome.NOTHING_FRESH,
                     0,
                     0,
-                    Map.of(Provider.ALPHA, ProviderReport.Status.KEPT)))
+                    Map.of(Provider.ALPHA, ProviderRefresh.kept(FailureReason.HTTP_ERROR))))
         .request(MADRID);
 
     assertThat(awaitLines(1))
@@ -350,7 +352,9 @@ class BackgroundRefreshTest {
     }
   }
 
-  /** A refresh of the origin that rewrote 3 itineraries into generation 8, Beta kept. */
+  /**
+   * A refresh of the origin that rewrote 3 itineraries into generation 8, Beta kept on a timeout.
+   */
   private static RefreshReport refreshed(Airport origin) {
     return new RefreshReport(
         origin,
@@ -359,9 +363,9 @@ class BackgroundRefreshTest {
         3,
         Map.of(
             Provider.BETA,
-            ProviderReport.Status.KEPT,
+            ProviderRefresh.kept(FailureReason.TIMEOUT),
             Provider.ALPHA,
-            ProviderReport.Status.FRESH));
+            ProviderRefresh.FRESH));
   }
 
   private static void awaitRelease(CountDownLatch released) {
