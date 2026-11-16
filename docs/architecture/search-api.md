@@ -1,6 +1,6 @@
 # Search API
 
-The HTTP API over the published inventory: a public search and a public re-price, both limited per client address, and an admin side behind Keycloak tokens. It reads PostgreSQL and Valkey only; re-price is the one public call that reaches the providers. The contract the application serves is committed as [`openapi.json`](openapi.json), and the dashboard's types are generated from it. The reasoning behind each choice is in the [design spec](../planning/design-spec.md) (§4, §5.4, §6.2 to §6.6) and in [plan 5](../planning/plans/2026-11-15-search-api.md) (Q1 to Q9).
+The HTTP API over the published inventory: a public search and a public re-price, both limited per client address, and an admin side behind Keycloak tokens. It reads PostgreSQL and Valkey only; re-price is the one public call that reaches the providers. The contract the application serves is committed as [`openapi.json`](openapi.json), and the dashboard's types are generated from it. It names itself (`Flight aggregator API`, version `1.0.0`) and has one relative server, `/`, so Swagger UI and any client call the host they read it from. The reasoning behind each choice is in the [design spec](../planning/design-spec.md) (§4, §5.4, §6.2 to §6.6) and in [plan 5](../planning/plans/2026-11-15-search-api.md) (Q1 to Q9).
 
 ```mermaid
 flowchart LR

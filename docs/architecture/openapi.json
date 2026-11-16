@@ -1,13 +1,14 @@
 {
   "openapi" : "3.1.0",
   "info" : {
-    "title" : "OpenAPI definition",
-    "version" : "v0"
+    "description" : "Searches the flights aggregated from every provider and re-prices a chosen itinerary live, both public and rate-limited per client address; with a token holding the ADMIN role, reads the inventory's and each provider's status and starts an ingestion.",
+    "title" : "Flight aggregator API",
+    "version" : "1.0.0"
   },
   "servers" : [
     {
-      "url" : "http://localhost",
-      "description" : "Generated server url"
+      "url" : "/",
+      "description" : "The host serving this contract"
     }
   ],
   "paths" : {
