@@ -76,6 +76,19 @@ test('shows a confirmed price with Select', async () => {
   expect(within(panel).getByRole('button', { name: 'Select' })).toBeInTheDocument();
 });
 
+test('shows how fresh a confirmed price is', async () => {
+  // The search quoted it ten minutes before `now`; the re-price confirmed it at `now`.
+  await openCard(() =>
+    HttpResponse.json({
+      outcome: 'CONFIRMED',
+      itinerary: connecting({ quotedAt: '2026-11-15T09:05:00Z' }),
+    }),
+  );
+
+  const summary = within(screen.getByRole('button', { expanded: true }));
+  expect(await summary.findByText('Updated just now')).toBeInTheDocument();
+});
+
 test('shows a changed price and updates the card', async () => {
   const panel = await openCard(() =>
     HttpResponse.json({
@@ -92,6 +105,77 @@ test('shows a changed price and updates the card', async () => {
   const summary = within(screen.getByRole('button', { expanded: true }));
   expect(summary.getByText('€431.00')).toBeInTheDocument();
   expect(summary.queryByText('€412.60')).not.toBeInTheDocument();
+});
+
+test('shows how fresh a changed price is', async () => {
+  // The search quoted it ten minutes before `now`; the re-price, at `now`.
+  await openCard(() =>
+    HttpResponse.json({
+      outcome: 'PRICE_CHANGED',
+      itinerary: connecting({
+        price: { amount: '431.00', currency: 'EUR' },
+        quotedAt: '2026-11-15T09:05:00Z',
+      }),
+      previousPrice: { amount: '412.60', currency: 'EUR' },
+    }),
+  );
+
+  const summary = within(screen.getByRole('button', { expanded: true }));
+  expect(await summary.findByText('Updated just now')).toBeInTheDocument();
+});
+
+test('keeps a changed price on the card while it is checked again', async () => {
+  const user = userEvent.setup();
+  let answered = 0;
+  const panel = await openCard(async () => {
+    answered += 1;
+    // The second opening's check never answers within the test.
+    if (answered > 1) await delay('infinite');
+    return HttpResponse.json({
+      outcome: 'PRICE_CHANGED',
+      itinerary: connecting({ price: { amount: '431.00', currency: 'EUR' } }),
+      previousPrice: { amount: '412.60', currency: 'EUR' },
+    });
+  });
+  await within(panel).findByText('Price changed: was €412.60, now €431.00');
+  const summary = screen.getByRole('button', { expanded: true });
+
+  await user.click(summary);
+  await user.click(summary);
+
+  // Closing the card unmounted the first panel; this is the new opening's.
+  expect(await within(screen.getByRole('status')).findByText('Checking the price…')).toBeVisible();
+  expect(within(summary).getByText('€431.00')).toBeInTheDocument();
+});
+
+test('shows a newer search quote than the last re-price', async () => {
+  const user = userEvent.setup();
+  server.use(
+    http.post(REPRICE, () =>
+      HttpResponse.json({
+        outcome: 'PRICE_CHANGED',
+        itinerary: connecting({ price: { amount: '431.00', currency: 'EUR' } }),
+        previousPrice: { amount: '412.60', currency: 'EUR' },
+      }),
+    ),
+  );
+  const now = new Date('2026-11-15T09:05:00Z');
+  const { rerender } = renderWithClient(<ItineraryCard itinerary={connecting()} now={now} />);
+  await user.click(screen.getByRole('button', { expanded: false }));
+  await screen.findByText('Price changed: was €412.60, now €431.00');
+
+  // "Reload" reads the search again: the same itinerary, quoted after the re-price.
+  rerender(
+    <ItineraryCard
+      itinerary={connecting({
+        price: { amount: '440.00', currency: 'EUR' },
+        quotedAt: '2026-11-15T09:04:00Z',
+      })}
+      now={now}
+    />,
+  );
+
+  expect(within(screen.getByRole('button', { expanded: true })).getByText('€440.00')).toBeVisible();
 });
 
 test('shows a changed price without the one shown before', async () => {

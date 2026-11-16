@@ -15,9 +15,12 @@ import {
 
 // Auckland is 18 hours ahead of New York in November: a time read in the browser's zone would
 // land on another hour and another day.
-// (Vitest sets process.env.TZ, which Node applies at once, and restores it afterwards.)
+// (Vitest sets process.env.TZ and restores it afterwards. Node applies it at once in a child
+// process, Vitest's default pool, but not in a worker thread: the zone is checked, so the test
+// cannot pass in the browser's own zone without saying so.)
 beforeEach(() => {
   vi.stubEnv('TZ', 'Pacific/Auckland');
+  expect(new Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('Pacific/Auckland');
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -39,6 +42,8 @@ test('formats euro prices from decimal strings', () => {
   expect(price('1234.50')).toBe('€1,234.50');
   expect(price('412.6')).toBe('€412.60');
   expect(price('129')).toBe('€129.00');
+  // Beyond a binary number's precision: only a decimal string formats it exactly.
+  expect(price('12345678901234567.89')).toBe('€12,345,678,901,234,567.89');
 });
 
 test('describes freshness', () => {
