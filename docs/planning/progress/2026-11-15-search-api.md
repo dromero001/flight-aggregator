@@ -1404,3 +1404,15 @@ Gates:
 - `./gradlew build` exited 0. Tests: `application` 109, `adapters/persistence` 123, `adapters/web` 69, `bootstrap` 184 (one added), `adapters/providers` 197, `domain` 91, architecture 39, `mock-gds` 201. None failed or was skipped.
 - `npm run verify` exited 0 (51 tests). Its first run after the rebase failed with `TS2307: Cannot find module 'vitest-axe'`, because `main` had added that dependency and the worktree's `node_modules` was older. After `npm ci` it passed.
 - `npm run api:generate` leaves `schema.d.ts` unchanged, since the contract did not change.
+
+## Task 12 — review
+
+The double review (`.superpowers/sdd/2026-11-15-search-api/task-12-review.md`) answered functional APPROVED and code CHANGES REQUESTED on one Important finding, C-I1: the 409 "An ingestion is already running." was answered for about 30 s after a run ended, because the lock's one-minute minimum outlived a demo run (reproduced on compose). The user decided that the manual run takes the lock with no minimum (recorded under Task 12 in the plan); fix round 1 (above) built it and was re-reviewed: both verdicts APPROVED, no new finding. The reviewer ran `./gradlew build --rerun-tasks`, regenerated `schema.d.ts` with no diff, and checked on a compose stack: `app` healthy with a 200 `DEGRADED`, 401 without a token, 202 then 409 with the exact text, the lock released at the end. The implementer's departures were judged justified. Known limit of the decision: a click within a minute of a short scheduled run's start still answers 409 (the scheduled run keeps its minimum). Minors for the end-of-plan review:
+- F-m1: `nextIngestionAt` disagrees with the scheduler after a manual run (the screen shows a later time than the real next run).
+- F-m2: shutdown does not wait for a manual run.
+- C-m1: the web adapter depends on `port.out` types.
+- C-m2: `IngestionJob.Run` has three values but only `SKIPPED` is read.
+- C-m3: `JdbcIngestionStatusStore.latest()` builds each `ProviderRun` twice.
+- C-m4: every public `/actuator/health` probe runs the whole status use case.
+- C-m5: a weakened assertion in `SecurityTest`.
+- C-m6: the Valkey `PING` lives in `AdminConfig`.
