@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { loadConfig, type AppConfig } from '../config';
 import { createAuthClient } from './authClient';
 import { AdminSession, SignInFailed, SigningIn } from './AdminSession';
@@ -7,8 +7,20 @@ import { StatusPage } from './StatusPage';
 
 /** The admin screen (`/admin`): reads the sign-in settings, then signs the admin in. */
 export function AdminPage() {
-  // A static file: failing to read it is a deployment fault that trying again will not fix.
-  const config = useQuery({ queryKey: ['config'], queryFn: loadConfig, retry: false });
+  // A static file, read once per page: failing to read it is a deployment fault that trying again
+  // will not fix, and a later read (on focus, on reconnect) that fails must not end a signed-in
+  // screen, which holds the tokens in memory.
+  const config = useQuery({
+    queryKey: ['config'],
+    queryFn: loadConfig,
+    retry: false,
+    staleTime: Infinity,
+  });
+
+  useEffect(() => {
+    // The screen says only that the sign-in failed; the console says why (a missing setting).
+    if (config.error) console.error(config.error);
+  }, [config.error]);
 
   if (config.isError) {
     return <SignInFailed />;

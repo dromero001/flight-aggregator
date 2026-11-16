@@ -2,12 +2,16 @@ import { ApiError } from '../api/apiError';
 
 /**
  * What a failed admin call tells the admin: Q7's sentence for a signed-in account without the
- * ADMIN role (the API's 403), otherwise the screen's own sentence. A 401 never gets here as such:
- * the admin client has renewed the session or sent the browser back to the sign-in.
+ * ADMIN role (the API's 403); a 401 that is still a 401 after the admin client renewed the session
+ * means the API refuses the tokens this sign-in gets, which a new sign-in would not change (the
+ * user's decision of 2026-11-16); otherwise the screen's own sentence.
  */
 export function adminFailure(error: Error, otherwise: string): string {
   if (error instanceof ApiError && error.status === 403) {
     return 'This account does not have the admin role.';
+  }
+  if (error instanceof ApiError && error.status === 401) {
+    return 'The API refused your session. Sign out and try again.';
   }
   return otherwise;
 }

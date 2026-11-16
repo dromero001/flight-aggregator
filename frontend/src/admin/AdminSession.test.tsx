@@ -10,7 +10,6 @@ import { statusReport } from '../test/fixtures';
 import { server } from '../test/server';
 import type { AuthClient } from './authClient';
 import { useAdminClient } from './adminClientContext';
-import { useAdminToken } from './adminToken';
 import { AdminSession } from './AdminSession';
 
 function Location() {
@@ -99,35 +98,6 @@ test('shows the admin screen to an admin already signed in', async () => {
   expect(auth.signinRedirect).not.toHaveBeenCalled();
 });
 
-test('gives the admin screen the access token', async () => {
-  function TokenProbe() {
-    const adminToken = useAdminToken();
-    const [token, setToken] = useState<string | null>();
-    return (
-      <>
-        <button
-          type="button"
-          onClick={() => {
-            void adminToken().then(setToken);
-          }}
-        >
-          Read the token
-        </button>
-        <p data-testid="token">{token}</p>
-      </>
-    );
-  }
-  const auth = fakeAuth();
-  auth.getUser.mockResolvedValue(adminUser('the-access-token'));
-  renderAt('/admin', auth, <TokenProbe />);
-
-  await userEvent.click(await screen.findByRole('button', { name: 'Read the token' }));
-
-  await waitFor(() => {
-    expect(screen.getByTestId('token')).toHaveTextContent('the-access-token');
-  });
-});
-
 test('gives the admin screen the admin client', async () => {
   const seen: (string | null)[] = [];
   server.use(
@@ -165,18 +135,6 @@ test('gives the admin screen the admin client', async () => {
     expect(screen.getByTestId('generation')).toHaveTextContent('7');
   });
   expect(seen).toEqual(['Bearer the-access-token']);
-});
-
-test('refuses the token outside the admin session', () => {
-  // React reports the thrown render error on the console as well.
-  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-  onTestFinished(() => {
-    consoleError.mockRestore();
-  });
-
-  expect(() => renderHook(() => useAdminToken())).toThrow(
-    'useAdminToken is used outside AdminSession',
-  );
 });
 
 test('refuses the admin client outside the admin session', () => {
