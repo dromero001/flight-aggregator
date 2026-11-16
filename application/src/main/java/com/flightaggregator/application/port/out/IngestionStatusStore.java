@@ -13,9 +13,6 @@ public interface IngestionStatusStore {
   /** Records a run's providers, each replacing what an earlier run recorded for it, at once. */
   void record(List<ProviderRun> runs, Instant finishedAt);
 
-  /** The latest run recorded for each provider, in {@code Provider} order; none before a run. */
-  List<ProviderRun> latest();
-
-  /** When the latest recorded run ended; empty before the first one. */
-  Optional<Instant> lastFinishedAt();
+  /** The latest run recorded, its end and its providers read together; empty before the first. */
+  Optional<LatestRun> latest();
 }

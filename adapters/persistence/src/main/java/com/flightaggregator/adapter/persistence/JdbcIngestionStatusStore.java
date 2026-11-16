@@ -5,25 +5,29 @@ import static java.util.Objects.requireNonNull;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.IngestionStatusStore;
+import com.flightaggregator.application.port.out.LatestRun;
 import com.flightaggregator.application.port.out.ProviderRun;
 import com.flightaggregator.domain.Provider;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Keeps each provider's latest run in {@code ingestion_status}, and its discarded records by reason
  * in {@code ingestion_status_discarded} (V7). A run's providers are recorded in one transaction,
  * bounded by {@link StatementTimeout#STORE}, so a failure leaves the previous run's rows whole;
- * they are read back in one statement, so a read never mixes two runs.
+ * they are read back in one read-only transaction at {@code REPEATABLE READ}, whose statements see
+ * one snapshot, so a read never mixes two runs.
  */
 public final class JdbcIngestionStatusStore implements IngestionStatusStore {
 
@@ -34,13 +38,14 @@ public final class JdbcIngestionStatusStore implements IngestionStatusStore {
   private static final String INSERT_DISCARDED =
       "INSERT INTO ingestion_status_discarded (provider, reason, records) VALUES (?, ?, ?)";
 
-  /** Each provider's row once per reason it discarded records for, or once with no reason. */
-  private static final String SELECT_LATEST =
-      "SELECT s.provider, s.failure, s.offers_used, s.newest_quoted_at, d.reason, d.records"
-          + " FROM ingestion_status s"
-          + " LEFT JOIN ingestion_status_discarded d ON d.provider = s.provider";
+  private static final String SELECT_STATUSES =
+      "SELECT provider, failure, offers_used, newest_quoted_at FROM ingestion_status";
+
+  private static final String SELECT_DISCARDED =
+      "SELECT provider, reason, records FROM ingestion_status_discarded";
 
   private final TransactionTemplate transaction;
+  private final TransactionTemplate snapshot;
   private final JdbcClient jdbc;
 
   /**
@@ -49,6 +54,9 @@ public final class JdbcIngestionStatusStore implements IngestionStatusStore {
    */
   public JdbcIngestionStatusStore(DataSourceTransactionManager transactions) {
     this.transaction = new TransactionTemplate(transactions);
+    this.snapshot = new TransactionTemplate(transactions);
+    this.snapshot.setReadOnly(true);
+    this.snapshot.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
     this.jdbc =
         JdbcClient.create(requireNonNull(transactions.getDataSource(), "the manager's DataSource"));
   }
@@ -84,45 +92,47 @@ public final class JdbcIngestionStatusStore implements IngestionStatusStore {
   }
 
   @Override
-  public List<ProviderRun> latest() {
-    Map<Provider, ProviderRun> runs = new EnumMap<>(Provider.class);
-    Map<Provider, Map<DiscardReason, Integer>> discarded = new EnumMap<>(Provider.class);
-    jdbc.sql(SELECT_LATEST)
-        .query(
-            (ResultSet rs) -> {
-              Provider provider = Provider.valueOf(rs.getString("provider"));
-              runs.putIfAbsent(provider, withoutDiscarded(provider, rs));
-              String reason = rs.getString("reason");
-              if (reason != null) {
-                discarded
-                    .computeIfAbsent(provider, ignored -> new EnumMap<>(DiscardReason.class))
-                    .put(DiscardReason.valueOf(reason), rs.getInt("records"));
-              }
-            });
-    return runs.values().stream()
-        .map(run -> withDiscarded(run, discarded.getOrDefault(run.provider(), Map.of())))
-        .toList();
+  public Optional<LatestRun> latest() {
+    return requireNonNull(snapshot.execute(status -> latestRun()));
   }
 
-  @Override
-  public Optional<Instant> lastFinishedAt() {
+  /** Each provider's row with the records it discarded, and the end of the latest run. */
+  private Optional<LatestRun> latestRun() {
+    Map<Provider, Map<DiscardReason, Integer>> discarded = discarded();
+    List<ProviderRun> providers =
+        jdbc.sql(SELECT_STATUSES).query((rs, rowNum) -> run(rs, discarded)).stream()
+            .sorted(Comparator.comparing(ProviderRun::provider))
+            .toList();
     return jdbc.sql("SELECT max(finished_at) AS finished_at FROM ingestion_status")
         .query((rs, rowNum) -> instant(rs, "finished_at"))
-        .single();
+        .single()
+        .map(finishedAt -> new LatestRun(finishedAt, providers));
   }
 
-  private static ProviderRun withoutDiscarded(Provider provider, ResultSet rs) throws SQLException {
+  /** The records each provider's latest run discarded, by reason; none for a provider without. */
+  private Map<Provider, Map<DiscardReason, Integer>> discarded() {
+    Map<Provider, Map<DiscardReason, Integer>> discarded = new EnumMap<>(Provider.class);
+    jdbc.sql(SELECT_DISCARDED)
+        .query(
+            (ResultSet rs) -> {
+              discarded
+                  .computeIfAbsent(
+                      Provider.valueOf(rs.getString("provider")),
+                      provider -> new EnumMap<>(DiscardReason.class))
+                  .put(DiscardReason.valueOf(rs.getString("reason")), rs.getInt("records"));
+            });
+    return discarded;
+  }
+
+  private static ProviderRun run(ResultSet rs, Map<Provider, Map<DiscardReason, Integer>> discarded)
+      throws SQLException {
+    Provider provider = Provider.valueOf(rs.getString("provider"));
     return new ProviderRun(
         provider,
         Optional.ofNullable(rs.getString("failure")).map(FailureReason::valueOf),
         rs.getInt("offers_used"),
-        Map.of(),
+        discarded.getOrDefault(provider, Map.of()),
         instant(rs, "newest_quoted_at"));
-  }
-
-  private static ProviderRun withDiscarded(ProviderRun run, Map<DiscardReason, Integer> discarded) {
-    return new ProviderRun(
-        run.provider(), run.failure(), run.offersUsed(), discarded, run.newestQuotedAt());
   }
 
   private static Optional<Instant> instant(ResultSet rs, String column) throws SQLException {

@@ -21,6 +21,7 @@ import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.IngestionStatusStore;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.ItineraryWriter;
+import com.flightaggregator.application.port.out.LatestRun;
 import com.flightaggregator.application.port.out.ProviderDownload;
 import com.flightaggregator.application.port.out.ProviderRun;
 import com.flightaggregator.application.port.out.ProviderUnavailableException;
@@ -632,12 +633,7 @@ class IngestInventoryServiceTest {
           }
 
           @Override
-          public List<ProviderRun> latest() {
-            throw new UnsupportedOperationException("Ingestion reads no status");
-          }
-
-          @Override
-          public Optional<Instant> lastFinishedAt() {
+          public Optional<LatestRun> latest() {
             throw new UnsupportedOperationException("Ingestion reads no status");
           }
         };

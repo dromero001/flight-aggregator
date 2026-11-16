@@ -15,6 +15,8 @@ import com.flightaggregator.application.port.in.ProviderStatus.Health;
 import com.flightaggregator.application.port.in.StatusReport;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.FailureReason;
+import com.flightaggregator.application.port.out.IngestionStatusStore;
+import com.flightaggregator.application.port.out.LatestRun;
 import com.flightaggregator.application.port.out.ProviderBreakers.BreakerState;
 import com.flightaggregator.application.port.out.ProviderRun;
 import com.flightaggregator.application.service.fakes.InMemoryIngestionStatusStore;
@@ -97,6 +99,32 @@ class InventoryStatusServiceTest {
   }
 
   /**
+   * The next run is counted from the run whose providers the screen shows (Q7-B), even when another
+   * run is recorded while the screen is read: never one run's providers with another's time.
+   */
+  @Test
+  void countsTheNextIngestionFromTheRunWhoseProvidersItShows() {
+    statuses.record(
+        List.of(new ProviderRun(ALPHA, Optional.empty(), 120, Map.of(), Optional.empty())),
+        RUN_END);
+    InventoryStatusService service =
+        new InventoryStatusService(
+            new RecordsARunAfterItsFirstRead(
+                statuses,
+                new ProviderRun(
+                    ALPHA, Optional.of(FailureReason.TIMEOUT), 0, Map.of(), Optional.empty()),
+                RUN_END.plus(INTERVAL)),
+            new ScriptedItineraryReader(7, PUBLISHED_AT),
+            provider -> CLOSED,
+            INTERVAL);
+
+    StatusReport report = service.status();
+
+    assertThat(report.nextIngestionAt()).contains(RUN_END.plus(INTERVAL));
+    assertThat(report.providers()).extracting(ProviderStatus::stale).containsExactly(false);
+  }
+
+  /**
    * Before the first run ends there is generation 0, nothing published, no run to count the next
    * one from and no provider to report.
    */
@@ -111,5 +139,36 @@ class InventoryStatusServiceTest {
 
     assertThat(service.status())
         .isEqualTo(new StatusReport(0, Optional.empty(), Optional.empty(), List.of()));
+  }
+
+  /** A store in which a run, the provider's next, is recorded right after its first read ends. */
+  private static final class RecordsARunAfterItsFirstRead implements IngestionStatusStore {
+
+    private final InMemoryIngestionStatusStore store;
+    private final ProviderRun next;
+    private final Instant nextFinishedAt;
+    private boolean read;
+
+    RecordsARunAfterItsFirstRead(
+        InMemoryIngestionStatusStore store, ProviderRun next, Instant nextFinishedAt) {
+      this.store = store;
+      this.next = next;
+      this.nextFinishedAt = nextFinishedAt;
+    }
+
+    @Override
+    public void record(List<ProviderRun> runs, Instant finishedAt) {
+      store.record(runs, finishedAt);
+    }
+
+    @Override
+    public Optional<LatestRun> latest() {
+      Optional<LatestRun> answer = store.latest();
+      if (!read) {
+        read = true;
+        store.record(List.of(next), nextFinishedAt);
+      }
+      return answer;
+    }
   }
 }

@@ -1,5 +1,9 @@
 package com.flightaggregator.adapter.persistence.support;
 
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Instant;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -23,6 +27,15 @@ public final class LockWaits {
         throw new AssertionError("nothing waited for backend " + holder);
       }
       Thread.sleep(20);
+    }
+  }
+
+  /** The backend that serves the connection, as {@code pg_blocking_pids} names it. */
+  public static int backendPid(Connection connection) throws SQLException {
+    try (Statement statement = connection.createStatement();
+        ResultSet pid = statement.executeQuery("SELECT pg_backend_pid()")) {
+      pid.next();
+      return pid.getInt(1);
     }
   }
 }
