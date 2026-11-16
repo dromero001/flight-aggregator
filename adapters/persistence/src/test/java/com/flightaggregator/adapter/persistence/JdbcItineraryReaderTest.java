@@ -24,6 +24,7 @@ import com.flightaggregator.domain.Provider;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLTransientConnectionException;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
@@ -46,6 +47,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.jdbc.datasource.DelegatingDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.core.json.JsonFactory;
 
@@ -423,6 +425,34 @@ class JdbcItineraryReaderTest {
       assertThat(busyBackendsBesides(holder)).isZero();
       holder.rollback();
     }
+  }
+
+  /**
+   * A read that gets no pooled connection within the pool's wait is the inventory busy too, not a
+   * bug: the same port failure, which the API answers with 503 and Retry-After, never a 500 (G1,
+   * the user's decision of 2026-11-16). The pool here fails as Hikari does when no connection frees
+   * within its {@code connection-timeout}.
+   */
+  @Test
+  void answersUnavailableWhenNoPooledConnectionFreesInTime() {
+    SQLTransientConnectionException noConnection =
+        new SQLTransientConnectionException(
+            "HikariPool-1 - Connection is not available, request timed out after 2000ms");
+    DataSource exhausted =
+        new DelegatingDataSource(dataSource) {
+          @Override
+          public Connection getConnection() throws SQLException {
+            throw noConnection;
+          }
+        };
+    JdbcItineraryReader exhaustedReader =
+        new JdbcItineraryReader(new DataSourceTransactionManager(exhausted), new JsonFactory());
+
+    assertThat(
+            catchThrowable(
+                () -> exhaustedReader.page(EVERYTHING_BY_PRICE, Optional.empty(), 10, NOW)))
+        .isInstanceOf(InventoryUnavailableException.class)
+        .hasRootCause(noConnection);
   }
 
   static Stream<Named<Consumer<JdbcItineraryReader>>> everyRead() {
