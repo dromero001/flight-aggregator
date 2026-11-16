@@ -10,8 +10,10 @@ import org.springframework.data.redis.core.script.RedisScript;
 /**
  * Fixed-window request counters in Valkey, one key per bucket under {@code rate:<bucket>}: {@code
  * INCR}, then {@code PEXPIRE … NX}, so that only the window's first request sets its end, then
- * {@code PTTL} for the time left. The three run as one script, so a count is never left without its
- * expiry, which would count the bucket's requests for ever.
+ * {@code PTTL} for the time left. The three run as one script, so that a request costs one round
+ * trip (one command timeout while Valkey hangs, not three) and the time left is read in the same
+ * atomic step as the count. ({@code NX} on every call also means that a count which lost its expiry
+ * gets one at the bucket's next request.)
  */
 public final class ValkeyRequestCounter implements RequestCounter {
 

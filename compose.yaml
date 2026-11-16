@@ -1,4 +1,6 @@
-# Runs the three mock providers, PostgreSQL and the aggregator: docker compose up --build
+# Runs the whole stack with docker compose up --build: the three mock providers, PostgreSQL,
+# Valkey, Keycloak, the aggregator, the dashboard (frontend) and the telemetry services
+# (OpenTelemetry Collector, Prometheus, Tempo, Loki, Grafana). What each one is: README.md.
 # The keys and the database password below are demo defaults, committed on purpose so that the
 # project runs with that single command (spec 6.6). They protect only these local containers, whose
 # ports are bound to the loopback interface. Override any of them from the shell or a .env file:

@@ -10,7 +10,8 @@ enum StatementTimeout {
 
   /**
    * A store's write: 5 minutes, far above the slowest statement (the {@code COPY} of every
-   * itinerary, about 12 s measured).
+   * itinerary into a slot with its six sort indexes, about 15 s measured by plan 5 Task 13, then
+   * about 5 s of {@code ANALYZE}).
    */
   STORE("5min"),
 
