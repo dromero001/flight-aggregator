@@ -28,8 +28,8 @@ server {
         # An app that accepts the call and never answers gets a 504 after 20 s, rather than after
         # nginx's 60 s (and three retries of the search). 20 s is above the slowest re-price: no
         # quote starts after its 10 s budget, but one already started can take its provider's three
-        # attempts of 2.5 s (17.5 s in all), so a shorter limit could cut a re-price the app then
-        # completes and stores.
+        # attempts of 2.5 s and the 0.6 s of backoff between them (about 18.1 s in all), so a
+        # shorter limit could cut a re-price the app then completes and stores.
         proxy_read_timeout 20s;
         proxy_pass $api_upstream;
     }

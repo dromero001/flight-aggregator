@@ -25,9 +25,10 @@ export class ApiError extends Error implements ApiErrorFields {
 
 /**
  * `Retry-After` in seconds: whole seconds, as the API sends it, or an HTTP date (RFC 9110), which a
- * proxy may send instead. Anything else is left out, so no screen shows "NaN seconds" or "0
- * seconds". Every HTTP date starts with its day's name; checking for it keeps out what
- * `Date.parse` alone would read as a date, such as "-5" (May 2001).
+ * proxy may send instead. Anything else is left out, so no screen shows "NaN seconds" or a
+ * negative wait; a wait already over (`0`, or a date in the past) reads 0. Every HTTP date starts
+ * with its day's name; checking for it keeps out what `Date.parse` alone would read as a date, such
+ * as "-5" (May 2001).
  */
 function retryAfterSeconds(value: string | null): number | undefined {
   if (value === null) return undefined;
