@@ -48,7 +48,7 @@ Both published addresses are on the loopback interface only, like every service.
 The meters, their tags and what each one means are listed once, in [Ingestion](ingestion.md#observability); the search adds `search.cache{result}` (hit, miss or error, [Search API](search-api.md)), and Boot and its libraries add the HTTP, JVM, Hikari, Spring Security and Valkey circuit-breaker meters. Prometheus stores them under Micrometer's Prometheus names:
 
 - every dot becomes an underscore: `ingestion.consecutive.failures` is `ingestion_consecutive_failures`;
-- a counter ends in `_total`: `provider_calls_total`, `ingestion_runs_total`, `ingestion_records_discarded_total`, `search_cache_total`;
+- a counter ends in `_total`: `provider_calls_total`, `ingestion_runs_total`, `ingestion_records_discarded_total`, `refresh_runs_total`, `search_cache_total`;
 - a timer is `_seconds_count`, `_seconds_sum` and `_seconds_max`, with no buckets: `ingestion_duration_seconds_max`;
 - every series also has Prometheus's `job="app"` and an `instance` per replica, which compose's DNS lists for the scrape.
 

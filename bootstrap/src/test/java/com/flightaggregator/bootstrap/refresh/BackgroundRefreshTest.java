@@ -19,6 +19,7 @@ import com.flightaggregator.application.port.out.RefreshCoordination;
 import com.flightaggregator.bootstrap.observability.CorrelationId;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Provider;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -55,6 +56,10 @@ class BackgroundRefreshTest {
   private static final Instant NOW = Instant.parse("2026-11-20T08:00:00Z");
 
   private final RecordingClaims claims = new RecordingClaims();
+  private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
+
+  /** What the clock reads: a refresh moves it on to take time. */
+  private volatile Instant now = NOW;
 
   private final Logger logger = (Logger) LoggerFactory.getLogger(BackgroundRefresh.class);
   private final Semaphore appended = new Semaphore(0);
@@ -184,6 +189,52 @@ class BackgroundRefreshTest {
   }
 
   /**
+   * Each refresh is counted and timed under its outcome (plan 5 Task 7's extra), from before it
+   * takes the lock until its report.
+   */
+  @Test
+  void metersEachRefreshUnderItsOutcome() throws Exception {
+    scheduler(
+            origin -> {
+              now = NOW.plusSeconds(37);
+              return refreshed(origin);
+            })
+        .request(MADRID);
+
+    awaitLines(1);
+    assertThat(meters.get("refresh.runs").tag("outcome", "REFRESHED").counter().count())
+        .isEqualTo(1);
+    assertThat(
+            meters
+                .get("refresh.duration")
+                .tag("outcome", "REFRESHED")
+                .timer()
+                .totalTime(TimeUnit.SECONDS))
+        .isEqualTo(37);
+  }
+
+  /** A refresh that throws is counted and timed as {@code FAILED}, as a run that throws is. */
+  @Test
+  void metersAFailedRefreshAsFailed() throws Exception {
+    scheduler(
+            origin -> {
+              now = NOW.plusSeconds(5);
+              throw new IllegalStateException("lock timeout");
+            })
+        .request(MADRID);
+
+    awaitLines(1);
+    assertThat(meters.get("refresh.runs").tag("outcome", "FAILED").counter().count()).isEqualTo(1);
+    assertThat(
+            meters
+                .get("refresh.duration")
+                .tag("outcome", "FAILED")
+                .timer()
+                .totalTime(TimeUnit.SECONDS))
+        .isEqualTo(5);
+  }
+
+  /**
    * Every line of one refresh carries an id of its own, as a run's lines carry the run's, the
    * failure's line included; the search that asked keeps its own logging context.
    */
@@ -230,6 +281,17 @@ class BackgroundRefreshTest {
   }
 
   /**
+   * A skipped refresh is counted as {@code SKIPPED} (plan 5's closing round 1), so the pressure on
+   * the one refresh at a time shows; its DEBUG line alone would be off in production.
+   */
+  @Test
+  void countsASkippedRefresh() throws Exception {
+    askForLondonWhileMadridIsRefreshed(new CopyOnWriteArrayList<>());
+
+    assertThat(meters.get("refresh.runs").tag("outcome", "SKIPPED").counter().count()).isEqualTo(1);
+  }
+
+  /**
    * A skipped refresh gives its origin's claim back, so the next search that finds the origin stale
    * asks again at once, instead of after the claim expires (no queue).
    */
@@ -261,7 +323,8 @@ class BackgroundRefreshTest {
             recording,
             claims,
             () -> NOW,
-            Thread.ofVirtual().factory())
+            Thread.ofVirtual().factory(),
+            new RefreshMetrics(meters))
         .request(MADRID);
 
     awaitLines(1);
@@ -323,7 +386,12 @@ class BackgroundRefreshTest {
                     ? Optional.of(() -> held.set(false))
                     : Optional.empty());
     return new BackgroundRefresh(
-        refreshes, oneAtATime, claims, () -> NOW, Thread.ofVirtual().factory());
+        refreshes,
+        oneAtATime,
+        claims,
+        () -> now,
+        Thread.ofVirtual().factory(),
+        new RefreshMetrics(meters));
   }
 
   /** The claims given back; search, not the scheduler, claims and marks origins. */

@@ -12,6 +12,8 @@ import com.flightaggregator.application.port.out.RefreshScheduler;
 import com.flightaggregator.application.port.out.StoreTransactions;
 import com.flightaggregator.application.service.RefreshStaleRouteService;
 import com.flightaggregator.bootstrap.refresh.BackgroundRefresh;
+import com.flightaggregator.bootstrap.refresh.RefreshMetrics;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
 import java.util.concurrent.ThreadFactory;
 import net.javacrumbs.shedlock.core.LockingTaskExecutor;
@@ -52,12 +54,18 @@ class RefreshConfig {
   }
 
   @Bean
+  RefreshMetrics refreshMetrics(MeterRegistry meters) {
+    return new RefreshMetrics(meters);
+  }
+
+  @Bean
   RefreshScheduler refreshScheduler(
       RefreshStaleRoute refreshes,
       LockingTaskExecutor locks,
       RefreshCoordination coordination,
       Clock clock,
-      ThreadFactory contextThreads) {
-    return new BackgroundRefresh(refreshes, locks, coordination, clock, contextThreads);
+      ThreadFactory contextThreads,
+      RefreshMetrics metrics) {
+    return new BackgroundRefresh(refreshes, locks, coordination, clock, contextThreads, metrics);
   }
 }
