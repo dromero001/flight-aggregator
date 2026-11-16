@@ -4,7 +4,16 @@
 
 Flight aggregation & cache optimization system: ingests itineraries from three legacy GDS mocks (JSON, XML, CSV), deduplicates and prices them, and serves a keyset-paginated search API with a real-time dashboard.
 
-> Work in progress. Architecture, assumptions and trade-offs will be documented in `SOLUTION.md`.
+How it is built and why, with its assumptions and limitations: [SOLUTION.md](SOLUTION.md).
+
+## Requirements
+
+- **Docker with Compose v2** (the `docker compose` command): Docker Desktop on macOS and Windows, Docker Engine with its Compose plugin on Linux. The images build the Java and the frontend code themselves, so nothing else is needed to run the stack.
+- **At least 4 GB of memory for Docker.** The eleven running containers used 1.8 to 2.3 GiB over nine minutes that included an ingestion run, and their peaks added up to 2.6 GiB (`docker stats` on the Mac, [measured on 2026-11-16](docs/planning/progress/2026-11-15-observability-and-delivery.md#task-10--delivery-docs)); the aggregator, Keycloak and Grafana take about half a gigabyte each. The rest leaves room for the image build, which was not measured. In Docker Desktop, this is its memory limit.
+- **Free host ports:** 3000, 3001, 8080, 8081, 8180 and 9090, each published on `127.0.0.1` only ([the services](#run-the-aggregator)).
+- **amd64 or arm64.** Every image `compose.yaml` pins, and every base image of the three Dockerfiles, is a multi-arch image with both. The stack has run on macOS arm64 (the author's Mac) and on Linux amd64 (CI's `e2e` job builds and starts it from a clean checkout on every push).
+
+<!-- E9: Windows notes go here -->
 
 ## Run the aggregator
 
@@ -12,7 +21,18 @@ Flight aggregation & cache optimization system: ingests itineraries from three l
 docker compose up --build
 ```
 
-This starts the three mock providers, PostgreSQL, Valkey (the search's result cache, refresh claims and rate-limit counters), Keycloak (the token issuer of the [admin side](#admin-access)) and the aggregator (`bootstrap/Dockerfile`, `-Xmx512m`). The aggregator ingests the providers at startup, then every 30 minutes, and publishes about one million itineraries into PostgreSQL; a run takes about 24 to 28 seconds (measured in [plan 5 Task 13](docs/planning/progress/2026-11-15-search-api.md#task-13--evidence)). Its health is on `http://localhost:8080/health` and the search on `http://localhost:8080/api/itineraries`, both published on the loopback interface only. PostgreSQL and Valkey are not published. How a run works, and what each failure does: [Ingestion](docs/architecture/ingestion.md); the API: [Search API](docs/architecture/search-api.md).
+One command starts the whole stack. These services are published, each on the loopback interface only:
+
+| Service | Address | What it is |
+|---|---|---|
+| Dashboard | `http://localhost:3000` | The search, and the provider status on `/admin` ([Use the dashboard](#use-the-dashboard)) |
+| API | `http://localhost:8080` | The search API, `/health` and Swagger UI on `/swagger-ui.html` |
+| Keycloak | `http://localhost:8180` | The token issuer of the [admin side](#admin-access), realm `flight-aggregator` |
+| Grafana | `http://localhost:3001` | Metrics, traces and logs, with no login ([Observability](#observability)) |
+| Prometheus | `http://localhost:9090` | Its alerts page and query screen |
+| Mock providers | `http://localhost:8081` | Alpha, Beta and Gamma ([Run the mock providers](#run-the-mock-providers)) |
+
+PostgreSQL, Valkey (the search's result cache, refresh claims and rate-limit counters), the OpenTelemetry Collector, Tempo, Loki and the aggregator's management port are reachable only inside compose's network. The aggregator (`bootstrap/Dockerfile`, `-Xmx512m`) ingests the providers at startup, then every 30 minutes, and publishes about one million itineraries into PostgreSQL. A run took 23.8 to 27.5 s with six sort indexes per slot ([plan 5 Task 13](docs/planning/progress/2026-11-15-search-api.md#task-13--evidence)), and 34.9 to 41.6 s with today's twelve, on a host shared with another stack ([plan 5's re-review fixes](docs/planning/progress/2026-11-15-search-api.md#end-of-plan-fix-round-1--re-review-fixes)). Its health is on `http://localhost:8080/health` and the search on `http://localhost:8080/api/itineraries`. How a run works, and what each failure does: [Ingestion](docs/architecture/ingestion.md); the API: [Search API](docs/architecture/search-api.md).
 
 **The database password is a committed demo default too**, the same deliberate exception as the provider keys below (spec 6.6): `POSTGRES_PASSWORD` in the shell or a `.env` file overrides it. It protects only a database that no port exposes outside the compose network; in production it would be a secret injected at deploy time. PostgreSQL sets the password only when it creates its volume: to change it after the first start, remove the volume with `docker compose down -v` (which deletes the stored inventory) and start again.
 
@@ -145,7 +165,7 @@ Swagger UI is on `http://localhost:8080/swagger-ui.html`, to browse the API and 
 
 The admin endpoints are `GET /api/admin/status` (the inventory's generation, when it was published and when the next run is due, and each provider's health, circuit breaker, newest quote, legs and discarded records) and `POST /api/admin/ingestions` (start a run now: `202 Accepted`, or `409 Conflict` while a run holds the ingestion's lock).
 
-**1. Wait until Keycloak is ready.** It takes 20 to 40 seconds after `docker compose up`; this polls the realm until it answers:
+**1. Wait until Keycloak is ready.** This polls the realm until it answers:
 
 ```bash
 until curl -sf http://localhost:8180/realms/flight-aggregator/.well-known/openid-configuration > /dev/null; do sleep 2; done
@@ -194,17 +214,19 @@ The same `docker compose up --build` starts the telemetry services, provisioned 
 
 **See an ingestion run as a trace,** in three steps:
 
-1. Start a run: the one at startup, "Run ingestion now" on the dashboard's admin screen, or `POST /api/admin/ingestions` with a token ([Admin access](#admin-access)). A run takes about half a minute.
+1. Start a run: the one at startup, "Run ingestion now" on the dashboard's admin screen, or `POST /api/admin/ingestions` with a token ([Admin access](#admin-access)). A run takes under a minute ([Run the aggregator](#run-the-aggregator)).
 2. Open Grafana's Explore (`http://localhost:3001/explore`), choose the **Loki** datasource, and run `{service_name="flight-aggregator"} |= "Ingestion run ended"`.
 3. Click the run's line to open its details, then **View trace**: the trace opens beside the logs, with the run (`ingestion.run`) and one request per provider page to Alpha, Beta and Gamma.
 
-The way back works too: **Related logs** on a trace, or on any of its spans, opens that trace's log lines. The dashboard also shows the search's and re-price's requests, the alert rules and their state, and the application's latest log lines.
+The way back works too: **Related logs** on a trace, or on any of its spans, opens that trace's log lines.
+
+**The "Flight aggregator" dashboard** has ten panels. Seven show the metrics the spec promises: provider calls, circuit breakers, data freshness, ingestion, cache hit ratio, discarded records and partitions. Three more show the search's and re-price's HTTP requests, the alert rules in every state, and the application's log lines, where a line's details hold **View trace**. What each panel shows: [Observability, the dashboard](docs/architecture/observability.md#the-dashboard).
 
 The pipeline, the alert rules, the dashboard's panels, what is not collected and how each part is tested: [Observability](docs/architecture/observability.md).
 
 ## Documentation
 
-The documentation is split by what each part shows.
+[SOLUTION.md](SOLUTION.md) summarises the solution: each decision, why it was taken, the alternative rejected and the measured figures, then the assumptions, the limitations and how AI was used. The rest of the documentation is split by what each part shows.
 
 ### 1. Architecture — what is built
 - [Architecture overview](docs/architecture/README.md): hexagonal modules, flows and the domain glossary
@@ -228,7 +250,7 @@ The documentation is split by what each part shows.
   - [6 — Dashboard](docs/planning/plans/2026-11-15-dashboard.md)
   - [7 — Observability and delivery](docs/planning/plans/2026-11-15-observability-and-delivery.md)
 - [Continuation point](docs/planning/continuation.md): what is in flight and what comes next, for a session that takes over
-- [Extras backlog](docs/planning/extras-backlog.md): extras proposed during plans 5 and 6, out of the delivery, kept in case time remains
+- [Extras backlog](docs/planning/extras-backlog.md): extras proposed during plans 5, 6 and 7, out of the delivery, kept in case time remains
 - Progress reports:
   - [2026-11-13](docs/planning/progress/2026-11-13.md)
   - [2026-11-14](docs/planning/progress/2026-11-14.md)
@@ -249,4 +271,4 @@ The documentation is split by what each part shows.
   6. [Grill-me: observability, CI and pagination](docs/ai/sessions/06-grill-me-observability-ci-pagination.md)
   7. [Plans, a review protocol and the foundations run](docs/ai/sessions/07-plans-review-protocol-and-foundations.md)
   8. [The domain plan, its review and its run](docs/ai/sessions/08-domain-plan-and-run.md)
-  9. [Lost sessions, recovery, and the providers and ingestion plan](docs/ai/sessions/09-lost-sessions-and-recovery.md)
+  9. [Lost sessions, recovery, and the plans to the delivery](docs/ai/sessions/09-lost-sessions-and-recovery.md)
