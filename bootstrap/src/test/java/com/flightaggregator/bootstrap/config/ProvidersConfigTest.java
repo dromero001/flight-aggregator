@@ -5,6 +5,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.awaitility.Awaitility.await;
@@ -24,6 +25,9 @@ import com.flightaggregator.domain.LegKey;
 import com.flightaggregator.domain.Provider;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.github.tomakehurst.wiremock.extension.Parameters;
+import com.github.tomakehurst.wiremock.extension.ServeEventListener;
+import com.github.tomakehurst.wiremock.stubbing.ServeEvent;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -34,6 +38,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -57,6 +63,8 @@ class ProvidersConfigTest {
           new Airport("MAD"),
           new Airport("LHR"),
           Instant.parse("2026-11-20T07:15:00Z"));
+
+  private static final Airport MADRID = new Airport("MAD");
 
   private static final String ALPHA_LAST_PAGE = "{\"legs\":[],\"nextCursor\":null}";
 
@@ -84,8 +92,10 @@ class ProvidersConfigTest {
   private final ApplicationContextRunner runner =
       withoutLimit.withInitializer(new ConfigDataApplicationContextInitializer());
 
+  private final HeldOriginCalls held = new HeldOriginCalls();
+
   private final WireMockServer server =
-      new WireMockServer(WireMockConfiguration.options().dynamicPort());
+      new WireMockServer(WireMockConfiguration.options().dynamicPort().extensions(held));
 
   @BeforeEach
   void startServer() {
@@ -94,6 +104,7 @@ class ProvidersConfigTest {
 
   @AfterEach
   void stopServer() {
+    held.release();
     server.stop();
   }
 
@@ -267,8 +278,9 @@ class ProvidersConfigTest {
   }
 
   /**
-   * Q9: at most {@code concurrency-limit} calls of a provider at once, its three operations sharing
-   * the limit; the call over it is rejected, not queued, and another provider's calls go on.
+   * Q9: at most {@code concurrency-limit} calls of a provider at once, its origin downloads and
+   * quotes sharing the limit; the call over it is rejected, not queued, and another provider's
+   * calls go on.
    */
   @Test
   void limitsConcurrentCallsPerProvider() {
@@ -279,15 +291,37 @@ class ProvidersConfigTest {
             context -> {
               FlightProvider alpha = provider(context, Provider.ALPHA);
               FlightProvider beta = provider(context, Provider.BETA);
-              List<CompletableFuture<Void>> held =
-                  inFlight(alpha::download, () -> alpha.downloadFrom(new Airport("MAD")));
+              List<CompletableFuture<Void>> calls =
+                  inFlight(
+                      () -> alpha.downloadFrom(new Airport("MAD")),
+                      () -> alpha.downloadFrom(new Airport("BCN")));
 
               assertThatThrownBy(() -> alpha.quote(FLIGHT))
                   .isInstanceOf(InvocationRejectedException.class);
               assertThat(beta.quote(FLIGHT)).isEmpty();
 
-              held.forEach(CompletableFuture::join);
+              letThemEnd(calls);
               assertThat(alphaRequests()).isEqualTo(2);
+            });
+  }
+
+  /**
+   * The run's download is outside the limit (plan 5's end-of-plan review, I2): with every call it
+   * allows taken by refreshes and re-prices, a run's download still goes out, so they never make a
+   * run keep a healthy provider's old offers.
+   */
+  @Test
+  void neverRejectsTheRunsDownloadWhileTheLimitIsExhausted() {
+    limitedTo(1)
+        .run(
+            context -> {
+              FlightProvider alpha = provider(context, Provider.ALPHA);
+              List<CompletableFuture<Void>> calls = inFlight(() -> alpha.downloadFrom(MADRID));
+
+              assertThatCode(alpha::download).doesNotThrowAnyException();
+
+              assertThat(calls).noneMatch(CompletableFuture::isDone);
+              letThemEnd(calls);
             });
   }
 
@@ -298,11 +332,11 @@ class ProvidersConfigTest {
         .run(
             context -> {
               FlightProvider alpha = provider(context, Provider.ALPHA);
-              List<CompletableFuture<Void>> held = inFlight(alpha::download);
+              List<CompletableFuture<Void>> calls = inFlight(() -> alpha.downloadFrom(MADRID));
 
               assertThat(alpha.provider()).isEqualTo(Provider.ALPHA);
 
-              held.forEach(CompletableFuture::join);
+              letThemEnd(calls);
             });
   }
 
@@ -313,11 +347,11 @@ class ProvidersConfigTest {
         .run(
             context -> {
               FlightProvider alpha = provider(context, Provider.ALPHA);
-              List<CompletableFuture<Void>> held = inFlight(alpha::download);
+              List<CompletableFuture<Void>> calls = inFlight(() -> alpha.downloadFrom(MADRID));
 
               assertThat(alpha.toString()).contains("ALPHA");
 
-              held.forEach(CompletableFuture::join);
+              letThemEnd(calls);
             });
   }
 
@@ -328,15 +362,15 @@ class ProvidersConfigTest {
         .run(
             context -> {
               FlightProvider alpha = provider(context, Provider.ALPHA);
-              List<CompletableFuture<Void>> held = inFlight(alpha::download);
+              List<CompletableFuture<Void>> calls = inFlight(() -> alpha.downloadFrom(MADRID));
 
               assertThatThrownBy(() -> alpha.quote(FLIGHT))
                   .isInstanceOf(InvocationRejectedException.class);
-              held.forEach(CompletableFuture::join);
+              letThemEnd(calls);
 
               MeterRegistry meters = context.getBean(MeterRegistry.class);
               assertThat(calls(meters, "quote", "REJECTED")).isEqualTo(1);
-              assertThat(calls(meters, "download", "OK")).isEqualTo(1);
+              assertThat(calls(meters, "origin-download", "OK")).isEqualTo(1);
             });
   }
 
@@ -350,12 +384,13 @@ class ProvidersConfigTest {
         .run(
             context -> {
               FlightProvider alpha = provider(context, Provider.ALPHA);
-              List<CompletableFuture<Void>> held =
-                  inFlight(alpha::download, alpha::download, alpha::download, alpha::download);
+              Runnable fromMadrid = () -> alpha.downloadFrom(MADRID);
+              List<CompletableFuture<Void>> calls =
+                  inFlight(fromMadrid, fromMadrid, fromMadrid, fromMadrid);
 
-              assertThatThrownBy(alpha::download).isInstanceOf(InvocationRejectedException.class);
+              assertThatThrownBy(fromMadrid::run).isInstanceOf(InvocationRejectedException.class);
 
-              held.forEach(CompletableFuture::join);
+              letThemEnd(calls);
             });
   }
 
@@ -365,14 +400,60 @@ class ProvidersConfigTest {
   }
 
   /**
-   * Every provider at the WireMock server, Alpha answering every request after 1 s, so that each of
-   * its calls holds its share of the limit meanwhile.
+   * Every provider at the WireMock server, Alpha's calls for an origin held until {@link
+   * #letThemEnd}, so that each holds its share of the limit meanwhile. A held request waits longer
+   * than any test, not Alpha's 2.5 s request timeout.
    */
   private ApplicationContextRunner busy(ApplicationContextRunner providers) {
     server.stubFor(
-        get(urlPathEqualTo("/alpha/legs"))
-            .willReturn(aResponse().withFixedDelay(1000).withBody(ALPHA_LAST_PAGE)));
-    return providers.withPropertyValues(against(server));
+        get(urlPathEqualTo("/alpha/legs")).willReturn(aResponse().withBody(ALPHA_LAST_PAGE)));
+    held.arm();
+    return providers
+        .withPropertyValues(against(server))
+        .withPropertyValues("providers.request-timeout=30s");
+  }
+
+  /** Lets the held calls answer, and waits for them to end. */
+  private void letThemEnd(List<CompletableFuture<Void>> calls) {
+    held.release();
+    calls.forEach(CompletableFuture::join);
+  }
+
+  /**
+   * Once armed, holds every Alpha request for an origin, an origin download or a quote, until
+   * released; a whole download is never held. WireMock journals a request before it calls this
+   * listener, so a test sees each held call arrive, then checks the limit while it is still taken.
+   */
+  private static final class HeldOriginCalls implements ServeEventListener {
+
+    private final CountDownLatch released = new CountDownLatch(1);
+    private volatile boolean armed;
+
+    @Override
+    public String getName() {
+      return "held-origin-calls";
+    }
+
+    @Override
+    public void beforeResponseSent(ServeEvent event, Parameters parameters) {
+      if (armed
+          && event.getRequest().getUrl().startsWith("/alpha/")
+          && event.getRequest().queryParameter("origin").isPresent()) {
+        try {
+          released.await(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
+      }
+    }
+
+    void arm() {
+      armed = true;
+    }
+
+    void release() {
+      released.countDown();
+    }
   }
 
   /**
