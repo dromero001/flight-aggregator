@@ -1778,25 +1778,25 @@ Code reviewer, 2026-11-16 (`.superpowers/sdd/2026-11-15-search-api/close-2-revie
 
 ## End-of-plan fix round 1 — Importants
 
-The three Important findings of plan 5's end-of-plan review, as the user decided them at about 05:45 (the plan's section "Decided by the user at the end-of-plan review"): F-I1, I1 and I2, and the docs. Built in a worktree from `main` at `efdd345`; the first implementer was cut at 06:42 CET by the network and a reboot, with F-I1 and the I1 indexes committed and the I1 `503` uncommitted (its final build had passed); a second implementer checked that work against the brief, finished it and built the rest. Evidence the first one saw is taken from its work log; evidence re-established later is labelled so. Rebased on `main` at `1a6d5bd` (plan 7 Task 2), then at `2fd74a7` (docs only); the commit ids below are the latter's. One test at a time; each red seen for the expected reason; a test green at once was shown red by a labelled mutation, then restored and compared with its copy.
+The three Important findings of plan 5's end-of-plan review, as the user decided them at about 05:45 (the plan's section "Decided by the user at the end-of-plan review"): F-I1, I1 and I2, and the docs. Built in a worktree from `main` at `efdd345`; the first implementer was cut at 06:42 CET by the network and a reboot, with F-I1 and the I1 indexes committed and the I1 `503` uncommitted (its final build had passed); a second implementer checked that work against the brief, finished it and built the rest. Evidence the first one saw is taken from its work log; evidence re-established later is labelled so. Rebased on `main` at `1a6d5bd` (plan 7 Task 2), then at `2fd74a7` (docs only), then at `0f71173` (closing round 2); the commit ids below are the last rebase's. One test at a time; each red seen for the expected reason; a test green at once was shown red by a labelled mutation, then restored and compared with its copy.
 
-### F-I1: `DOWN` with `503` within 2 s while PostgreSQL is out of reach (`f291bb2`)
+### F-I1: `DOWN` with `503` within 2 s while PostgreSQL is out of reach (`1659380`)
 1. `InventoryHealthIndicatorTest.isDownWhenTheInventoryCannotBeRead` (a status use case that throws). Red: `java.lang.IllegalStateException: PostgreSQL is unreachable` (the exception escaped the indicator). Green: `InventoryHealthIndicator` extends Boot's `AbstractHealthIndicator`, which reports the failure as `DOWN` with its cause.
 2. `HealthWithoutPostgresTest.answers503DownWithinTheComposeHealthCheckTimeout` (a real server; its own PostgreSQL stopped; probes until Hikari's pool is empty, then three timed probes, each `503`, `DOWN` and under compose's 5 s). Red: `[probe 3] Expecting actual: 30.036113083S to be less than: 5S` (Hikari's 30 s connection timeout, paid by each read). Green: `spring.datasource.hikari.connection-timeout: 1000`, so a probe that reads PostgreSQL twice (Boot's `db` and the inventory) answers in about 2 s (with 2 s, the probes took 4.03 s). Mutation (the timeout removed): red, `[probe 1] Expecting actual: 1M0.04435325S to be less than: 5S`; restored.
-3. After the rebase on plan 7 Task 2, `/actuator/health` on the API port asks for a token: the test was red with `expected: 200 but was: 401`, and now probes `/health` (`eab42de`). As the only proof of `DOWN` with `503` there, it was shown red again, recorded after the fact by mutation: M6 (the timeout removed) `[probe 1] Expecting actual: 1M0.032090875S to be less than: 5S`; M7 (the indicator back to a plain `HealthIndicator` whose failure escapes) `expected: 503 but was: 500`. Both restored.
+3. After the rebase on plan 7 Task 2, `/actuator/health` on the API port asks for a token: the test was red with `expected: 200 but was: 401`, and now probes `/health` (`35fbe02`). As the only proof of `DOWN` with `503` there, it was shown red again, recorded after the fact by mutation: M6 (the timeout removed) `[probe 1] Expecting actual: 1M0.032090875S to be less than: 5S`; M7 (the indicator back to a plain `HealthIndicator` whose failure escapes) `expected: 503 but was: 500`. Both restored.
 
-### I1: an index per sort order behind the origin alone (`0037d4a`)
+### I1: an index per sort order behind the origin alone (`0c80c50`)
 1. `JdbcItineraryReaderTest.readsAnOriginByPriceThroughAnIndexStartingWithTheOrigin` (40 trips; sequential scans off in the session; the key columns of the indexes the plan scans). Red: `Expecting all elements of: ["itinerary_b_20261120_price_id_idx", "itinerary_b_20261121_price_id...` (V5's `(price, id)`). Green: `V8__itinerary_origin_sort_indexes.sql`, `(origin, price, id)` on both slots' parents. After a refactor under green, mutation (those two indexes removed): red, `Expecting actual: ["price, id"] to contain exactly (and in same order): ["origin, price, id"]`; restored.
 2. `JdbcItineraryRepositoryLoadTest.indexesEverySortOrderOnBothSlots`, extended with the three origin indexes. Red: the expected list's `origin, departure, id` and `origin, duration_seconds, id` missing. Green: V8 adds them on both slots. `FlightAggregatorApplicationTest.startsAgainstPostgresAndMigrates` lists V8.
 
-### I1: `503` with `Retry-After` for a read cut by its bound (`e5832b3`)
+### I1: `503` with `Retry-After` for a read cut by its bound (`b74127b`)
 1. `SearchControllerTest.answers503WithRetryAfterWhenTheInventoryCannotBeReadInTime`. Red: `jakarta.servlet.ServletException: Request processing failed: com.flightaggregator.application.port.in.InventoryUnavailableException: a search read outran its bound`. Green: `ProblemResponses` maps the port's new `InventoryUnavailableException` to a `503` problem with `Retry-After: 60`.
 2. `JdbcItineraryReaderTest.cutsAReadThatTakesLongerThanItsBound`, now expecting the port's exception with Spring's `QueryTimeoutException` (SQLState `57014`) as its cause. Red: `Expecting actual throwable to be an instance of: InventoryUnavailableException but was: org.springframework.dao.QueryTimeoutException: ... ERROR: canceling statement due to statement timeout`. Green: `JdbcItineraryReader` translates it, with one `WARN` line.
 3. `OpenApiContractTest.documentsEachEndpointsBodyAndEveryStatus`, search row `200 400 429 503`. Red: `Expecting actual: ["200", "400", "429"] to contain exactly in any order: ["200", "400", "429", "503"]`. Green: the `503` `@ApiResponse` with `Retry-After` and a problem body on the search operation; `openapi.json` regenerated (`-Dopenapi.write=true`), `schema.d.ts` with `npm ci` and `npm run api:generate`. The search's rows in `documentsEachProblemOnItsOperation` and `documentsRetryAfterOnEachProblemToRetry` were green at once: M1 (no `Retry-After`) red, `Expecting value to be true but was false`; M2 (no problem body), recorded after the fact by mutation, red, `expected: "#/components/schemas/ProblemDetail" but was: ""`. Both restored.
 4. Checked by the second implementer and changed under green: the handler is global and the reader also serves re-price, so the detail names neither: *"The flights could not be read in time: try again after the seconds in Retry-After."*; both `503` handlers share one private helper instead of one building an exception for the other.
 - **`Retry-After: 60`:** the plan's one `503` wait (Q9, re-price's), so a client waits the same for either `503`; a read cut at 2 s means PostgreSQL is loaded, and an immediate retry would add to it.
 
-### I2: one refresh at a time (`b1cb4d9`)
+### I2: one refresh at a time (`e68b305`)
 Each refresh holds ShedLock's row `refresh` through the existing `LockingTaskExecutor`, as a run holds `ingestion`: the project's one-at-a-time mechanism, across instances. It is taken on the refresh's own virtual thread, so a search never waits for it. `RefreshStaleRouteService` is unchanged.
 1. `ValkeyRefreshCoordinationTest.givesAClaimBackForTheNextCallerToTake` (`RefreshCoordination.release` first added with empty bodies, so the test compiles). Red: `Expecting value to be true but was false`. Green: the claim key deleted through `ValkeyFailures`.
 2. `givesNothingBackWhileValkeyIsDown`: green at once (fail-open). M3 (the delete outside `ValkeyFailures`): red, `Expecting code not to raise a throwable but caught "org.springframework.dao.QueryTimeoutException: Redis command timed out`; restored.
@@ -1804,7 +1804,7 @@ Each refresh holds ShedLock's row `refresh` through the existing `LockingTaskExe
 4. `givesTheClaimOfASkippedRefreshBack`. Red: `Expecting actual: [] to contain exactly (and in same order): [Airport[code=LHR]]`. Green: the skip calls `release` before its line.
 5. `holdsTheRefreshLockUntilTheRefreshEndsAndAtMostTwoMinutes`: green at once. M4 (`lockAtLeastFor` 2 min): red, `expected: 0S but was: 2M`; restored.
 
-### I2: the run's download outside the providers' limit (`485b319`)
+### I2: the run's download outside the providers' limit (`554d02f`)
 `download()` opts out of `PagedProvider`'s class-level `@ConcurrencyLimit` with an unbounded limit of its own, the mechanism `provider()` and `toString()` already use; origin downloads and quotes keep sharing the limit of 4.
 1. Refactor under green: `ProvidersConfigTest` held its calls with a 1 s WireMock delay; a WireMock `ServeEventListener` now holds every Alpha request for an origin on a latch (WireMock journals a request before calling it), and the limit's holders are origin downloads.
 2. `ProvidersConfigTest.neverRejectsTheRunsDownloadWhileTheLimitIsExhausted` (limit 1 held by an origin download; the run's `download()` returns while it is still held). Red: `Expecting code not to raise a throwable but caught "org.springframework.resilience.InvocationRejectedException: Concurrency limit reached: 1 - not allowed to enter com.flightaggregator.adapter.provider.PagedProvider`. Green: the exemption on `download()`. M5 (the exemption removed), over the whole class: only this test red; restored.
@@ -1819,7 +1819,7 @@ Project `p5close`, taken down with `-v` after each session; ports moved to 284xx
 - without V8 (12 statements): cold 8.6 to 1,351 ms, warm 0.9 to 948 ms; JFK by price, first page: 1,077 ms cold, 948, 699 and 610 ms warm, on `price_id`, 520,098 buffers hit and 113,938 read.
 - Over HTTP, 13 origins × 3 sorts, uncached: 39 × `200`, the slowest JFK by price in 0.64 s; a second pass met the 60-a-minute limit (21 × `200`, 18 × `429`).
 
-**Refresh bursts (06:39–06:49 UTC, built from `25d5209`, the branch before the rebase, `485b319` after it).** `SEARCH_FRESHNESSTHRESHOLD=PT1M` as the risk reviewer ran it; the 32 catalogue origins searched at once; `pg_stat_activity` and `hikaricp.connections.active` sampled every ~100 ms; `/actuator/health` (then still on the API port) timed every 250 ms. Probe 2 adds a manual run 150 ms after the searches and three re-prices of the three cheapest BCN→LHR trips. Each probe ran twice, 2 minutes apart.
+**Refresh bursts (06:39–06:49 UTC, built from `25d5209`, the branch before the rebases, `554d02f` after them).** `SEARCH_FRESHNESSTHRESHOLD=PT1M` as the risk reviewer ran it; the 32 catalogue origins searched at once; `pg_stat_activity` and `hikaricp.connections.active` sampled every ~100 ms; `/actuator/health` (then still on the API port) timed every 250 ms. Probe 2 adds a manual run 150 ms after the searches and three re-prices of the three cheapest BCN→LHR trips. Each probe ran twice, 2 minutes apart.
 
 | | Probe 1 | Probe 2 | Probe 1 again | Probe 2 again |
 |---|---|---|---|---|
@@ -1850,3 +1850,86 @@ Project `p5close`, taken down with `-v` after each session; ports moved to 284xx
 ### Concerns
 - The connection wait is now 1 s for every request, not only health: under a real overload a search fails after 1 s (a `500`, see the first extra) instead of queueing up to 30 s. That is the trade F-I1 asked for, but it reaches beyond health.
 - A refresh's claim is kept after it ran and given back only when skipped, so a refresh that failed (lock timeout, every provider failing) still blocks its origin for 2 minutes, as before.
+
+## End-of-plan fix round 1 — re-review fixes
+
+The functional re-review (`close-1-rereview-functional.md`) found F-I1, I1 and I2 fixed, plus three new findings. N1 (Important): a destination searched without an origin, sorted by price, still outran the read's 2 s bound for a long-haul airport. N2 and N3 were Minor. The user decided at about 08:10:
+- **N1, option A:** three `(destination, key, id)` indexes per slot, in a new migration V9.
+- **N3, option A:** a 2 s connection wait.
+- N2 is fixed in the contract.
+
+Built on the same branch, then rebased on `main` at `0f71173` (closing round 2). Two conflicts, both resolved by keeping both sides: `indexesEverySortOrderOnBothSlots` (round 2 now checks the DEFAULT partitions too) and this report (append-only, `main`'s first). One test at a time; each red seen for the expected reason.
+
+### N1: each sort order behind the destination alone (`2f5d819`)
+1. `JdbcItineraryReaderTest.readsADestinationByPriceThroughAnIndexStartingWithTheDestination` (40 cheap MAD→LHR and 40 dear LHR→NRT trips; destination NRT; sequential scans off).
+   - Red: `Expecting actual: ["price, id"] to contain exactly (and in same order): ["destination, price, id"]`.
+   - Green: `V9__itinerary_destination_sort_indexes.sql`, `(destination, price, id)` on both slots' parents.
+2. `JdbcItineraryRepositoryLoadTest.indexesEverySortOrderOnBothSlots`, with the three destination indexes.
+   - Red: the departure and duration ones missing.
+   - Green: V9 adds them.
+   - `FlightAggregatorApplicationTest.startsAgainstPostgresAndMigrates` was then red on `("9", SUCCESS)`; it now lists V9. `KeysetQuery`'s Javadoc names V9.
+
+### N2: the contract's 503 on re-price and the admin status (`34d7387`)
+1. `OpenApiContractTest.documentsEachEndpointsBodyAndEveryStatus`, admin status row `200 401 403 503`.
+   - Red: `Expecting actual: ["200", "401", "403"] to contain exactly in any order: ["200", "401", "403", "503"]`.
+   - Green: `@ApiResponse(503)` on `AdminController.status()`, with `Retry-After` and a problem body.
+   - Re-price's 503 description now names a cut read. That is wording only, pinned by the drift test once regenerated.
+2. The admin status rows of `documentsEachProblemOnItsOperation` and `documentsRetryAfterOnEachProblemToRetry`: green at once, so two labelled mutations, both restored:
+   - M8 (no `Retry-After`): red, `Expecting value to be true but was false`.
+   - M9 (no problem body): red, `expected: "#/components/schemas/ProblemDetail" but was: ""`.
+3. `openapi.json` and `schema.d.ts` regenerated together; `npm run verify` exit 0.
+
+### N3: a 2 s connection wait (`4286b57`)
+1. `FlightAggregatorApplicationTest.waitsAtMostTwoSecondsForAPooledConnection`.
+   - Red: `expected: 2000L but was: 1000L`.
+   - Green: `spring.datasource.hikari.connection-timeout: 2000`, its comment giving the reason and the decision.
+2. `HealthWithoutPostgresTest` keeps compose's 5 s as its bound; it never pinned 1 s. Measured with a temporary timing print, then restored: six probes with PostgreSQL stopped, each `503` in 4.020 to 4.044 s. Each probe pays the wait twice, once for Boot's `db` component and once for the inventory's.
+3. After the rebase, the test is declared with round 2's `@AggregatorTest`, like the other application tests (`c2764de`).
+
+### Measured on compose
+Project `p5close`, built from `6b5982c` (the branch before the rebase), 07:22 to 07:33 UTC, taken down with `-v`. The host also ran the risk re-review's stack.
+
+**Destination only.** `EXPLAIN (ANALYZE, BUFFERS)` of the statement `KeysetQuery` builds:
+- Destinations NRT, JFK, GRU, DXB and MAD; sorts price, departure and duration; the first and the fiftieth page (the seek at the 980th row).
+- PostgreSQL restarted before each statement (cold), then three warm runs.
+
+| | Cold | Warm |
+|---|---|---|
+| With V9, pass 1 (30 statements) | 0.9 to 4.6 ms | 0.3 to 2.7 ms |
+| With V9, pass 2 | 0.8 to 3.9 ms | 0.4 to 1.5 ms |
+| V9's six indexes dropped | 3.6 to 498.9 ms | 0.6 to 434 ms |
+
+- With V9, each statement reads its destination index. For three fiftieth pages in departure order, V5's `departure_id` is read alongside.
+- Without V9, by price, first page: NRT 498.9 ms cold (413 to 434 warm), DXB 417.7 ms, GRU 394.5 ms, JFK 336.6 ms, MAD 4.4 ms. By duration: 63 to 194 ms cold.
+- This host was quieter than the re-review's, which measured 3.0 to 4.0 s, but the plan is the same walk of `price_id`.
+
+**Load time.** Manual runs of 1,029,425 itineraries, with `COPY` and `ANALYZE` sampled every 0.25 s:
+
+| Indexes | Runs | `COPY` | `ANALYZE` |
+|---|---|---|---|
+| V5, V8 and V9 (startup run: 39.2 s) | 37.9, 41.6, 34.9 s | 28.4, 28.1, 22.8 s | 5.1, 4.1, 4.3 s |
+| V9's indexes dropped | 31.4, 33.6, 32.5 s | 20.8, 20.0, 20.6 s | 5.1, 4.0, 4.0 s |
+| V9 recreated | 36.1, 39.1 s | 25.0, 23.7 s | 5.0, 4.6 s |
+
+V9 adds about 3 to 8 s of `COPY`; a run still fits the 30 min cadence many times over.
+
+**Health with PostgreSQL stopped.** `docker compose stop postgres`, then 12 probes of `/health` from the host:
+- Each answered `{"status":"DOWN"}` with `503`, in 4.013 to 4.061 s.
+- Once PostgreSQL was back, `UP` in 5 ms.
+- Compose's check of the app times out at 5 s, runs every 10 s, and allows 5 retries.
+
+### Docs
+- `search-api.md`: V9 and the 2 s wait as the user's decisions, the admin status's `503` in the endpoints table, and the measures.
+- `ingestion.md`: twelve indexes per slot, the 2 s wait for every connection (a run, a refresh or a store that cannot get one fails), and the run time with V9.
+
+### Gates
+- Module tests before each commit.
+- On the rebased branch:
+  - `./gradlew build` exit 0: 1,068 tests, none failed or skipped.
+  - `npm ci`, then `npm run api:generate`, which left `schema.d.ts` unchanged.
+  - `npm run verify` exit 0: 19 files, 111 tests.
+
+### Concerns
+- **Health answers `DOWN` in about 4 s, against compose's 5 s timeout.** Each probe pays the 2 s wait twice, so the margin is about 1 s. On a loaded host a probe could reach the timeout; compose would still read the app as unhealthy, just not with a status. Two ways to widen the margin, for the user (neither is built):
+  - Leave Boot's `db` component out of the API port's `/health` group. The inventory's component already reports `DOWN` when PostgreSQL is out of reach, and the management port's `/actuator/health` keeps `db`. A probe then pays the wait once, about 2 s.
+  - Raise compose's health-check timeout.
