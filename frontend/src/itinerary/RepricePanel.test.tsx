@@ -163,6 +163,32 @@ test('keeps a changed price on the card while it is checked again', async () => 
   expect(within(summary).getByText('€431.00')).toBeInTheDocument();
 });
 
+test('confirms the price an earlier re-price put on the card', async () => {
+  const user = userEvent.setup();
+  let answered = 0;
+  const panel = await openCard(() => {
+    answered += 1;
+    const itinerary = connecting({ price: { amount: '431.00', currency: 'EUR' } });
+    return answered === 1
+      ? HttpResponse.json({
+          outcome: 'PRICE_CHANGED',
+          itinerary,
+          previousPrice: { amount: '412.60', currency: 'EUR' },
+        })
+      : HttpResponse.json({ outcome: 'CONFIRMED', itinerary });
+  });
+  await within(panel).findByText('Price changed: was €412.60, now €431.00');
+  const summary = screen.getByRole('button', { expanded: true });
+
+  // The stub now shows €431.00, so the second opening's €431.00 is the price the card showed.
+  await user.click(summary);
+  await user.click(summary);
+
+  expect(
+    await within(screen.getByRole('status')).findByText('Price confirmed: €431.00'),
+  ).toBeInTheDocument();
+});
+
 test('shows a newer search quote than the last re-price', async () => {
   const user = userEvent.setup();
   server.use(

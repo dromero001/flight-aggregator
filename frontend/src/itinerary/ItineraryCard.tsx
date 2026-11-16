@@ -39,10 +39,13 @@ export function ItineraryCard({ itinerary, now }: ItineraryCardProps) {
   const [requote, setRequote] = useState<Itinerary | null>(null);
   const quote =
     requote && Date.parse(requote.quotedAt) >= Date.parse(itinerary.quotedAt) ? requote : itinerary;
+  // The price on the stub when the card was opened: the answer is worded against it (code I2).
+  const [shownPrice, setShownPrice] = useState(itinerary.price);
 
   function toggle() {
     // Each opening asks again: a price confirmed a while ago may have changed since (spec 6.8).
     if (!open) {
+      setShownPrice(quote.price);
       reprice.mutate(itinerary.id, {
         onSuccess: (answer) => {
           // An alternative is another itinerary: this one's quote stays as it was.
@@ -102,7 +105,7 @@ export function ItineraryCard({ itinerary, now }: ItineraryCardProps) {
         {open && (
           <>
             <LegList legs={legs} label="Legs" />
-            <RepricePanel result={reprice} shownPrice={itinerary.price} />
+            <RepricePanel result={reprice} shownPrice={shownPrice} />
           </>
         )}
       </div>
