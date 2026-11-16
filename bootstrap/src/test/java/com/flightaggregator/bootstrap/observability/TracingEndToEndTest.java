@@ -1,15 +1,10 @@
 package com.flightaggregator.bootstrap.observability;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.get;
-import static com.github.tomakehurst.wiremock.client.WireMock.ok;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import com.flightaggregator.bootstrap.PostgresContainers;
 import com.flightaggregator.bootstrap.ingestion.IngestionJob;
-import com.flightaggregator.domain.Provider;
-import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import com.github.tomakehurst.wiremock.stubbing.ServeEvent;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -23,10 +18,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
@@ -48,9 +40,9 @@ import org.springframework.test.context.DynamicPropertySource;
 
 /**
  * §6.10: one ingestion run, search or re-price is one trace, carried to the providers as W3C {@code
- * traceparent}. Tracing is on, as in production, and the spans are kept in memory. One WireMock
- * server answers for the three providers: Alpha sells IB3170 Madrid-London, on its listing and on
- * its quote; Beta and Gamma sell nothing.
+ * traceparent}. Tracing is on, as in production, and the spans are kept in memory. The providers
+ * are {@link OneFlightProviders}: a run publishes IB3170 Madrid-London, and its re-price asks Alpha
+ * for one quote.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -65,26 +57,14 @@ import org.springframework.test.context.DynamicPropertySource;
 @AutoConfigureMetrics
 class TracingEndToEndTest {
 
-  /** Reset before each test by the extension itself. */
-  @RegisterExtension
-  static final WireMockExtension PROVIDERS =
-      WireMockExtension.newInstance()
-          .options(WireMockConfiguration.options().dynamicPort())
-          .build();
+  @RegisterExtension static final WireMockExtension PROVIDERS = OneFlightProviders.server();
 
   /** The trace of a caller that sends its own {@code traceparent}, W3C's example. */
   private static final String CALLERS_TRACE = "4bf92f3577b34da6a3ce929d0e0e4736";
 
-  /** Three days ahead, so that the leg is still sellable whenever the tests run. */
-  private static final LocalDate DAY = LocalDate.now(ZoneOffset.UTC).plusDays(3);
-
   @DynamicPropertySource
   static void providerUrls(DynamicPropertyRegistry registry) {
-    for (Provider provider : Provider.values()) {
-      registry.add(
-          "providers." + provider.name().toLowerCase(Locale.ROOT) + ".base-url",
-          PROVIDERS::baseUrl);
-    }
+    OneFlightProviders.baseUrls(registry, PROVIDERS);
   }
 
   @TestConfiguration(proxyBeanMethods = false)
@@ -109,16 +89,7 @@ class TracingEndToEndTest {
     PostgresContainers.emptyTheInventory(jdbc);
     // The lock a run keeps for a minute after it, lapsed as between two scheduled runs.
     jdbc.sql("UPDATE shedlock SET lock_until = locked_at").update();
-    PROVIDERS.stubFor(get(urlPathMatching("/alpha/.*")).willReturn(ok(alphaPage())));
-    PROVIDERS.stubFor(
-        get(urlPathMatching("/beta/.*"))
-            .willReturn(
-                ok(
-                    "<SegmentsResponse page=\"1\" totalPages=\"1\"><Segments></Segments>"
-                        + "</SegmentsResponse>")));
-    PROVIDERS.stubFor(
-        get(urlPathMatching("/gamma/.*"))
-            .willReturn(ok("airline,flight_number,from,to,departs_at,arrives_at,price_eur\r\n")));
+    OneFlightProviders.answer(PROVIDERS);
     spans.reset();
   }
 
@@ -290,15 +261,5 @@ class TracingEndToEndTest {
     try (HttpClient http = HttpClient.newHttpClient()) {
       return http.send(request, HttpResponse.BodyHandlers.ofString());
     }
-  }
-
-  /** IB3170 Madrid-London, the one record of a listing and of a quote. */
-  private static String alphaPage() {
-    return "{\"legs\":[{\"carrier\":\"IB\",\"flightNumber\":3170,\"origin\":\"MAD\","
-        + "\"destination\":\"LHR\",\"departureTime\":\""
-        + DAY
-        + "T08:15:00+01:00\",\"arrivalTime\":\""
-        + DAY
-        + "T09:30:00+00:00\",\"price\":\"129.90\"}],\"nextCursor\":null}";
   }
 }
