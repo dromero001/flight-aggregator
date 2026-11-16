@@ -32,6 +32,9 @@ public final class ValkeyTestServer {
 
   private static final StringRedisTemplate VALKEY = start();
 
+  /** The time a Valkey outage may add to one operation (Review Focus 3). */
+  private static final Duration OUTAGE_BOUND = Duration.ofMillis(500);
+
   private ValkeyTestServer() {}
 
   public static StringRedisTemplate valkey() {
@@ -67,9 +70,6 @@ public final class ValkeyTestServer {
     }
     return run;
   }
-
-  /** The time a Valkey outage may add to one operation (Review Focus 3). */
-  private static final Duration OUTAGE_BOUND = Duration.ofMillis(500);
 
   /**
    * The call's result with the server frozen, as when Valkey hangs: connections stay open and no

@@ -82,21 +82,20 @@ public final class ValkeySearchCache implements SearchCache {
 
   /**
    * The cache's time to live, or the time until the page's first departure when that is sooner, in
-   * Valkey's finest unit, the millisecond (the user's decision, plan 5 Task 6). None when the first
-   * flight has left or leaves within a millisecond: no time would keep the page without a departed
-   * flight, and Valkey would refuse the expiry, or keep a page with none at all.
+   * Valkey's finest unit, the millisecond (the user's decision, plan 5 Task 6). None when that is
+   * under a millisecond (the first flight has left or leaves within one, or the cache's time to
+   * live is that short): no time would keep the page without a departed flight, and Valkey would
+   * refuse the expiry, which would read as an outage, or keep a page with none at all.
    */
   private Optional<Duration> timeToLive(SearchPage page) {
     Instant now = clock.now();
     Duration keptFor =
         page.itineraries().stream()
-            .map(
-                itinerary ->
-                    Duration.between(now, itinerary.departure().toInstant())
-                        .truncatedTo(ChronoUnit.MILLIS))
+            .map(itinerary -> Duration.between(now, itinerary.departure().toInstant()))
             .filter(untilDeparture -> untilDeparture.compareTo(ttl) < 0)
             .min(Comparator.naturalOrder())
-            .orElse(ttl);
+            .orElse(ttl)
+            .truncatedTo(ChronoUnit.MILLIS);
     return keptFor.isPositive() ? Optional.of(keptFor) : Optional.empty();
   }
 
