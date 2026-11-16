@@ -73,7 +73,7 @@ export function StatusPage() {
         </p>
       )}
       <RunIngestionButton />
-      {status.isLoading && <p role="status">Loading…</p>}
+      {status.isLoading && <p role="status">Loading status…</p>}
       {status.data && <Report report={status.data} now={now} />}
     </div>
   );
