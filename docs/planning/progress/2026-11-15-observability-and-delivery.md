@@ -1106,3 +1106,45 @@ Three reviewers over plan 7 and the whole repository at `fede859` (README and `S
 - **Functional: CHANGES REQUESTED.** JaCoCo 99.0% lines, 96.9% branches; every `SOLUTION.md` figure matches its report; 0 broken links; every §2 capability works on a fresh stack. **I1** the admin e2e waits 90 s for a run that now takes 78–86 s in CI (run 43864300834 failed there). Minors M-a to M-d (run times in the docs, which ports are fixed, Task 8 "not built", E3 delivered).
 
 **The user's decision (about 13:44):** fix the three Importants. Two lanes: backend (code I1; Task 4 C-M1 / N5; risk N1; P5r3 F4) and frontend and docs (code I2 with the approved copy only; functional I1 and group 1's M5; M-a to M-d; panel descriptions; group 1's M6). The other Minors stay as recorded limitations or in the backlog.
+
+## Final review — fix round, frontend and docs
+
+The frontend and docs lane of the user's decision above, in its own worktree on `main` `4d8eeb2`. The backend lane (code I1, `IngestionJob`, Grafana's CSRF, `CountedFlightProvider`, `ingestion.md`) runs in parallel and is not touched here.
+
+### Code I2: the re-price is worded against the price the card showed
+
+Only copy already fixed or approved is used: the spec's "Price changed: was X, now Y" (§6.3) and "Price confirmed: €…".
+
+1. **`'says the price changed when the confirmed price is not the one the card showed'`** (`RepricePanel.test.tsx`; the card shows €412.60, the API answers `CONFIRMED` at €431.00, as after another customer's re-price with a cached page).
+   - Red: `Unable to find an element with the text: Price changed: was €412.60, now €431.00.` The panel showed `Price confirmed: €431.00`.
+   - Green: `RepricePanel` takes `shownPrice` from the card; `confirmation()` words a `CONFIRMED` answer whose formatted price differs from it as a change.
+2. **`'confirms the price an earlier re-price put on the card'`** (a first opening answers `PRICE_CHANGED` to €431.00, so the stub shows €431.00; the second answers `CONFIRMED` at €431.00).
+   - Red: `Unable to find an element with the text: Price confirmed: €431.00.` The panel said `Price changed: was €412.60, now €431.00`, comparing with the search's price rather than the stub's.
+   - Green: `ItineraryCard` keeps the stub's price at each opening (`shownPrice`) and passes it to the panel.
+3. Self-review refactor: `confirmation()` is an exhaustive `switch` on the outcome, so `ALTERNATIVE` no longer falls through a `CONFIRMED` guard. `dashboard.md`'s re-price table and a paragraph say why.
+
+### Functional I1 and group 1's M5: the e2e wait for a run
+
+- `frontend/e2e/ingestion.ts` holds one budget, `RUN_PUBLISHED_WITHIN_MS = 240_000`, for `admin.spec.ts` (90 s before) and `observability.spec.ts`; its comment no longer says "about half a minute". `runAnIngestion` reads the generation before each POST, not after the 202 (M5). No other e2e wait assumed a run's length (`global-setup.ts` waits 180 s for the first run's itineraries).
+- **CI's run times**, read from run 43864300834's `e2e-reports` artifact (`compose-logs.txt`, the `Ingestion run ended` lines): the startup run (generation 1, `scheduling-1`) took `PT1M26.260725159S`, Chromium's manual run (generation 2, `ingestion-on-demand`) `PT1M18.38147093S`; Firefox's run had not ended when its 90 s poll failed. These are the figures the README and `dashboard.md` cite.
+- **Run on a throwaway stack:** compose project `p7ff` from this worktree with no published ports (a scratch override, `ports: !reset []`), so the user's stack kept 3000 and 8180. The Linux Playwright image `v1.64.1-noble` joined `p7ff_default`, with a small Node TCP forward from its own `localhost:3000`, `8180`, `3001` and `9090` to `p7ff`'s frontend, Keycloak, Grafana and Prometheus, so the sign-in's fixed addresses held. `--project admin-chromium admin-firefox admin-webkit observability --no-deps`: 17 passed (5.0 min). Then `re-price-{chromium,firefox,webkit}` and `accessibility-chromium`: 5 passed. The five runs took 46.8 to 60.6 s on this Mac. `down -v` exit 0; no `p7ff` container, volume or network left; the user's `flight-aggregator` stack still 11 containers, untouched.
+- M5's race (a run publishing between the 202 and the read) was not reproduced, so it has no red.
+
+### Docs
+
+- **M-a:** the README's "A run takes under a minute" and `dashboard.md`'s "about half a minute" now say about a minute, more on a loaded host, citing CI's figures above.
+- **M-b:** the README's "Requirements": only 3000 and 8180 are fixed (Keycloak's hostname, the realm's redirect URIs and the token issuer); the others can be moved in a `compose.override.yaml`.
+- **M-c:** `observability.md`, "What is not collected": the exporters and the JVM dashboard of Task 8 were not built.
+- **M-d:** E3, a background refresh as one trace, was delivered by Task 4's fix round 1 (`RefreshTraceTest.aRefreshContinuesTheTraceOfTheSearchThatAskedForIt`, above).
+- **Panel descriptions** (`flight-aggregator.json`): Provider calls says the startup run's calls show from the second run on (Task 6 M1); freshness names a provider with nothing stored among the unknown causes (F-m1); HTTP requests, and `observability.md`'s caveat, say `rate` does not draw a series' first request, since Micrometer creates the series on it (code review). No description is pinned by `GrafanaProvisioningTest`, so no test was added.
+- **Group 1's M6:** `2026-11-15-dashboard.md` cites `48a066b`, `141b7cc`, `e759970` and `7223931`, the commits on `main`, instead of their pre-rebase hashes (subjects matched with `git log --no-walk`).
+
+### ⚠ For the user
+
+- A `PRICE_CHANGED` answer still says "was" with the API's `previousPrice`, the stored price, which a cached page may not show either. Wording every answer only against the card's price would fix that too, but drops `previousPrice` and the approved "Price changed: now €…". Left as it is unless you decide otherwise.
+
+### Gates
+
+- Thermo-nuclear self-review of the diff: one finding fixed (the `switch` above); the alternative wording left to the user (above); the card's `shownPrice` state is set in the same handler that starts the re-price, so nothing is half-applied.
+- `npm run verify` in `frontend/`: exit 0, 21 files, 157 tests (155 before, plus the two above).
+- `./gradlew build`: BUILD SUCCESSFUL; `bootstrap:test` ran (250 tests, 0 failures, `GrafanaProvisioningTest` 15 of them), the other modules' tests from Gradle's cache, unchanged by this lane.
