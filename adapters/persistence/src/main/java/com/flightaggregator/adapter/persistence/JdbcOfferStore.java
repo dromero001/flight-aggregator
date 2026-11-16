@@ -70,12 +70,19 @@ public final class JdbcOfferStore implements OfferStore {
         });
   }
 
-  /** The new offers take the positions after the provider's last one, as one transaction too. */
+  /**
+   * The new offers take the positions after the provider's last one, as one transaction too. It
+   * first locks the table against every other write until it commits (reads go on), so a run's
+   * replacement in flight, which would otherwise keep its offers from the origin beside these or
+   * collide with their positions, either commits first, and its offers are the ones swapped, or
+   * waits for this one, and replaces these too.
+   */
   @Override
   public void replaceFrom(Provider provider, Airport origin, List<Leg> offers) {
     transaction.executeWithoutResult(
         status -> {
           StatementTimeout.STORE.boundTheTransaction(jdbc);
+          jdbc.sql("LOCK TABLE provider_offer IN SHARE ROW EXCLUSIVE MODE").update();
           jdbc.sql("DELETE FROM provider_offer WHERE provider = ? AND origin = ?")
               .param(provider.name())
               .param(origin.code())
