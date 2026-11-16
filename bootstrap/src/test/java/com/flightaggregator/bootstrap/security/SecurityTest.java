@@ -5,6 +5,7 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -83,6 +84,15 @@ class SecurityTest {
 
     assertThat(search.getResponse().getStatus()).isNotIn(401, 403);
     assertThat(reprice.getResponse().getStatus()).isNotIn(401, 403);
+  }
+
+  /**
+   * §6.6: the search is public, and a HEAD is that GET without its body (RFC 9110, 9.3.2), which
+   * Spring MVC answers from the same endpoint and the rate limit counts as a search.
+   */
+  @Test
+  void searchByHeadNeedsNoToken() throws Exception {
+    mvc.perform(head("/api/itineraries")).andExpect(status().isOk());
   }
 
   @Test

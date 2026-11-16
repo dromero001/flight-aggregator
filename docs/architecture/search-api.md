@@ -21,7 +21,7 @@ flowchart LR
 
 | Endpoint | Access | Answers |
 |---|---|---|
-| `GET /api/itineraries` | public, 60 a minute per address | `200` a page; `400` a bad parameter or cursor; `429`; `503` the inventory not read in time |
+| `GET /api/itineraries` (and `HEAD`, the same without its body) | public, 60 a minute per address | `200` a page; `400` a bad parameter or cursor; `429`; `503` the inventory not read in time |
 | `POST /api/itineraries/{id}/reprice` | public, 10 a minute per address | `200` `CONFIRMED`, `PRICE_CHANGED` or `ALTERNATIVE`; `400` not an id; `404` not on sale; `429`; `503` nothing confirmable, or the inventory not read in time |
 | `GET /api/admin/status` | `ADMIN` | `200` the inventory's and each provider's status; `401`; `403`; `503` the inventory not read in time |
 | `POST /api/admin/ingestions` | `ADMIN` | `202` a run started; `409` a run is going on; `401`; `403` |
