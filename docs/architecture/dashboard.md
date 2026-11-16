@@ -146,3 +146,10 @@ docker run --rm --network host --ipc=host -v "$copy:/work" -w /work \
 ```
 
 On 2026-11-16, after plan 6's closing round, this ran 34 tests green in 3.1 minutes on a stack just started (the run is recorded in the [plan 6 progress report](../planning/progress/2026-11-15-dashboard.md)).
+
+## Known limitations
+
+Accepted by the user on 2026-11-16 (plan 6's end-of-plan review):
+
+- **A failed sign-out is silent.** When "Sign out" cannot reach Keycloak, the admin screen stays as it was and says nothing (code review M4).
+- **Keycloak down when a token must be renewed.** The renewal fails, so the admin client sends the browser to Keycloak's sign-in, and the tab shows the browser's own error page instead of a message on the screen (risk review M-2).
