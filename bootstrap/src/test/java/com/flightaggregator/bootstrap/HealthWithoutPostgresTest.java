@@ -15,7 +15,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.DockerClientFactory;
@@ -31,18 +30,9 @@ import org.testcontainers.utility.DockerImageName;
  * are timed from then on. The test stops a PostgreSQL of its own, never the one the other test
  * classes share, and closes its context afterwards.
  */
-@SpringBootTest(
+@AggregatorTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {
-      "providers.alpha.base-url=http://localhost:1/",
-      "providers.alpha.api-key=alpha-key",
-      "providers.beta.base-url=http://localhost:1/",
-      "providers.beta.api-key=beta-key",
-      "providers.gamma.base-url=http://localhost:1/",
-      "providers.gamma.api-key=gamma-key",
-      "ingestion.schedule.enabled=false"
-    })
-@ImportTestcontainers(HealthWithoutPostgresTest.Containers.class)
+    containers = HealthWithoutPostgresTest.Containers.class)
 @DirtiesContext
 class HealthWithoutPostgresTest {
 
