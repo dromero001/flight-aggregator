@@ -453,3 +453,119 @@ The double review answered: functional CHANGES REQUESTED (F1 Important; F2, F3 M
   - The test file grows from 13 to 19 cases (312 lines). Each new case is the smallest input that separates one aggregation from another, and the cases sit with their alert's group.
   - No new mechanism.
   - Nothing passes silently that the review found: every aggregation and the NaN failure count now fail a case when changed.
+
+## Task 2 — evidence
+
+Actuator serves `health`, `metrics` and `prometheus` on its own port, 8079, open there with no token and never published by compose; Prometheus scrapes it as job `app`. The API port serves no Actuator endpoint and keeps plan 5's public health at `/health`.
+
+The task ran in two sessions. The first implementer stopped on the interface's condition, then built Steps 1 to 4 with nothing committed before the network dropped at 06:42 and the Mac rebooted. A second implementer reviewed that work, committed it step by step, re-ran Step 4 and the gates. The red → green lines below come from the first implementer's work log (its scratch notes were wiped by the reboot). The lines marked "recorded after the fact by mutation" are reds that log does not show, re-established on `d73f5a9`.
+
+### The stop, and the user's decision
+
+- Boot 4.1.2's `AdditionalHealthEndpointPath.from`, called against the 4.1.2 jars: `server:/healthz -> accepted`, `server:/actuator/health -> rejected: java.lang.IllegalArgumentException: 'value' must contain only one segment.` So once `management.server.port` is set, nothing on the API port can answer `/actuator/health` through Boot's health groups.
+- The user chose `/health` (Task 2's "Decided by the user on 2026-11-16"). A health group that sets nothing but its additional path inherits the root health's `show-details`, roles, status order and HTTP mapping (read in `AutoConfiguredHealthEndpointGroups`, spring-boot-health 4.1.2).
+
+### Red → green, one test at a time (Step 1)
+
+`ManagementPortTest` starts the application on real sockets with `RANDOM_PORT`: Boot then gives the management server a random port too, since `application.yaml` sets one that differs from the server's, and the test reads it with `@LocalManagementPort`.
+
+1. **`scrapesWithoutATokenOnTheManagementPort`** (200, and the body holds `ingestion_consecutive_failures`).
+   - Red: `expected: 200 but was: 401`. With no management port, the request reached the API's server, where everything not public needs `ADMIN`.
+   - `management.server.port: 8079`: still `expected: 200 but was: 401`. The test's log showed two servers (`Tomcat started on port 54254` and `on port 54266`): Spring Security's filter chain runs on the management server too.
+   - `SecurityConfig` permits every request served by the management server's context: `expected: 200 but was: 404`, since there was no `/actuator/prometheus` yet.
+   - Green: `micrometer-registry-prometheus` (`runtimeOnly`, the BOM's version) and the exposure `health,metrics,prometheus`.
+2. **`neverServesMetricsOnTheApiPort`** (`/actuator/prometheus` and `/actuator/metrics` on the API port, with an `ADMIN` token, answer 404; Review Focus 3).
+   - Passed on its first run: the management port had already taken Actuator off the API port.
+   - Mutation, `management.server.port: 8080`: still green, so it proved nothing and is not counted.
+   - Mutation, no `management.server` at all: red, `[1] path = "/actuator/prometheus"` and `[2] path = "/actuator/metrics"`, each `expected: 404 but was: 200`, and `scrapesWithoutATokenOnTheManagementPort` `expected: 200 but was: 401`. Restored.
+3. **`keepsTheApiPortsHealthAsPlanFiveLeftIt`** (anonymous `/health`: 200, `DEGRADED` since no Valkey runs in the test, no `components`; with the `ADMIN` token: `components.db.status` is `UP`).
+   - Red: `expected: 200 but was: 401`. Nothing served `/health`, so it fell to the `ADMIN` rule.
+   - `SecurityConfig` permits `EndpointRequest.toAdditionalPaths(WebServerNamespace.SERVER, HealthEndpoint.class)` in place of `GET /actuator/health`: still `expected: 200 but was: 401`, as no additional path existed yet.
+   - Green: the health group `api` with `additional-path: server:/health`, and nothing else.
+   - Mutations of the group, to show it inherits plan 5's settings: `show-details: always` gives `Expecting value to be false but was true` (an anonymous client saw the components); `show-details: never` gives `expected: "UP" but was: ""` (the administrator saw none). Restored.
+
+The test's own `JwtDecoder` bean turns one fixed token into a JWT with the `ADMIN` realm role, so Boot's role mapping applies without Keycloak. `SecurityTest` keeps the real decoder.
+
+### Plan 5's tests that read Actuator on the API port (Step 2)
+
+- After Step 1, the bootstrap suite had four red classes:
+  - `FlightAggregatorApplicationTest.configuresTheProductionIngestionAndExposesOnlyHealthAndMetrics`: `Expecting actual's toString() to return: "health,metrics" but was: "health,me…"` (cut in the log);
+  - `SearchWithoutValkeyTest.searchesAndRepricesWhileValkeyIsDown`, `RealmClientCredentialsTest` and `SecurityTest`, whose messages the log cuts off.
+- What moved, as the user's decision lists:
+  - `SecurityTest`: `healthNeedsNoTokenAndShowsNoDetails` and `healthShowsItsDetailsToTheAdmin` are now `ManagementPortTest.keepsTheApiPortsHealthAsPlanFiveLeftIt`. `metricsAnswer401WithoutAToken`, `metricsAnswer403WithoutTheAdminRole` and `metricsAnswer200WithTheAdminRealmRole` are removed: `adminEndpointsNeedTheAdminRole` and `adminStatusAnswers200WithTheAdminRealmRole` cover the same rules on the admin endpoints. The five token-decoder tests now call `/api/admin/status`.
+  - `SearchWithoutValkeyTest`: both health reads call `/health`.
+  - `RealmClientCredentialsTest.acceptsTheClientCredentialsTokenOfTheRealmsAdminClient`: `/api/admin/status`.
+  - `PublicAccessOverHttpTest.anAnonymousAdminCallIsStillAskedForAToken`: `GET /api/admin/ingestions`. It had not failed: an anonymous request to any path that is not public answers 401.
+  - `FlightAggregatorApplicationTest.configuresTheProductionIngestionAndTheManagementPort` (renamed): it pins the exposure `health,metrics,prometheus` and `management.server.port` 8079.
+- Green: the bootstrap suite, exit 0.
+- `FlightAggregatorApplicationTest`'s port pin, mutation `port: 8078`: `Expecting actual's toString() to return: "8079" but was: "8078"`. Restored.
+- **`ComposeFileTest.neverPublishesTheManagementPort`** reads the port from `application.yaml` and the app's published ports from `compose.yaml`, in the short and the long syntax. Passed on its first run; mutation, `"127.0.0.1:18079:8079"` added to the app's ports: `Expecting ["8080", "8079"] not to contain ["8079"] but found ["8079"]`. Restored.
+
+Recorded after the fact by mutation (on `d73f5a9`, each restored with `git checkout`):
+- **M1, `SecurityConfig` with a decoder that accepts any token as `ADMIN`:** `rejectsATokenOfAnotherIssuer`, `rejectsAnExpiredToken` and `rejectsATokenSignedWithAnotherKey` give `Status expected:<401> but was:<200>`; `answers403ToAValidTokenWithoutTheAdminRealmRole` gives `Status expected:<403> but was:<200>`. 4 of `SecurityTest`'s 9 failed.
+- **M2, `anyRequest().hasRole("NOBODY")`:** `acceptsASignedTokenOfTheIssuerWithTheAdminRealmRole`, `adminStatusAnswers200WithTheAdminRealmRole` and `RealmClientCredentialsTest.acceptsTheClientCredentialsTokenOfTheRealmsAdminClient` give `Status expected:<200> but was:<403>`.
+- **M3, `anyRequest().permitAll()`:** `anAnonymousAdminCallIsStillAskedForAToken` gives `expected: 401 UNAUTHORIZED but was: 405 METHOD_NOT_ALLOWED` (and `swaggerUiOpensNothingElse` gives `but was: 200 OK` for both paths).
+- **M4, the group's additional path `server:/healthz`:** `searchesAndRepricesWhileValkeyIsDown` gives `Expecting actual: "" to contain: ""status":"UP""` (an anonymous `/health` answered 401, with no body).
+- **M5, the exposure `health,metrics`:** `configuresTheProductionIngestionAndTheManagementPort` gives `Expecting actual's toString() to return: "health,metrics,prometheus" but was: "health,metrics"`.
+
+### Documentation (Step 3)
+
+- README: the run section's health URL is `http://localhost:8080/health`; "Admin access" lists `GET /health` as public and the admin endpoints `/api/admin/**` as needing `ADMIN`, and says the metrics are on the unpublished management port, read in Grafana.
+- `docs/architecture/search-api.md`: the endpoint table's `GET /health`, and a paragraph on the management port and the health group. `docs/architecture/ingestion.md`: the web server serves `/health`.
+- Plan 7's Decisions row and Task 2's Files and Interfaces lines name `/health`.
+
+### The run (Step 4)
+
+Both runs used the compose project `p7t2`, with every published port moved to `127.0.0.1:37xxx` by a scratch override file, because other stacks share the host. So the API port is `37080` where the plan says 8080. Each was taken down with `down -v`, leaving no container, volume or network.
+
+**First run (the first implementer, before the scrape job existed):** `/api/v1/targets` listed no target. The API port's `/health` answered 200 `{"status":"UP"}`, and `/actuator/health` and `/actuator/prometheus` answered 401; from the host, port 8079 gave `curl exit 7`. With the scrape job added and Prometheus restarted, target `app` at `172.20.0.11:8079` went from `unknown` to `up`. Before the first run ended, the three gauges set by a run read `NaN`. After it (`Ingestion run ended`, `PUBLISHED`), the four gauges held numbers with `job` and `instance`. From inside compose's network, `app:8079/actuator/health` answered `{"groups":["api","liveness","readiness"],"status":"UP"}` and `/actuator/metrics` its names. The log cut the list of stored names short, so the run was repeated.
+
+**Second run (on `6ae5454`, rebased on `main` with its locked Gradle cache mounts):** `docker compose -p p7t2 … up --build -d --wait` exit 0 in 41 s, every service `Healthy`, `app` included (its health check reads `/health`).
+- Prometheus target: `('app', '172.20.0.11:8079', 'up', '', 'http://172.20.0.11:8079/actuator/prometheus')`.
+- `/api/v1/series` after the first run:
+  - `ingestion_consecutive_failures{instance="172.20.0.11:8079", job="app"}` 0;
+  - `ingestion_partitions_days_ahead{…}` 37;
+  - `ingestion_partitions_default_rows{…}` 0;
+  - `ingestion_provider_last_fresh_seconds{…, provider="ALPHA"|"BETA"|"GAMMA"}` 33.9, 30.1 and 32.9.
+- API port: `/health` 200 `{"status":"UP"}`; `/actuator/health`, `/actuator/metrics` and `/actuator/prometheus` 401.
+- Host: `curl http://127.0.0.1:8079/actuator/prometheus` and `http://localhost:8079/…` exit 7 (connection refused); nothing listens on 8079; `docker port p7t2-app-1` lists only `8080/tcp -> 127.0.0.1:37080`.
+- Inside compose's network (`wget` from the `prometheus` container): `app:8079/actuator/health`, `/actuator/metrics` and `/actuator/prometheus` each `HTTP/1.1 200`. The app's log: `Tomcat started on port 8080` and `Tomcat started on port 8079`.
+
+**Every name Prometheus stored for job `app`** (167, of which `up`, `scrape_duration_seconds`, `scrape_samples_post_metric_relabeling`, `scrape_samples_scraped` and `scrape_series_added` are Prometheus's own). Labels beyond `job` and `instance` are given for the application's meters. Timers have `_count`, `_sum` and `_max`, with no buckets; counters end in `_total`.
+- Ingestion: `ingestion_consecutive_failures`, `ingestion_partitions_days_ahead`, `ingestion_partitions_default_rows`, `ingestion_itineraries` (no labels); `ingestion_provider_last_fresh_seconds{provider}`; `ingestion_runs_total{outcome}`; `ingestion_duration_seconds_count`, `_sum` and `_max` `{outcome}`; `ingestion_provider_downloads_total{provider, reason, status}`; `ingestion_provider_retries_total{provider}`; `ingestion_records_discarded_total{provider, reason}`; `provider_calls_total{operation, outcome, provider}`.
+- Search: `search_cache_total{result}`.
+- Providers' breakers (`{name}`, plus `kind` or `state` where shown): `resilience4j_circuitbreaker_state{name, state}`, `resilience4j_circuitbreaker_buffered_calls{kind, name}`, `resilience4j_circuitbreaker_calls_seconds_count`, `_sum` and `_max` `{kind, name}`, `resilience4j_circuitbreaker_failure_rate{name}`, `resilience4j_circuitbreaker_not_permitted_calls_total{kind, name}`, `resilience4j_circuitbreaker_slow_call_rate{name}`, `resilience4j_circuitbreaker_slow_calls{kind, name}`.
+- Valkey's breaker: the same nine names under `valkey_circuitbreaker_`, with the same labels.
+- HTTP: `http_server_requests_seconds_count`, `_sum` and `_max` `{error, exception, method, outcome, status, uri}`; `http_server_requests_active_seconds_count`, `_sum` and `_max`.
+- Boot, JVM and libraries: `application_ready_time_seconds`, `application_started_time_seconds`, `disk_free_bytes`, `disk_total_bytes`; `hikaricp_connections`, `hikaricp_connections_acquire_seconds_count|_max|_sum`, `hikaricp_connections_active`, `hikaricp_connections_creation_seconds_count|_max|_sum`, `hikaricp_connections_idle`, `hikaricp_connections_max`, `hikaricp_connections_min`, `hikaricp_connections_pending`, `hikaricp_connections_timeout_total`, `hikaricp_connections_usage_seconds_count|_max|_sum`; `jdbc_connections_active|idle|max|min`; `jvm_buffer_count_buffers`, `jvm_buffer_memory_used_bytes`, `jvm_buffer_total_capacity_bytes`, `jvm_classes_loaded_classes`, `jvm_classes_loaded_count_classes_total`, `jvm_classes_unloaded_classes_total`, `jvm_compilation_time_ms_total`, `jvm_gc_concurrent_phase_time_seconds_count|_max|_sum`, `jvm_gc_live_data_size_bytes`, `jvm_gc_max_data_size_bytes`, `jvm_gc_memory_allocated_bytes_total`, `jvm_gc_memory_promoted_bytes_total`, `jvm_gc_overhead`, `jvm_gc_pause_seconds_count|_max|_sum`, `jvm_info`, `jvm_memory_committed_bytes`, `jvm_memory_max_bytes`, `jvm_memory_usage_after_gc`, `jvm_memory_used_bytes`, `jvm_threads_daemon_threads`, `jvm_threads_live_threads`, `jvm_threads_peak_threads`, `jvm_threads_started_threads_total`, `jvm_threads_states_threads`; `lettuce_active_seconds_count|_max|_sum`, `lettuce_seconds_count|_max|_sum`; `logback_events_total`; `process_cpu_time_ns_total`, `process_cpu_usage`, `process_files_max_files`, `process_files_open_files`, `process_start_time_seconds`, `process_uptime_seconds`; `system_cpu_count`, `system_cpu_usage`, `system_load_average_1m`; `tasks_scheduled_execution_seconds_count|_max|_sum`, `tasks_scheduled_execution_active_seconds_count|_max|_sum`; `tomcat_sessions_active_current_sessions`, `tomcat_sessions_active_max_sessions`, `tomcat_sessions_alive_max_seconds`, `tomcat_sessions_created_sessions_total`, `tomcat_sessions_expired_sessions_total`, `tomcat_sessions_rejected_sessions_total`.
+- Spring Security's observations: `spring_security_authorizations_seconds_count|_max|_sum`, `spring_security_authorizations_active_seconds_count|_max|_sum`, `spring_security_filterchains_seconds_count|_max|_sum`, `spring_security_filterchains_active_seconds_count|_max|_sum`, `spring_security_http_secured_requests_seconds_count|_max|_sum`, `spring_security_http_secured_requests_active_seconds_count|_max|_sum`, and one `spring_security_filterchains_<filter>_before_total` and `_after_total` pair per filter: `OAuth2ProtectedResourceMetadataFilter`, `access_exceptions`, `authentication_anonymous`, `authentication_bearer`, `authorization`, `context_async`, `context_holder`, `context_servlet`, `header`, `logout`, `requestcache`, `session_management`, `session_urlencoding`.
+
+### Deviations from the plan's wording
+
+- **The API port's health is at `/health`, not `/actuator/health`:** the user's decision, after the stop above.
+- **`SecurityConfig` recognises the management server by the namespace of the context serving the request, not with Boot's `EndpointRequest.toAnyEndpoint()`.** Both match the same requests while the ports differ. But `toAnyEndpoint()` skips the API's server only when the port type is `DIFFERENT` (`ignoreApplicationContext`, spring-boot-security 4.1.2). If `management.server.port` were ever removed or set to the server's port, it would match `/actuator/**` on the API port and open every endpoint to anyone. The namespace check fails closed instead: the endpoints would then need `ADMIN`. The method's Javadoc says why.
+- **Tests moved that the plan's list does not name:** `RealmClientCredentialsTest` (it read `/actuator/metrics` with the realm's client token) and `SearchWithoutValkeyTest` (it reads the health).
+- **Two mentions beyond the plan's file list** now say `/health`: the README's run section and `docs/architecture/ingestion.md`.
+- **Step 4 used the API port 37080,** not 8080, for the reason given there.
+
+### Concerns
+
+- **Plan 5 closing round 1 reads `/actuator/health` on the API port.** Its `HealthWithoutPostgresTest` (`dbb2015`, on `wip/plan5-close-1`) calls `http://127.0.0.1:<server port>/actuator/health`. With this task on `main` that answers 401. Whichever of the two reaches `main` second moves the test to `/health`.
+  - Moved, it is also the test that shows `DOWN` answering 503 on `/health`. This task's tests show the group's `DEGRADED` 200 and its details by role. `DOWN` → 503 is the root health's mapping, which the group inherits; `FlightAggregatorApplicationTest.ranksDegradedBetweenDownAndUpAndAnswersIt200` pins the root mapping.
+  - Round 1 also changes `application.yaml` (Hikari's connection wait), to be merged by hand.
+- **Plan 7 Task 4** shares `application.yaml`, `gradle/libs.versions.toml`, `bootstrap/build.gradle.kts` and this report with this task.
+- **Minor: `/health` is permitted for every method,** because Boot's additional-path matcher is used without a method. Plan 5 permitted `GET /actuator/health` only. The health endpoint serves only reads, so another method reaches no data.
+- **`bootstrap/Dockerfile` has `EXPOSE 8080` only.** Compose's network reaches 8079 without it; plan 7 Task 11 describes the image with "ports 8080 and 8079".
+
+### Extras for the user to decide
+
+None.
+
+### Gates
+
+- Between commits, bootstrap's tests: on `d73f5a9`'s files alone, `:bootstrap:spotlessCheck :bootstrap:test` exit 0, 205 tests, none failed; `ComposeFileTest` for `57cd88f` (12 tests) and the `deploy` tests for `6ae5454` (16 tests, `PrometheusConfigTest`'s `promtool check config` among them), exit 0.
+- `./gradlew build` on `6ae5454`: `BUILD SUCCESSFUL` (exit 0), 1,035 tests across the modules (bootstrap 206, which ran; the modules this task does not touch came from Gradle's build cache), none failed or skipped. `frontend/` is not touched.
+- Self-review (thermo-nuclear) of the whole diff:
+  - Boot's mechanisms used: `management.server.port`, a health group's additional path, `EndpointRequest.toAdditionalPaths`, Micrometer's Prometheus registry at the BOM's version, `@LocalManagementPort`. The one hand-written piece, the management-server matcher, is justified under "Deviations" and in its Javadoc.
+  - Nothing fails silently: `ComposeFileTest` fails if the app publishes no port at all, so an empty list cannot pass it; the mutations above show each moved test failing for its own reason.
+  - Sizes: `SecurityConfig` 84 lines, `ManagementPortTest` 127, `ComposeFileTest` 263, `FlightAggregatorApplicationTest` 384; `SecurityTest` lost 39 lines. No file crosses 1,000 lines.
