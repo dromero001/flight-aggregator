@@ -13,9 +13,9 @@ import org.springframework.security.web.SecurityFilterChain;
 /**
  * The application is an OAuth2 resource server (spec 6.6), its decoder and role mapping configured
  * by Spring Boot's {@code spring.security.oauth2.resourceserver.jwt.*} settings. Search, re-price,
- * the API description and the health status are public; everything else, the admin endpoints and
- * the other Actuator endpoints included, needs the ADMIN realm role. Only bearer tokens are read,
- * so there is no session and no CSRF protection to bypass.
+ * the API description, Swagger UI and the health status are public; everything else, the admin
+ * endpoints and the other Actuator endpoints included, needs the ADMIN realm role. Only bearer
+ * tokens are read, so there is no session and no CSRF protection to bypass.
  */
 @Configuration
 class SecurityConfig {
@@ -37,6 +37,15 @@ class SecurityConfig {
                     .requestMatchers(HttpMethod.POST, "/api/itineraries/*/reprice")
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "/actuator/health", "/v3/api-docs")
+                    .permitAll()
+                    // Swagger UI (plan 5's extra E2): its page, its assets and the configuration it
+                    // reads first. The operations it tries call the API's own paths, so its admin
+                    // operations still need a token.
+                    .requestMatchers(
+                        HttpMethod.GET,
+                        "/swagger-ui.html",
+                        "/swagger-ui/**",
+                        "/v3/api-docs/swagger-config")
                     .permitAll()
                     .anyRequest()
                     .hasRole("ADMIN"))

@@ -66,7 +66,9 @@ No latency may be negative, each minimum must not exceed its maximum, and both s
 
 ## Admin access
 
-Search and re-price are public. The admin side is OAuth2: the aggregator is a resource server that accepts JWTs signed by Keycloak (started by `docker compose up --build`, on `http://localhost:8180`, realm `flight-aggregator`, imported from [`deploy/keycloak/flight-aggregator-realm.json`](deploy/keycloak/flight-aggregator-realm.json)) and requires the realm role `ADMIN` in `realm_access.roles`. Public: `GET /api/itineraries`, `POST /api/itineraries/{id}/reprice`, `GET /v3/api-docs`, and `GET /actuator/health` (its status only; the components are shown to `ADMIN`). Everything else, `/api/admin/**` and the other Actuator endpoint (`/actuator/metrics`) included, needs `ADMIN`.
+Search and re-price are public. The admin side is OAuth2: the aggregator is a resource server that accepts JWTs signed by Keycloak (started by `docker compose up --build`, on `http://localhost:8180`, realm `flight-aggregator`, imported from [`deploy/keycloak/flight-aggregator-realm.json`](deploy/keycloak/flight-aggregator-realm.json)) and requires the realm role `ADMIN` in `realm_access.roles`. Public: `GET /api/itineraries`, `POST /api/itineraries/{id}/reprice`, `GET /v3/api-docs`, Swagger UI (`GET /swagger-ui.html`, `/swagger-ui/**` and `/v3/api-docs/swagger-config`), and `GET /actuator/health` (its status only; the components are shown to `ADMIN`). Everything else, `/api/admin/**` and the other Actuator endpoint (`/actuator/metrics`) included, needs `ADMIN`.
+
+Swagger UI is on `http://localhost:8080/swagger-ui.html`, to browse the API and try it; its admin operations answer `401` there without a token, as anywhere else.
 
 The admin endpoints are `GET /api/admin/status` (the inventory's generation, when it was published and when the next run is due, and each provider's health, circuit breaker, newest quote, legs and discarded records) and `POST /api/admin/ingestions` (start a run now: `202 Accepted`, or `409 Conflict` while a run holds the ingestion's lock).
 

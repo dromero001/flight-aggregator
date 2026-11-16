@@ -58,6 +58,7 @@ micrometer-core = { module = "io.micrometer:micrometer-core" }
 logback-classic = { module = "ch.qos.logback:logback-classic" }
 testcontainers-redis = { module = "com.redis:testcontainers-redis" }
 springdoc-openapi-starter-webmvc-api = { module = "org.springdoc:springdoc-openapi-starter-webmvc-api", version.ref = "springdoc" }
+springdoc-openapi-starter-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }

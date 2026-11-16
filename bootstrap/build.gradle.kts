@@ -26,6 +26,9 @@ dependencies {
     implementation(libs.resilience4j.micrometer)
     implementation(libs.shedlock.core)
     implementation(libs.shedlock.provider.jdbc.template)
+    // Swagger UI on /swagger-ui.html, to browse and try the API (plan 5's extra E2, approved by the
+    // user). The same springdoc release as the adapter's contract; no code uses it.
+    runtimeOnly(libs.springdoc.openapi.starter.webmvc.ui)
     // Flyway 10+ reads PostgreSQL through this module; no code uses it.
     runtimeOnly(libs.flyway.database.postgresql)
 
