@@ -54,8 +54,9 @@ springdoc:
   writer-with-order-by-keys: true
 
 providers:
-  # At most this many calls of one provider at once, downloads and quotes together; one more is
-  # rejected, not queued (Q9). Required: see ProvidersProperties.
+  # At most this many calls of one provider at once, origin downloads and quotes together (a run's
+  # download is outside the limit); one more is rejected, not queued (Q9). Required: see
+  # ProvidersProperties.
   concurrency-limit: 4
 
 search:
