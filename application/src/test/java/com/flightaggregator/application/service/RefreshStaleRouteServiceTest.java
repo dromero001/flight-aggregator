@@ -30,6 +30,7 @@ import com.flightaggregator.application.service.fakes.InMemoryRefreshCoordinatio
 import com.flightaggregator.application.service.fakes.RecordingDiscardedRecords;
 import com.flightaggregator.application.service.fakes.RecordingDiscardedRecords.Entry;
 import com.flightaggregator.application.service.fakes.RecordingThreads;
+import com.flightaggregator.application.service.fakes.WatchedTransactions;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Itinerary;
 import com.flightaggregator.domain.Leg;
@@ -68,6 +69,9 @@ class RefreshStaleRouteServiceTest {
   private final RecordingDiscardedRecords discarded = new RecordingDiscardedRecords();
   private final FakeItineraryRepository repository = new FakeItineraryRepository();
   private final InMemoryRefreshCoordination coordination = new InMemoryRefreshCoordination();
+  private final WatchedTransactions transactions =
+      new WatchedTransactions(
+          () -> List.of(Set.copyOf(repository.rewritten()), store.offers(ALPHA)));
 
   private RefreshStaleRouteService service(FakeFlightProvider... providers) {
     return service(repository, providers);
@@ -100,6 +104,7 @@ class RefreshStaleRouteServiceTest {
         discarded,
         itineraries,
         coordination,
+        transactions,
         () -> NOW,
         maxItineraries,
         threads);
@@ -169,6 +174,55 @@ class RefreshStaleRouteServiceTest {
         .containsExactlyInAnyOrder(List.of(madLhrNow), List.of(madCdg));
     assertThat(report.providers())
         .isEqualTo(Map.of(ALPHA, ProviderReport.Status.FRESH, BETA, ProviderReport.Status.KEPT));
+  }
+
+  /**
+   * Barcelona is refreshed first and finds Barcelona-Madrid dearer; Madrid is refreshed later. The
+   * trip through both keeps the price Barcelona's refresh found, instead of going back to the one
+   * the run stored, which the published Barcelona-Madrid trip no longer shows.
+   */
+  @Test
+  void keepsThePricesAnEarlierRefreshOfAnotherOriginFound() {
+    Airport barcelona = new Airport("BCN");
+    Leg madLhr = leg(ALPHA, 1, "MAD", "LHR", "2026-11-25T07:15:00Z", QUOTED_AT);
+    Leg bcnMad = leg(ALPHA, 2, "BCN", "MAD", "2026-11-25T04:00:00Z", QUOTED_AT);
+    store.with(ALPHA, List.of(madLhr, bcnMad));
+    Leg bcnMadNow = pricedAt(leg(ALPHA, 2, "BCN", "MAD", "2026-11-25T04:00:00Z", NOW), "150.00");
+    Leg madLhrNow = leg(ALPHA, 1, "MAD", "LHR", "2026-11-25T07:15:00Z", NOW);
+    service(
+            new FakeItineraryRepository(),
+            FakeFlightProvider.downloadingFrom(
+                ALPHA, origin -> new ProviderDownload(List.of(bcnMadNow), List.of())))
+        .refresh(barcelona);
+
+    service(fromMadrid(ALPHA, madLhrNow)).refresh(MADRID);
+
+    assertThat(repository.rewritten())
+        .extracting(Itinerary::legs)
+        .containsExactlyInAnyOrder(List.of(madLhrNow), List.of(bcnMadNow, madLhrNow));
+  }
+
+  /**
+   * The rewrite and the swap of the fresh provider's stored offers from the origin are one
+   * transaction: neither has happened when it begins, both have when it returns, so a failure of
+   * either leaves both undone.
+   */
+  @Test
+  void rewritesAndStoresTheFreshOffersInOneTransaction() {
+    Leg madLhr = leg(ALPHA, 1, "MAD", "LHR", "2026-11-25T07:15:00Z", QUOTED_AT);
+    Leg bcnMad = leg(ALPHA, 2, "BCN", "MAD", "2026-11-25T04:00:00Z", QUOTED_AT);
+    store.with(ALPHA, List.of(madLhr, bcnMad));
+    Leg madLhrNow = pricedAt(leg(ALPHA, 1, "MAD", "LHR", "2026-11-25T07:15:00Z", NOW), "120.00");
+
+    service(fromMadrid(ALPHA, madLhrNow)).refresh(MADRID);
+
+    assertThat(transactions.seen())
+        .containsExactly(
+            List.of(Set.of(), List.of(madLhr, bcnMad)),
+            List.of(
+                Set.of(
+                    new Itinerary(List.of(madLhrNow)), new Itinerary(List.of(bcnMad, madLhrNow))),
+                List.of(bcnMad, madLhrNow)));
   }
 
   /** So that bootstrap's threads carry the refresh's trace onto each download (§6.10). */

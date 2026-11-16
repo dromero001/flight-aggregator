@@ -10,10 +10,13 @@ import com.flightaggregator.application.port.out.IngestionStatusStore;
 import com.flightaggregator.application.port.out.ItineraryReader;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.OfferStore;
+import com.flightaggregator.application.port.out.StoreTransactions;
+import java.util.function.Supplier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -50,6 +53,21 @@ class PersistenceConfig {
   @Bean
   ItineraryReader itineraryReader(DataSourceTransactionManager transactions, JsonMapper json) {
     return new JdbcItineraryReader(transactions, json.tokenStreamFactory());
+  }
+
+  /**
+   * A transaction of the stores' own manager, which every store's write joins (a refresh's rewrite
+   * and its fresh offers, §4.1).
+   */
+  @Bean
+  StoreTransactions storeTransactions(DataSourceTransactionManager transactions) {
+    TransactionTemplate transaction = new TransactionTemplate(transactions);
+    return new StoreTransactions() {
+      @Override
+      public <T> T inOne(Supplier<T> work) {
+        return transaction.execute(status -> work.get());
+      }
+    };
   }
 
   @Bean

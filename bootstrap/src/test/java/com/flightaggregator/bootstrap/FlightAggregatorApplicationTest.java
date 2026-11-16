@@ -1,6 +1,7 @@
 package com.flightaggregator.bootstrap;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.tuple;
 
@@ -17,6 +18,7 @@ import com.flightaggregator.application.port.out.OfferStore;
 import com.flightaggregator.application.port.out.ProviderRun;
 import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.application.port.out.RefreshScheduler;
+import com.flightaggregator.application.port.out.StoreTransactions;
 import com.flightaggregator.bootstrap.ingestion.IngestionJob;
 import com.flightaggregator.bootstrap.observability.InventoryHealthIndicator;
 import com.flightaggregator.bootstrap.refresh.BackgroundRefresh;
@@ -77,6 +79,7 @@ class FlightAggregatorApplicationTest {
   @Autowired private IngestionStatusStore statuses;
   @Autowired private ItineraryRepository itineraries;
   @Autowired private TransactionTemplate transaction;
+  @Autowired private StoreTransactions storeTransactions;
   @Autowired private JdbcClient jdbc;
   @Autowired private DataSource dataSource;
   @Autowired private IngestInventory ingestion;
@@ -178,6 +181,41 @@ class FlightAggregatorApplicationTest {
     assertThat(offers.offers(Provider.ALPHA)).isEmpty();
     assertThat(generation()).isEqualTo(generation);
     assertThat(statuses.latest()).isEmpty();
+  }
+
+  /**
+   * A stale-route refresh rewrites the inventory and swaps its fresh offers in one {@link
+   * StoreTransactions} transaction: it is Boot's, so a failure after both writes leaves neither.
+   */
+  @Test
+  void rollsBackEveryStoresWriteOfAFailedStoreTransaction() {
+    long generation = generation();
+    OffsetDateTime departure = OffsetDateTime.parse("2026-11-20T08:15:00+01:00");
+    Leg leg =
+        new Leg(
+            new Carrier("IB"),
+            3170,
+            new Airport("MAD"),
+            new Airport("LHR"),
+            departure,
+            departure.plusHours(2),
+            Money.euros("129.90"),
+            Provider.ALPHA,
+            Instant.parse("2026-11-15T10:00:00Z"));
+    IllegalStateException failure = new IllegalStateException("the commit cannot happen");
+
+    assertThatThrownBy(
+            () ->
+                storeTransactions.inOne(
+                    () -> {
+                      offers.replace(Provider.ALPHA, List.of(leg));
+                      itineraries.replaceInventory(Instant.now(), sink -> {});
+                      throw failure;
+                    }))
+        .isSameAs(failure);
+
+    assertThat(offers.offers(Provider.ALPHA)).isEmpty();
+    assertThat(generation()).isEqualTo(generation);
   }
 
   /**

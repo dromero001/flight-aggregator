@@ -69,6 +69,11 @@ public final class JdbcOfferStore implements OfferStore {
         });
   }
 
+  @Override
+  public void replaceFrom(Provider provider, Airport origin, List<Leg> offers) {
+    throw new UnsupportedOperationException("not yet");
+  }
+
   private void copy(Provider provider, List<Leg> offers) {
     try (CopyRows rows = CopyRows.open(dataSource, COPY)) {
       int position = 0;

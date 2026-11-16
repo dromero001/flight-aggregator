@@ -9,6 +9,7 @@ import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.OfferStore;
 import com.flightaggregator.application.port.out.RefreshCoordination;
 import com.flightaggregator.application.port.out.RefreshScheduler;
+import com.flightaggregator.application.port.out.StoreTransactions;
 import com.flightaggregator.application.service.RefreshStaleRouteService;
 import com.flightaggregator.bootstrap.refresh.BackgroundRefresh;
 import java.util.List;
@@ -33,6 +34,7 @@ class RefreshConfig {
       DiscardedRecords discarded,
       ItineraryRepository itineraries,
       RefreshCoordination coordination,
+      StoreTransactions transactions,
       Clock clock,
       @Value("${ingestion.max-itineraries}") long maxItineraries,
       ThreadFactory contextThreads) {
@@ -43,6 +45,7 @@ class RefreshConfig {
         discarded,
         itineraries,
         coordination,
+        transactions,
         clock,
         maxItineraries,
         contextThreads);
