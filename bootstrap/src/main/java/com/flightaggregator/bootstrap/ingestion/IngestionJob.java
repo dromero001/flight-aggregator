@@ -69,7 +69,7 @@ public final class IngestionJob implements IngestionLauncher {
    */
   @Scheduled(initialDelay = 0, fixedDelayString = "${ingestion.interval}")
   public void run() {
-    runUnderTheLock(() -> {});
+    skippedForTheLock(() -> {});
   }
 
   /**
@@ -87,7 +87,7 @@ public final class IngestionJob implements IngestionLauncher {
         .start(
             () -> {
               try {
-                if (runUnderTheLock(() -> locked.complete(true)) == Run.SKIPPED) {
+                if (skippedForTheLock(() -> locked.complete(true))) {
                   locked.complete(false);
                 }
               } finally {
@@ -102,9 +102,10 @@ public final class IngestionJob implements IngestionLauncher {
   /**
    * One run, if it gets the lock, {@code onceLocked} first; otherwise it logs at {@code INFO} that
    * it skipped the run and returns at once (ShedLock's {@code TaskResult}). The lock is released
-   * when the run ends.
+   * when the run ends. True only for a run skipped because another held the lock: a run that ran,
+   * or failed, is false.
    */
-  private Run runUnderTheLock(Runnable onceLocked) {
+  private boolean skippedForTheLock(Runnable onceLocked) {
     // Removed in the finally, after the catch, so that a failed run's ERROR line carries it too.
     MDC.put(CorrelationId.MDC_KEY, UUID.randomUUID().toString());
     Instant startedAt = clock.now();
@@ -118,9 +119,9 @@ public final class IngestionJob implements IngestionLauncher {
               new LockConfiguration(startedAt, LOCK, LOCK_AT_MOST_FOR, LOCK_AT_LEAST_FOR));
       if (!run.wasExecuted()) {
         LOG.info("Skipped an ingestion run: another run holds its lock");
-        return Run.SKIPPED;
+        return true;
       }
-      return Run.EXECUTED;
+      return false;
     } catch (Throwable e) {
       // A runtime exception or an error: the run throws no checked exception, though ShedLock's
       // signature declares one.
@@ -130,17 +131,10 @@ public final class IngestionJob implements IngestionLauncher {
         // The JVM may be in trouble: counted and logged, then left to the scheduler, never kept.
         throw error;
       }
-      return Run.FAILED;
+      return false;
     } finally {
       MDC.remove(CorrelationId.MDC_KEY);
     }
-  }
-
-  /** How a run that tried to take the lock ended. */
-  private enum Run {
-    EXECUTED,
-    SKIPPED,
-    FAILED
   }
 
   private IngestionReport ingestOnce() {
