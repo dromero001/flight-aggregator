@@ -121,7 +121,8 @@ fi
 docker rm -f "$id" "echo-$$" >/dev/null
 
 # An app that accepts the connection and never answers (a stalled JVM, an exhausted pool): nginx
-# gives up within its 15 s read timeout, above the re-price's 10 s budget, instead of its own 60 s.
+# gives up after its 20 s read timeout, above the slowest re-price (its 10 s budget plus a quote
+# already in flight), instead of its own 60 s.
 # (nc with its standard input kept open, -i, reads the request and never writes.)
 docker run -d -i --network "$net" --name "hang-$$" --network-alias hang \
   --entrypoint nc "$image" -l -p 8080 >/dev/null
@@ -134,7 +135,7 @@ done
 started=$(date +%s)
 hung=$(answer -S -T 40 http://localhost:8080/api/itineraries | grep -o 'HTTP/1.1 [0-9]*' | head -n 1)
 waited=$(($(date +%s) - started))
-if [ "$hung" = 'HTTP/1.1 504' ] && [ "$waited" -le 20 ]; then
+if [ "$hung" = 'HTTP/1.1 504' ] && [ "$waited" -ge 20 ] && [ "$waited" -le 25 ]; then
   echo "ok: a hung app answers 504 after ${waited} s"
 else
   echo "FAIL: a hung app answered '$hung' after ${waited} s"

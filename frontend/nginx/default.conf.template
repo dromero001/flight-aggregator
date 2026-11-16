@@ -25,9 +25,12 @@ server {
         proxy_set_header X-Forwarded-Host "";
         proxy_set_header X-Forwarded-Port "";
         proxy_set_header Host $host;
-        # An app that accepts the call and never answers gets a 504 within 15 s, above the re-price's
-        # own 10 s budget, rather than after nginx's 60 s (and three retries of the search).
-        proxy_read_timeout 15s;
+        # An app that accepts the call and never answers gets a 504 after 20 s, rather than after
+        # nginx's 60 s (and three retries of the search). 20 s is above the slowest re-price: no
+        # quote starts after its 10 s budget, but one already started can take its provider's three
+        # attempts of 2.5 s (17.5 s in all), so a shorter limit could cut a re-price the app then
+        # completes and stores.
+        proxy_read_timeout 20s;
         proxy_pass $api_upstream;
     }
 
