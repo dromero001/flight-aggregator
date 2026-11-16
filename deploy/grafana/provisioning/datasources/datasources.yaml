@@ -17,6 +17,21 @@ datasources:
     access: proxy
     url: http://tempo:3200
     editable: false
+    jsonData:
+      # The reverse jump, from a span to its trace's log lines in Loki (plan 7 extra E1). A line
+      # holds its trace id as the structured metadata trace_id, not in its text, so the query
+      # filters on it, in the span's service's stream. Each span opens the whole trace's lines,
+      # within five minutes of the span; $$ keeps provisioning from reading ${...} as an
+      # environment variable.
+      tracesToLogsV2:
+        datasourceUid: loki
+        tags:
+          - key: service.name
+            value: service_name
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        customQuery: true
+        query: '{$${__tags}} | trace_id="$${__trace.traceId}"'
 
   - name: Loki
     type: loki

@@ -173,14 +173,7 @@ class GrafanaProvisioningTest {
    */
   @Test
   void linksALogLineToItsTrace() throws IOException, InterruptedException {
-    JsonNode loki =
-        JSON.readTree(send(HttpRequest.newBuilder(uri("/api/datasources")).GET()).body())
-            .valueStream()
-            .filter(datasource -> datasource.path("uid").asString().equals("loki"))
-            .findFirst()
-            .orElseThrow();
-
-    assertThat(loki.path("jsonData").path("derivedFields").valueStream())
+    assertThat(datasource("loki").path("jsonData").path("derivedFields").valueStream())
         .anySatisfy(
             field -> {
               assertThat(field.path("matcherType").asString()).isEqualTo("label");
@@ -189,6 +182,28 @@ class GrafanaProvisioningTest {
               // The trace's query is the matched value itself.
               assertThat(field.path("url").asString()).isEqualTo("${__value.raw}");
             });
+  }
+
+  /**
+   * The reverse jump, from a span to the lines of its trace (plan 7 extra E1, approved by the user
+   * on 2026-11-15 and chosen for the delivery on 2026-11-16): the Tempo datasource opens Loki with
+   * a query on the service's stream and the trace's {@code trace_id} structured metadata, since the
+   * line itself does not hold the id.
+   */
+  @Test
+  void linksATraceToItsLogLines() throws IOException, InterruptedException {
+    JsonNode tracesToLogs = datasource("tempo").at("/jsonData/tracesToLogsV2");
+
+    assertThat(tracesToLogs.path("datasourceUid").asString()).isEqualTo("loki");
+    assertThat(tracesToLogs.path("tags").valueStream())
+        .anySatisfy(
+            tag -> {
+              assertThat(tag.path("key").asString()).isEqualTo("service.name");
+              assertThat(tag.path("value").asString()).isEqualTo("service_name");
+            });
+    assertThat(tracesToLogs.path("customQuery").asBoolean()).isTrue();
+    assertThat(tracesToLogs.path("query").asString())
+        .isEqualTo("{${__tags}} | trace_id=\"${__trace.traceId}\"");
   }
 
   /**
@@ -324,6 +339,15 @@ class GrafanaProvisioningTest {
     assertThat(composeEnvironment("grafana"))
         .containsEntry("GF_ANALYTICS_CHECK_FOR_UPDATES", "false")
         .containsEntry("GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES", "false");
+  }
+
+  /** A provisioned datasource by its uid, as the anonymous Viewer lists it. */
+  private static JsonNode datasource(String uid) throws IOException, InterruptedException {
+    return JSON.readTree(send(HttpRequest.newBuilder(uri("/api/datasources")).GET()).body())
+        .valueStream()
+        .filter(datasource -> datasource.path("uid").asString().equals(uid))
+        .findFirst()
+        .orElseThrow();
   }
 
   private static JsonNode dashboard() throws IOException, InterruptedException {
