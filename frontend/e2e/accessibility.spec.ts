@@ -5,13 +5,21 @@ import { expectEveryCardFrom, REPRICE_ANSWERED_WITHIN_MS } from './cards.js';
 /** More than the controls before "Load more": four filters, Search, the sort, 20 cards, Select. */
 const MAX_TAB_PRESSES = 40;
 
-/** Presses Tab until `target` has the focus, failing if it never gets it. */
-async function tabTo(page: Page, target: Locator): Promise<void> {
+/**
+ * The key that moves to the next control. Safari on macOS gives Tab to text fields only by default
+ * and Option+Tab to every control, so that is the key its users press (plan 6 E6).
+ */
+function nextControlKey(browserName: string): string {
+  return browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab';
+}
+
+/** Presses `key` until `target` has the focus, failing if it never gets it. */
+async function tabTo(page: Page, key: string, target: Locator): Promise<void> {
   for (let presses = 0; presses < MAX_TAB_PRESSES; presses++) {
     if ((await target.and(page.locator(':focus')).count()) > 0) return;
-    await page.keyboard.press('Tab');
+    await page.keyboard.press(key);
   }
-  throw new Error(`Tab never reached ${target.toString()}`);
+  throw new Error(`${key} never reached ${target.toString()}`);
 }
 
 test('has no axe violations', async ({ page }) => {
@@ -39,11 +47,15 @@ test('has no axe violations', async ({ page }) => {
   await expectNoAxeViolations(page);
 });
 
-test('searches, loads more and opens a card with the keyboard only', async ({ page }) => {
+test('searches, loads more and opens a card with the keyboard only', async ({
+  page,
+  browserName,
+}) => {
+  const next = nextControlKey(browserName);
   await page.goto('/');
 
   // Search: the first control is "From", and Enter submits the filters.
-  await tabTo(page, page.getByLabel('From'));
+  await tabTo(page, next, page.getByLabel('From'));
   await page.keyboard.type('MAD');
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/\?origin=MAD$/);
@@ -52,7 +64,7 @@ test('searches, loads more and opens a card with the keyboard only', async ({ pa
   // Open the first card: it re-prices and offers "Select".
   const card = page.getByRole('article').first();
   const summary = card.getByRole('button').first();
-  await tabTo(page, summary);
+  await tabTo(page, next, summary);
   await page.keyboard.press('Enter');
   await expect(summary).toHaveAttribute('aria-expanded', 'true');
   await expect(card.getByRole('button', { name: 'Select' })).toBeVisible({
@@ -60,7 +72,7 @@ test('searches, loads more and opens a card with the keyboard only', async ({ pa
   });
 
   // Load more, past the opened card and the other 19.
-  await tabTo(page, page.getByRole('button', { name: 'Load more' }));
+  await tabTo(page, next, page.getByRole('button', { name: 'Load more' }));
   await page.keyboard.press('Enter');
   await expect(page.getByText('Showing 40 flights')).toBeVisible();
 });
