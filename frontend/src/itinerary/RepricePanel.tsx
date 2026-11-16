@@ -32,20 +32,23 @@ function failure(error: Error): string {
 /** The sentence for a price the API has just confirmed (Q5-A), against the price the card showed. */
 function confirmation(response: RepriceResponse, shown: Itinerary['price']): string {
   const now = price(response.itinerary.price.amount);
-  if (response.outcome === 'PRICE_CHANGED') {
-    // The contract sends the price shown before with this outcome only, and marks it optional.
-    const before = response.previousPrice;
-    return before
-      ? `Price changed: was ${price(before.amount)}, now ${now}`
-      : `Price changed: now ${now}`;
+  const changed = (before: string) => `Price changed: was ${before}, now ${now}`;
+  switch (response.outcome) {
+    case 'PRICE_CHANGED': {
+      // The contract sends the price shown before with this outcome only, and marks it optional.
+      const before = response.previousPrice;
+      return before ? changed(price(before.amount)) : `Price changed: now ${now}`;
+    }
+    case 'CONFIRMED': {
+      // The API confirms against its stored price, which a cached page may not show yet (final
+      // review, code I2): for the customer, a price other than the card's has changed.
+      const before = price(shown.amount);
+      return before === now ? `Price confirmed: ${now}` : changed(before);
+    }
+    case 'ALTERNATIVE':
+      // Another itinerary, whose price the card never showed.
+      return `Price confirmed: ${now}`;
   }
-  // The API confirms against its stored price, which a cached page may not show yet (final
-  // review, code I2): for the customer, a price other than the card's has changed.
-  const before = price(shown.amount);
-  if (response.outcome === 'CONFIRMED' && before !== now) {
-    return `Price changed: was ${before}, now ${now}`;
-  }
-  return `Price confirmed: ${now}`;
 }
 
 interface RepricePanelProps {
