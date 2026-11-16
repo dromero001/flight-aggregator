@@ -41,13 +41,18 @@ record ItineraryResponse(
         itinerary.legs().stream().map(Leg::of).toList());
   }
 
-  /** An amount in euros, as a decimal string with its cents, so no client rounds it as a float. */
+  /**
+   * An amount in euros, as a decimal string with its cents, so no client rounds it as a float. The
+   * contract states euros as the one currency.
+   */
   record Price(
       @Schema(requiredMode = REQUIRED) String amount,
-      @Schema(requiredMode = REQUIRED) String currency) {
+      @Schema(requiredMode = REQUIRED, allowableValues = EURO) String currency) {
+
+    static final String EURO = "EUR";
 
     static Price of(Money money) {
-      return new Price(money.amount().toPlainString(), "EUR");
+      return new Price(money.amount().toPlainString(), EURO);
     }
   }
 
