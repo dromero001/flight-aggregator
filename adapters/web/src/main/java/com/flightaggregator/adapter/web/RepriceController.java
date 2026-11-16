@@ -80,7 +80,9 @@ public final class RepriceController {
               schema = @Schema(implementation = ProblemDetail.class)))
   @ApiResponse(
       responseCode = "503",
-      description = "Nothing could be confirmed; try again after Retry-After",
+      description =
+          "Nothing could be confirmed, or the flights could not be read in time; try again"
+              + " after Retry-After",
       headers =
           @Header(
               name = HttpHeaders.RETRY_AFTER,

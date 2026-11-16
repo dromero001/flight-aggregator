@@ -4,11 +4,13 @@ import com.flightaggregator.application.port.in.InventoryStatus;
 import com.flightaggregator.application.port.in.TriggerIngestion;
 import com.flightaggregator.application.port.in.TriggerIngestion.TriggerOutcome;
 import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.security.SecurityScheme;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -51,6 +53,19 @@ public final class AdminController {
 
   @GetMapping(path = "/api/admin/status", produces = MediaType.APPLICATION_JSON_VALUE)
   @ApiResponse(responseCode = "200", description = "The inventory's and each provider's status")
+  @ApiResponse(
+      responseCode = "503",
+      description = "The inventory could not be read in time; try again after Retry-After",
+      headers =
+          @Header(
+              name = HttpHeaders.RETRY_AFTER,
+              required = true,
+              description = "How many seconds to wait before asking again",
+              schema = @Schema(type = "integer", minimum = "0")),
+      content =
+          @Content(
+              mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+              schema = @Schema(implementation = ProblemDetail.class)))
   StatusResponse status() {
     return StatusResponse.of(status.status());
   }

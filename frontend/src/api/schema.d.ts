@@ -239,6 +239,17 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description The inventory could not be read in time; try again after Retry-After */
+      503: {
+        headers: {
+          /** @description How many seconds to wait before asking again */
+          'Retry-After': number;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['ProblemDetail'];
+        };
+      };
     };
   };
   search: {
@@ -357,7 +368,7 @@ export interface operations {
           'application/problem+json': components['schemas']['ProblemDetail'];
         };
       };
-      /** @description Nothing could be confirmed; try again after Retry-After */
+      /** @description Nothing could be confirmed, or the flights could not be read in time; try again after Retry-After */
       503: {
         headers: {
           /** @description How many seconds to wait before asking again */
