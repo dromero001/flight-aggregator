@@ -373,6 +373,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 ### Task 12: Admin status, manual ingestion and the DEGRADED health (as Q7-B and Q8-A)
 
+**Decided by the user on 2026-11-16, after the task's review (Important C-I1):** the manual run takes the same ShedLock lock (`ingestion`) but with `lockAtLeastFor` zero, so the lock is released when the run ends and the 409 "An ingestion is already running." is answered only while a run is really running; the scheduled run keeps its one-minute minimum. A scheduled run may start right after a manual one, which is harmless. This replaces "the same `LockConfiguration`" below for the manual entry.
+
 **Depends on:** 2 (the `CircuitBreakerRegistry` bean and `FlightProvider` as built there), 5 (Valkey's ping), 9 (the web module), 11 (the admin role); V7 is reserved for it. **Parallel:** with 10 (see its note) and with 7 once 2 is merged; not before 11.
 
 **Files:**
