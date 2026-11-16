@@ -74,7 +74,7 @@ export function ItineraryCard({ itinerary, now }: ItineraryCardProps) {
                 <span key={index} className={styles.stop} />
               ))}
             </span>
-            <span className={styles.hidden}> to </span>
+            <span className="visually-hidden"> to </span>
             <span className={styles.code}>{destination}</span>
             <time className={styles.time} dateTime={arrival}>
               {localTime(arrival)}

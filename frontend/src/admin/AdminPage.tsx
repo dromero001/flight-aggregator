@@ -4,6 +4,7 @@ import { loadConfig, type AppConfig } from '../config';
 import { createAuthClient } from './authClient';
 import { AdminSession, SignInFailed, SigningIn } from './AdminSession';
 import { StatusPage } from './StatusPage';
+import styles from './StatusPage.module.css';
 
 /** The admin screen (`/admin`): reads the sign-in settings, then signs the admin in. */
 export function AdminPage() {
@@ -40,6 +41,7 @@ function AdminScreen({ config }: { config: AppConfig }) {
       <StatusPage />
       {/* Ends Keycloak's session as well, which then sends the browser back to /admin. */}
       <button
+        className={`${styles.button} ${styles.signOut}`}
         type="button"
         onClick={() => {
           void auth.signoutRedirect();

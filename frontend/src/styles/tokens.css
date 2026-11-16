@@ -6,6 +6,8 @@
   --color-beacon: #e8a33d;
   --color-cleared: #1e7f4f;
   --color-hold: #b3261e;
+  /* Implied by Q6's flat cards: their white surface and their 1 px border (decorative only; a
+     control's boundary uses tarmac). */
   --color-surface: #ffffff;
   --color-border: #c9d1da;
 

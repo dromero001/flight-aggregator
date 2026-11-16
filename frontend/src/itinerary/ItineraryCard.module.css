@@ -125,7 +125,8 @@
   border-left: 2px dashed var(--color-border);
 }
 
-/* The two notches of the perforation, cut out of the card's border. */
+/* The two notches of the perforation: cabin-coloured half circles drawn over the card's edge.
+   The card's border line still runs under them, since the card clips at its padding box. */
 .stub::before,
 .stub::after {
   position: absolute;
@@ -157,20 +158,12 @@
 .freshness {
   color: var(--color-tarmac);
   font-size: 0.875rem;
-}
-
-/* Read by screen readers, not shown. */
-.hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
+  /* "Updated 10 min ago" on one line in the stub's 11 rem. */
   white-space: nowrap;
 }
 
 /* On a phone the stub sits under the pass, torn along a horizontal perforation. */
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   .summary {
     flex-direction: column;
   }
