@@ -1201,3 +1201,7 @@ Minors: (1) `RefreshStaleRouteService.java:129` a re-price's stored quote is los
    - Green: `CONFIRMED` and `PRICE_CHANGED` share one branch: the card's price reads "Price confirmed: €…", another "Price changed: was €…, now €…".
 
 `dashboard.md`'s re-price table and paragraph say so. `frontend/e2e/re-price.spec.ts` matches "Price confirmed: €" or "Price changed: " without an amount, so it still holds (read, not run).
+
+## Task 10 — full verification
+
+Step 4, in a fresh clone of `main` at `4460fdc` (`scratchpad/step4`): `./gradlew build --rerun-tasks` BUILD SUCCESSFUL in 1 min 55 s, 1,116 tests, none failed or skipped (domain 91, application 121, adapters/persistence 136, adapters/providers 199, adapters/web 73, bootstrap 253, mock-gds 201, architecture-tests 42); the aggregate JaCoCo report (`coverage/build/reports/jacoco/testCodeCoverageReport`): lines 3,031 of 3,062 (99.0%), branches 695 of 717 (96.9%), instructions 99.0%. `npm ci && npm run verify`: 21 files, 157 tests; 158 after the re-price's "was" change (option A, below). End to end: CI run 43874670820 on `591249d`, 42 passed in 5.5 min of Playwright, the whole job 10 min 9 s (13:19:32 to 13:29:41 UTC), after one re-run of the backend job, whose three `ValkeySearchCacheTest` cases had failed on a `RedisCommandTimeoutException` in `@BeforeEach` (code untouched by the round; green locally three times and on the re-run). Firefox does not start on macOS 27, so the Mac's end-to-end run is Chromium only; CI runs all three browsers.
