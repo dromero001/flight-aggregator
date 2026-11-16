@@ -75,7 +75,7 @@ All ten were graded Minor by the reviews; the reasons each was not fixed are in 
 | M1 | `X-Forwarded-For` is trusted from any private address, so a caller on the host or compose network can change its rate-limit key | trust only the proxy's address (compose would have to fix the subnet), or stop publishing the app port |
 | M4 | admin tokens carry no audience check | an audience mapper on both realm clients and an `aud` check in the resource server |
 | T4-C1 | single-statement reads open a `REPEATABLE READ` transaction (it carries the 2 s bound) | a `READ COMMITTED` transaction or JDBC's query timeout |
-| T7-C2 | a refresh that ends after a run can write pre-run offers (narrow window; the next refresh or run corrects it) | `replaceThrough` checks the `published_at` read before the offers and answers "superseded" |
+| T7-C2 | a refresh that ends after a run can write pre-run offers (narrow window; the next refresh or run corrects it). Since the final review's I1 it also stores its own fresh offers of the origin, downloaded before that run's, in the same transaction; the two writes to `provider_offer` are serialized, so no offer is duplicated | `replaceThrough` checks the `published_at` read before the offers and answers "superseded", which rolls the stored offers back with it |
 | T8-C2 | the virtual-thread fan-out is written twice | one fan-out shared by `ProviderDownloads` and `RepriceItineraryService` |
 | T8-C3 | a spent time budget reads as "not sold" | a `Deadline` value in the fan-out |
 | T12-F-m2 | shutdown does not wait for a run started by hand | await the run on shutdown |

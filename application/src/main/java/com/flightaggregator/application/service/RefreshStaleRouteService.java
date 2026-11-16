@@ -33,11 +33,13 @@ import java.util.concurrent.ThreadFactory;
  * stored offers from the origin for the ones it has just downloaded, keeping a failed provider's.
  * It then deduplicates every offer and builds every itinerary as a run does, and the repository
  * rewrites, in the published inventory, those with a leg departing from the origin, as the next
- * generation. The stored offers are not written. The origin is marked refreshed, at the refresh's
- * start, once the rewrite has returned. When no provider's download is fresh, nothing is written
- * and the origin is not marked, so a later search asks again once its claim expires. A refresh has
- * the run's ceiling (R7): past it, the rewrite rolls back and the origin is not marked either. A
- * write that fails propagates, for the caller to report.
+ * generation. In the same transaction, each fresh provider's stored offers from the origin are
+ * replaced by those it has just downloaded, so a later refresh of another origin rebuilds the trips
+ * through this one at the prices this refresh published; a failed provider's stay. The origin is
+ * marked refreshed, at the refresh's start, once that transaction has committed. When no provider's
+ * download is fresh, nothing is written and the origin is not marked, so a later search asks again
+ * once its claim expires. A refresh has the run's ceiling (R7): past it, the rewrite rolls back and
+ * the origin is not marked either. A write that fails propagates, for the caller to report.
  */
 public final class RefreshStaleRouteService implements RefreshStaleRoute {
 
@@ -117,7 +119,7 @@ public final class RefreshStaleRouteService implements RefreshStaleRoute {
 
   /**
    * Every provider's stored offers, each fresh provider's offers from the origin swapped for those
-   * it has just downloaded. The swap is in memory only: the next run downloads everything again.
+   * it has just downloaded. The store gets the same swap with the rewrite.
    */
   private List<Leg> offersWith(
       Map<Provider, List<Leg>> fresh, List<CheckedDownload> downloaded, Airport origin) {

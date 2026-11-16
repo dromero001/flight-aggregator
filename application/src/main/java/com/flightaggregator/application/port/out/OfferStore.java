@@ -6,7 +6,10 @@ import com.flightaggregator.domain.LegKey;
 import com.flightaggregator.domain.Provider;
 import java.util.List;
 
-/** The last complete download of each provider. */
+/**
+ * The last complete download of each provider, with a stale-route refresh's fresh offers of one
+ * origin in place of the download's.
+ */
 public interface OfferStore {
 
   /** Replaces every stored offer of the provider by these ones. */
