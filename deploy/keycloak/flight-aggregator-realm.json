@@ -15,6 +15,9 @@
     {
       "username": "admin",
       "enabled": true,
+      "email": "admin@example.com",
+      "firstName": "Demo",
+      "lastName": "Admin",
       "emailVerified": true,
       "credentials": [
         {
@@ -46,6 +49,23 @@
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false
+    },
+    {
+      "clientId": "dashboard",
+      "name": "Dashboard (browser sign-in)",
+      "description": "Public client for the dashboard's admin screen: Authorization Code with PKCE S256, no secret, no password grant",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:3000/admin*"],
+      "webOrigins": ["http://localhost:3000"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
     }
   ]
 }
