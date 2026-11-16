@@ -22,6 +22,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.yaml.snakeyaml.Yaml;
 
 /**
  * {@code docker compose up} runs the images the tests run, each pinned by tag and digest (spec
@@ -144,6 +145,37 @@ class ComposeFileTest {
         .containsEntry("otel-collector", null)
         .containsEntry("tempo", null)
         .containsEntry("loki", null);
+  }
+
+  /**
+   * Actuator's management port, open with no token, is reached only on compose's network, where
+   * Prometheus scrapes it (spec 6.6; plan 7, Review Focus 3): the app never publishes it, in the
+   * short syntax ({@code [host:]published:container}) or the long one ({@code target}).
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void neverPublishesTheManagementPort() throws IOException {
+    Map<String, Map<String, Object>> application =
+        new Yaml().load(Files.readString(Path.of("src/main/resources/application.yaml")));
+    String managementPort =
+        String.valueOf(
+            ((Map<String, Object>) application.get("management").get("server")).get("port"));
+
+    List<Object> published =
+        (List<Object>) ComposeFile.services().get("app").getOrDefault("ports", List.of());
+
+    assertThat(published)
+        .extracting(ComposeFileTest::containerPort)
+        .isNotEmpty()
+        .doesNotContain(managementPort);
+  }
+
+  private static String containerPort(Object port) {
+    if (port instanceof Map<?, ?> longSyntax) {
+      return String.valueOf(longSyntax.get("target"));
+    }
+    String shortSyntax = String.valueOf(port);
+    return shortSyntax.substring(shortSyntax.lastIndexOf(':') + 1).replace("/tcp", "");
   }
 
   /**
