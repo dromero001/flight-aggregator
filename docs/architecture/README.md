@@ -5,6 +5,7 @@ Technical documentation of the system, filled in as it is built:
 - **Hexagonal modules and their dependency rules** (Gradle enforces the module direction, ArchUnit the package rules), with Mermaid diagrams.
 - **The ingestion and search flows**, from the providers to the dashboard. The ingestion is described in [Ingestion](ingestion.md), the search, re-price and admin API in [Search API](search-api.md), and its contract is [`openapi.json`](openapi.json).
 - **The dashboard**, the browser front end over that API: its two screens and every state, the URL as the search's state, re-price, the admin's Keycloak sign-in, nginx and its tests, in [Dashboard](dashboard.md).
+- **Observability**: metrics, traces and logs from the application to one Grafana that the team opens without signing in, the alert rules, the dashboard and the jump from a log line to its trace, in [Observability](observability.md).
 - **The mock providers**: the three GDS mocks that the system ingests.
 - **The domain glossary** (ubiquitous language): leg, offer, itinerary, dead leg, connection, minimum connection time, interlining, markup.
 

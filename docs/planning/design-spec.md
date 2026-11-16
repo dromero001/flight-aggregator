@@ -266,6 +266,12 @@ All user-facing text is in **English**: API error messages, dashboard labels, fi
 
 **Approved extras:** the **OpenTelemetry Collector and Tempo** (one search or ingestion run visible as a single trace) and **Loki** (logs searchable in Grafana, with a jump from a log line to its trace). Together with Prometheus they give the three signals, correlated in one UI, as in production.
 
+**Decided by the user while plan 7 was drafted (2026-11-15):**
+- **Who opens Explore (plan 7, Q1-A).** The jump from a log line to its trace happens in Grafana's Explore, which Grafana closes to Viewers by default. The team keeps the anonymous Viewer role (§6.6) plus Grafana's `viewers_can_edit` setting: a Viewer may use Explore and change a panel on screen, but never save it, and the provisioned datasources and dashboard stay read-only. Rejected: a strict Viewer with the jump rebuilt as dashboard panels (two more panels, and logs searchable only through one), and an anonymous Editor (anyone who reaches Grafana could save dashboards).
+- **How the logs reach Loki (plan 7, Q2-A).** The application exports its log records over OTLP, through OpenTelemetry's Logback appender, to the Collector, which forwards them to Loki's OTLP endpoint; the console keeps its ECS JSON for `docker compose logs`. Trace and span ids travel as fields of each record (structured metadata in Loki, never labels). Rejected: the Collector tailing the containers' Docker log files (the mount differs on the Mac and on Windows, inside Docker Desktop's VM), and Grafana Alloy reading every container through the Docker socket (a service not approved, and the socket gives control of the host's Docker).
+
+How it is built and tested: [Observability](../architecture/observability.md).
+
 **Only if time remains:** JVM dashboards and PostgreSQL / Valkey exporters. **Rejected:** Alertmanager, SLO burn-rate alerts and a trace id in every error response.
 
 ### 6.11 Continuous integration (decided in the grill-me, Q10)

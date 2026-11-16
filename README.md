@@ -183,6 +183,23 @@ curl -i -X POST -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/admi
 
 **Two addresses, on purpose.** Tokens name the issuer `http://localhost:8180/realms/flight-aggregator` (`KC_HOSTNAME`), the address a browser uses, while the aggregator, inside the compose network, fetches the signing keys from `http://keycloak:8080/...`. It checks the signature against the second (`spring.security.oauth2.resourceserver.jwt.jwk-set-uri`) and the issuer against the first (`...jwt.issuer-uri`). They are Spring Boot's own resource-server settings, as is the mapping of `realm_access.roles` to `ROLE_ADMIN`, so another identity provider is a change of configuration only.
 
+## Observability
+
+The same `docker compose up --build` starts the telemetry services, provisioned from `deploy/`: the OpenTelemetry Collector, Prometheus, Tempo, Loki and Grafana. The aggregator's metrics go to Prometheus, its traces and logs through the Collector to Tempo and Loki, and Grafana shows all three with no login, as an anonymous Viewer.
+
+| Service | Address (loopback only) | What it shows |
+|---|---|---|
+| Grafana | `http://localhost:3001` | The "Flight aggregator" dashboard, the alert list, and Explore for logs and traces |
+| Prometheus | `http://localhost:9090` | Its alerts page (`/alerts`) and its query screen |
+
+**See an ingestion run as a trace,** in three steps:
+
+1. Start a run: the one at startup, "Run ingestion now" on the dashboard's admin screen, or `POST /api/admin/ingestions` with a token ([Admin access](#admin-access)). A run takes about half a minute.
+2. Open Grafana's Explore (`http://localhost:3001/explore`), choose the **Loki** datasource, and run `{service_name="flight-aggregator"} |= "Ingestion run ended"`.
+3. Click the run's line to open its details, then **View trace**: the trace opens beside the logs, with the run (`ingestion.run`) and one request per provider page to Alpha, Beta and Gamma.
+
+The pipeline, the alert rules, the dashboard's panels, what is not collected and how each part is tested: [Observability](docs/architecture/observability.md).
+
 ## Documentation
 
 The documentation is split by what each part shows.
@@ -194,6 +211,7 @@ The documentation is split by what each part shows.
 - [Search API](docs/architecture/search-api.md): the endpoints, cursor and generation, cache, refresh, re-price, auth and rate limit, measured on the real volume
 - [OpenAPI contract](docs/architecture/openapi.json): the API as the application serves it, from which the dashboard's types are generated; `OpenApiContractTest` fails when it drifts
 - [Dashboard](docs/architecture/dashboard.md): the two screens and their states, the URL parameters, re-price, the admin sign-in and its token, `/config.json`, nginx, and how each layer is tested
+- [Observability](docs/architecture/observability.md): metrics, traces and logs from the application to Grafana, who reaches what, the alert rules and what they mean on a restart, the dashboard, the jump from a log line to its trace, and how each part is tested
 
 ### 2. Planning — how the work was planned
 - [Design spec](docs/planning/design-spec.md): goals, domain rules, every design decision and its reasoning
