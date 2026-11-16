@@ -20,9 +20,9 @@ import org.springframework.boot.test.context.assertj.AssertableApplicationContex
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 /**
- * Q9's rate limits, read from what the use case RateLimitConfig declares admits, with the
- * application's own settings, over a counter the test holds: one count per bucket, and the window
- * each request asked for.
+ * Q9's rate limits, as the use case RateLimitConfig declares admits requests under the
+ * application's own settings. The counter is the test's: it keeps one count per bucket and records
+ * the window each request asked for.
  */
 class RateLimitConfigTest {
 
