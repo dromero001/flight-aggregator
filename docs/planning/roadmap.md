@@ -12,7 +12,7 @@ Legend: 👤 = with the user (review and decisions), 🌙 = autonomous work by a
 | 3 | [Mock GDS over HTTP](plans/2026-11-15-mock-gds-http.md) | The three providers answer in their own formats, latency, 500s, API key and pagination, in docker compose | 1 | Done |
 | 4 | [Providers and ingestion](plans/2026-11-15-providers-and-ingestion.md) | Parsers, Resilience4j, partitioned PostgreSQL, atomic publication; ingestion end to end with 1, 2 and 3 providers down | 2, 3 | Done |
 | 5 | [Search API](plans/2026-11-15-search-api.md) | Keyset search with cursor and filters, Valkey cache, rate limit, re-price, OAuth2 for admin, OpenAPI | 4 | Plan 5: tasks done, end-of-plan review pending |
-| 6 | Dashboard | The two approved screens, with Playwright and axe end to end | 5 | Sun night 🌙 |
+| 6 | [Dashboard](plans/2026-11-15-dashboard.md) | The two approved screens, with Playwright and axe end to end | 5 | Plan 6: tasks done, end-of-plan review pending |
 | 7 | Observability and delivery | Grafana stack, `SOLUTION.md`, final reviews, a clean-clone check | 6 | Mon 👤 |
 
 **Order rationale:** foundations first, so that every later commit already passes the architecture, formatting and coverage gates. Plans 2 and 3 do not depend on each other and can run in parallel. The search API waits for real ingested data, and the dashboard waits for the API contract it is generated from.

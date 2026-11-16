@@ -18,6 +18,19 @@ This starts the three mock providers, PostgreSQL, Valkey (the search's result ca
 
 A `providers.*` setting that names no setting (a misspelt `providers.download-timout`, say) stops the aggregator at startup instead of leaving a default in force. Spring Boot's report of it prints the value it was given, so a secret under a misspelt key (an `api-kye`) would be printed: spell the keys' settings with care.
 
+## Use the dashboard
+
+The same `docker compose up --build` serves the dashboard on `http://localhost:3000` (loopback only), from nginx, which proxies `/api/` to the aggregator. It shows flights once the first ingestion has published. The search is public: the four filters, the sort, "Load more", and a card that re-prices when opened. The provider-status screen is `http://localhost:3000/admin`: it sends you to Keycloak's login, where the realm's demo user `admin` with the password `demo-admin-password` signs in ([Admin access](#admin-access)). Screens, states, sign-in and tests: [Dashboard](docs/architecture/dashboard.md).
+
+The frontend is an npm project in `frontend/` (Node from `frontend/.nvmrc`), outside Gradle. In `frontend/`, after `npm ci`:
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Vite's dev server on `http://localhost:5173`, proxying `/api` to the aggregator on `http://localhost:8080` (the admin sign-in needs port 3000: [Dashboard](docs/architecture/dashboard.md#run-it)) |
+| `npm run verify` | Type check, lint, format check and the component tests: the gate before every commit |
+| `npm run api:generate` | Regenerates `src/api/schema.d.ts` from `docs/architecture/openapi.json`; `npm run api:check` fails when it is stale |
+| `npm run e2e` | Playwright with axe in Chromium, Firefox and WebKit against the running stack (`npx playwright install --with-deps chromium firefox webkit` first). Firefox does not start on macOS 27: run it in Playwright's Linux image, as [Dashboard](docs/architecture/dashboard.md#how-each-layer-is-tested) shows |
+
 ## Run the mock providers
 
 The three mock GDS providers run as one image, built from `mock-gds/Dockerfile`. `docker compose up --build` starts them with the rest of the stack; to start the mocks alone:
@@ -108,7 +121,7 @@ curl -i -X POST -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/admi
 
 **The client secret is a committed demo default on purpose**, the same deliberate exception as the provider keys and the database password (spec 6.6): the take-home must run with a single `docker compose up --build`, and a reviewer must be able to call the admin endpoints without the author. It protects only a Keycloak whose port is bound to the loopback interface. In production it would be a secret injected at deploy time. Override it with `ADMIN_SERVICE_CLIENT_SECRET` in the shell or a `.env` file. Keycloak keeps nothing between container creations (compose gives it no volume) and imports the realm each time it is created, so changing the variable and running `docker compose up -d keycloak` is enough: compose recreates the container, which imports the realm with the new secret. Do not use `docker compose down -v` for this: it also deletes the stored inventory in PostgreSQL. Keycloak has no administrator console account; the realm's `admin` user has the demo password `demo-admin-password`.
 
-**Why client credentials.** The grant is for machines acting as themselves: scripts, CI, a reviewer's `curl`. People will sign in through the dashboard's browser login (authorization code with PKCE, plan 6), which has its own public client. The resource-owner password grant was rejected: OAuth 2.1 removes it, because the client would handle the user's password.
+**Why client credentials.** The grant is for machines acting as themselves: scripts, CI, a reviewer's `curl`. People sign in through the dashboard's browser login (authorization code with PKCE, [Dashboard](docs/architecture/dashboard.md#sign-in-and-the-admins-token)), which has its own public client, `dashboard`. The resource-owner password grant was rejected: OAuth 2.1 removes it, because the client would handle the user's password.
 
 **Two addresses, on purpose.** Tokens name the issuer `http://localhost:8180/realms/flight-aggregator` (`KC_HOSTNAME`), the address a browser uses, while the aggregator, inside the compose network, fetches the signing keys from `http://keycloak:8080/...`. It checks the signature against the second (`spring.security.oauth2.resourceserver.jwt.jwk-set-uri`) and the issuer against the first (`...jwt.issuer-uri`). They are Spring Boot's own resource-server settings, as is the mapping of `realm_access.roles` to `ROLE_ADMIN`, so another identity provider is a change of configuration only.
 
@@ -122,6 +135,7 @@ The documentation is split by what each part shows.
 - [Domain visibility rule](docs/architecture/domain-visibility.md): which domain members are public
 - [Search API](docs/architecture/search-api.md): the endpoints, cursor and generation, cache, refresh, re-price, auth and rate limit, measured on the real volume
 - [OpenAPI contract](docs/architecture/openapi.json): the API as the application serves it, from which the dashboard's types are generated; `OpenApiContractTest` fails when it drifts
+- [Dashboard](docs/architecture/dashboard.md): the two screens and their states, the URL parameters, re-price, the admin sign-in and its token, `/config.json`, nginx, and how each layer is tested
 
 ### 2. Planning — how the work was planned
 - [Design spec](docs/planning/design-spec.md): goals, domain rules, every design decision and its reasoning
