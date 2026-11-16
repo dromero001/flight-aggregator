@@ -1,29 +1,22 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
 import { FilterBar } from './FilterBar';
 import { ResultsList } from './ResultsList';
 import styles from './SearchPage.module.css';
 import { parseSearch, toSearchParams, type SearchFilters, type SortOrder } from './searchParams';
 import { SortTabs } from './SortTabs';
-import { itinerarySearchKey } from './useItinerarySearch';
+import { useSearchResets } from './useItinerarySearch';
 
 export function SearchPage() {
-  const queryClient = useQueryClient();
+  const { retryIfFailed } = useSearchResets();
   const [params, setParams] = useSearchParams();
   const { criteria, errors } = parseSearch(params);
 
   function search(filters: SearchFilters) {
-    // Round-trip through the parser so the URL always holds the normalised values.
-    const next = toSearchParams(
-      parseSearch(toSearchParams({ ...filters, sort: criteria.sort })).criteria,
-    );
+    const next = toSearchParams({ ...filters, sort: criteria.sort });
     if (next.toString() === toSearchParams(criteria).toString()) {
-      // The same search keeps its cache key, so nothing would be asked again. If it failed (a
-      // rate limit whose wait is over, an outage), ask again from the first page.
-      void queryClient.resetQueries({
-        queryKey: itinerarySearchKey(criteria),
-        predicate: (query) => query.state.status === 'error',
-      });
+      // The search already shown: no new history entry, which Back would seem to ignore.
+      retryIfFailed(criteria);
+      return;
     }
     setParams(next);
   }

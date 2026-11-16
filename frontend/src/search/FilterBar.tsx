@@ -1,13 +1,20 @@
 import { useState, type SubmitEvent } from 'react';
 import styles from './FilterBar.module.css';
-import type { FieldErrors, FilterField, SearchCriteria, SearchFilters } from './searchParams';
+import {
+  FILTER_FIELDS,
+  type FieldErrors,
+  type FilterField,
+  type SearchCriteria,
+  type SearchFilters,
+} from './searchParams';
 
-const CONTROLS: { field: FilterField; label: string; inputMode?: 'decimal' }[] = [
-  { field: 'origin', label: 'From' },
-  { field: 'destination', label: 'To' },
-  { field: 'carrier', label: 'Airline' },
-  { field: 'maxPrice', label: 'Max price', inputMode: 'decimal' },
-];
+/** Every filter's control (spec 6.8): a new filter in `FILTER_FIELDS` cannot compile without one. */
+const CONTROLS: Record<FilterField, { label: string; inputMode?: 'decimal' }> = {
+  origin: { label: 'From' },
+  destination: { label: 'To' },
+  carrier: { label: 'Airline' },
+  maxPrice: { label: 'Max price', inputMode: 'decimal' },
+};
 
 interface FilterBarProps {
   criteria: SearchCriteria;
@@ -40,11 +47,15 @@ export function FilterBar({ criteria, errors, onSubmit }: FilterBarProps) {
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit(draft);
+    // The inputs show what was searched, normalised (" mad " is MAD): the URL's values, which
+    // the line above has changed when the search is a new one.
+    setDraft(fromUrl);
   }
 
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
-      {CONTROLS.map(({ field, label, inputMode }) => {
+      {FILTER_FIELDS.map((field) => {
+        const { label, inputMode } = CONTROLS[field];
         const error = errors[field];
         const errorId = `${field}-error`;
         return (
