@@ -46,6 +46,11 @@
   cursor: progress;
 }
 
+/* Under the screen, apart from the table. */
+.signOut {
+  margin-top: var(--space-4);
+}
+
 .facts {
   display: flex;
   flex-wrap: wrap;
@@ -91,6 +96,24 @@
 .down {
   color: var(--color-hold);
   font-weight: 600;
+}
+
+/* On a phone (under 640 px, as the search's filters) the six columns fit the screen: tighter cells
+   and smaller text, and a long word may break rather than push the page sideways. */
+@media (max-width: 639.98px) {
+  .table {
+    font-size: 0.875rem;
+  }
+
+  .table th,
+  .table td {
+    padding: var(--space-1);
+    overflow-wrap: anywhere;
+  }
+
+  .table thead th {
+    font-size: 0.75rem;
+  }
 }
 
 .note,

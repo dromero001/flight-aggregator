@@ -27,6 +27,18 @@ test('signs in through Keycloak and shows each provider', async ({ page }) => {
   await expectNoAxeViolations(page);
 });
 
+test('fits the provider status on a phone', async ({ page }) => {
+  // 390 × 844, as the search's phone test: the page must not scroll sideways.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page);
+  const table = page.getByRole('table', { name: 'Providers' });
+  await expect(table).toBeVisible();
+
+  // The widest thing on the screen.
+  const box = await table.boundingBox();
+  expect(box && box.x + box.width, 'the table ends within the phone').toBeLessThanOrEqual(390);
+});
+
 /** A run takes about half a minute (search-api.md); the screen reads the status every 10 s. */
 const RUN_PUBLISHED_WITHIN_MS = 90_000;
 
