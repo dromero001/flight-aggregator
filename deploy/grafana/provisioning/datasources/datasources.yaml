@@ -24,3 +24,15 @@ datasources:
     access: proxy
     url: http://loki:3100
     editable: false
+    jsonData:
+      # The jump from a log line to its trace (spec 6.10): each record's trace id is the structured
+      # metadata trace_id (never a label, plan 7 Global Constraints), and opens in Tempo.
+      derivedFields:
+        - name: TraceID
+          matcherType: label
+          matcherRegex: trace_id
+          datasourceUid: tempo
+          # The trace's query is the matched value; $$ keeps provisioning from reading it as an
+          # environment variable (it would become empty).
+          url: "$${__value.raw}"
+          urlDisplayLabel: View trace

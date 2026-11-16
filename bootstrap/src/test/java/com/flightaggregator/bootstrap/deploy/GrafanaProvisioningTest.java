@@ -167,6 +167,31 @@ class GrafanaProvisioningTest {
   }
 
   /**
+   * The jump from a log line to its trace (spec 6.10's approved extra): the Loki datasource has a
+   * derived field that reads each line's {@code trace_id} structured metadata and opens that trace
+   * in the Tempo datasource.
+   */
+  @Test
+  void linksALogLineToItsTrace() throws IOException, InterruptedException {
+    JsonNode loki =
+        JSON.readTree(send(HttpRequest.newBuilder(uri("/api/datasources")).GET()).body())
+            .valueStream()
+            .filter(datasource -> datasource.path("uid").asString().equals("loki"))
+            .findFirst()
+            .orElseThrow();
+
+    assertThat(loki.path("jsonData").path("derivedFields").valueStream())
+        .anySatisfy(
+            field -> {
+              assertThat(field.path("matcherType").asString()).isEqualTo("label");
+              assertThat(field.path("matcherRegex").asString()).isEqualTo("trace_id");
+              assertThat(field.path("datasourceUid").asString()).isEqualTo("tempo");
+              // The trace's query is the matched value itself.
+              assertThat(field.path("url").asString()).isEqualTo("${__value.raw}");
+            });
+  }
+
+  /**
    * One dashboard with every metric the spec promises (spec 6.10; plan 7 Task 6), read as the
    * anonymous Viewer reads it.
    */
