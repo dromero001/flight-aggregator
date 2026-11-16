@@ -70,10 +70,24 @@ class ComposeFileTest {
    * kind, makes room for a new one, as plan 5 Task 13 sets it.
    */
   @Test
+  @SuppressWarnings("unchecked")
   void boundsValkeysMemoryAndEvictsTheLeastRecentlyUsedKey() throws IOException {
-    assertThat(ComposeFile.services().get("valkey").get("command"))
-        .isEqualTo(
-            List.of("valkey-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"));
+    assertThat((List<String>) ComposeFile.services().get("valkey").get("command"))
+        .startsWith("valkey-server")
+        .containsSequence("--maxmemory", "256mb")
+        .containsSequence("--maxmemory-policy", "allkeys-lru");
+  }
+
+  /**
+   * A cache writes nothing to disk: Valkey saves no RDB snapshot ({@code --save ""}), which its
+   * image would otherwise write into a directory it declares no volume for (plan 5 Task 13's
+   * extra, built on 2026-11-16).
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void savesNoSnapshotOfTheCache() throws IOException {
+    assertThat((List<String>) ComposeFile.services().get("valkey").get("command"))
+        .containsSequence("--save", "");
   }
 
   /**
