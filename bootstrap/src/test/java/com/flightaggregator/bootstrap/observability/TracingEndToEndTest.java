@@ -7,6 +7,7 @@ import com.flightaggregator.bootstrap.PostgresContainers;
 import com.flightaggregator.bootstrap.ingestion.IngestionJob;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
@@ -103,6 +104,20 @@ class TracingEndToEndTest {
     List<String> sent = traceparents();
     assertThat(sent).hasSize(3).doesNotContainNull();
     assertThat(sent).containsOnly(traceOf("ingestion.run"));
+  }
+
+  /**
+   * Every span names the application as its service, so Tempo, and Loki by its {@code service_name}
+   * label, find it by that name (Task 4's review, F-M1).
+   */
+  @Test
+  void namesTheServiceInEverySpan() {
+    job.run();
+
+    assertThat(exported())
+        .isNotEmpty()
+        .extracting(span -> span.getResource().getAttribute(AttributeKey.stringKey("service.name")))
+        .containsOnly("flight-aggregator");
   }
 
   /** "Run ingestion now" runs on a thread of its own, which the run's span starts too. */

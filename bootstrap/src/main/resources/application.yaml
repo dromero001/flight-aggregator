@@ -1,6 +1,10 @@
 # Each provider's base-url and api-key have no default: they come from the environment
 # (PROVIDERS_ALPHA_BASEURL, PROVIDERS_ALPHA_APIKEY, ...), and startup fails without them.
 spring:
+  application:
+    # The service's name in every exported span and log record (OpenTelemetry's service.name, Loki's
+    # service_name label) and in the console's ECS service.name (§6.10; plan 7 Task 4's review, F-M1).
+    name: flight-aggregator
   threads:
     virtual:
       enabled: true
