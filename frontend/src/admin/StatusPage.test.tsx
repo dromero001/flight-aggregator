@@ -218,6 +218,26 @@ test('shows the missing admin role', async () => {
   );
 });
 
+test('stops refreshing once the account is refused the admin role', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  let requests = 0;
+  server.use(
+    http.get(STATUS, () => {
+      requests += 1;
+      return new HttpResponse(null, { status: 403 });
+    }),
+  );
+  renderAsAdmin(<StatusPage />);
+  await screen.findByRole('alert');
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(30_000);
+  });
+
+  // The role will not come by itself: asking every 10 s would only be refused again.
+  expect(requests).toBe(1);
+});
+
 test('shows a failure to read the status', async () => {
   // nginx's own page while the app is down: no problem body to show.
   server.use(
