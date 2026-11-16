@@ -12,8 +12,8 @@ import java.time.Duration;
  * refresh.duration{outcome}} times every one that was not skipped. The outcome is the report's,
  * {@code FAILED} for a refresh that ended with an exception, or {@code SKIPPED} for one that did
  * not start because another refresh was running (plan 5's closing round 1), which is counted but
- * not timed. Every outcome is registered at zero here, so Prometheus's {@code rate} and {@code
- * increase} see the first refresh of each (E-T6-1).
+ * not timed. Each outcome's meters are created by its first refresh, as the application's other
+ * counters are.
  */
 public final class RefreshMetrics {
 
@@ -27,13 +27,6 @@ public final class RefreshMetrics {
 
   public RefreshMetrics(MeterRegistry meters) {
     this.meters = meters;
-    for (RefreshReport.Outcome outcome : RefreshReport.Outcome.values()) {
-      runs(outcome.name());
-      duration(outcome.name());
-    }
-    runs(FAILED);
-    duration(FAILED);
-    runs(SKIPPED);
   }
 
   /** A refresh that ended with its report, after {@code duration}. */

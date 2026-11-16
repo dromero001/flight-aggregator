@@ -1,21 +1,15 @@
 package com.flightaggregator.bootstrap.refresh;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.tuple;
 
 import com.flightaggregator.application.port.in.RefreshReport;
 import com.flightaggregator.application.port.in.RefreshReport.ProviderRefresh;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Provider;
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 class RefreshMetricsTest {
@@ -76,27 +70,20 @@ class RefreshMetricsTest {
   }
 
   /**
-   * Every outcome is registered at zero when the metrics are built, so Prometheus's {@code rate}
-   * and {@code increase} see the first refresh of each, which they would miss on a counter created
-   * by it (E-T6-1, built on 2026-11-16).
+   * Each outcome's meters are created by its first refresh, as every other counter of the
+   * application is: none is registered at zero (E-T6-1, withdrawn by the user on 2026-11-16).
    */
   @Test
-  void registersEveryOutcomeAtZeroBeforeTheFirstRefresh() {
-    List<String> ended =
-        Stream.concat(
-                Arrays.stream(RefreshReport.Outcome.values()).map(Enum::name), Stream.of("FAILED"))
-            .toList();
+  void createsAnOutcomesMetersOnItsFirstRefresh() {
+    assertThat(meters.find("refresh.runs").counters()).isEmpty();
+    assertThat(meters.find("refresh.duration").timers()).isEmpty();
+
+    metrics.recordSkipped();
 
     assertThat(meters.find("refresh.runs").counters())
-        .extracting(counter -> counter.getId().getTag("outcome"), Counter::count)
-        .containsExactlyInAnyOrderElementsOf(
-            Stream.concat(ended.stream(), Stream.of("SKIPPED"))
-                .map(outcome -> tuple(outcome, 0.0))
-                .toList());
-    assertThat(meters.find("refresh.duration").timers())
-        .extracting(timer -> timer.getId().getTag("outcome"), Timer::count)
-        .containsExactlyInAnyOrderElementsOf(
-            ended.stream().map(outcome -> tuple(outcome, 0L)).toList());
+        .extracting(counter -> counter.getId().getTag("outcome"))
+        .containsExactly("SKIPPED");
+    assertThat(meters.find("refresh.duration").timers()).isEmpty();
   }
 
   private double runs(String outcome) {
