@@ -22,6 +22,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -30,6 +31,9 @@ import org.springframework.test.context.DynamicPropertySource;
  * normal speed, and only telemetry is lost (spec 6.5: search depends only on PostgreSQL). Tracing
  * is on, as in production, and every OTLP endpoint is on port 1, where nothing listens, so every
  * export fails.
+ *
+ * <p>No other class shares its context, so it is closed after the class, and its connections do not
+ * count against the shared PostgreSQL's limit.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -44,6 +48,7 @@ import org.springframework.test.context.DynamicPropertySource;
     })
 @ImportTestcontainers(PostgresContainers.class)
 @AutoConfigureTracing
+@DirtiesContext
 class TelemetryUnavailableTest {
 
   @RegisterExtension static final WireMockExtension PROVIDERS = OneFlightProviders.server();
