@@ -192,7 +192,8 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
     long itineraries = copy(slot, writer);
     long rowsInDefaultPartition = rowsInDefaultPartition(slot);
     // Before the switch, so search never reads the slot without statistics. ANALYZE of the parent
-    // samples every partition.
+    // also analyzes each partition (its row count and its column statistics), which the planner
+    // reads for each partition's scan under the Merge Append.
     jdbc.sql("ANALYZE " + slot.table()).update();
     long generation = switchTo(slot, now);
     return new Publication(

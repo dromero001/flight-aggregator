@@ -27,6 +27,8 @@ Roadmap: [plan 5](../roadmap.md). Carried risks: [progress 2026-11-14](../progre
 
 **Status:** approved by the user on 2026-11-15 (session 09), with every open question answered as recommended. Extras: E1 replaced by a confidential **client-credentials** client with a service account holding `ADMIN` (not the deprecated password grant), documented in the README's "Admin access" section and in `SOLUTION.md` so that reviewers can reproduce the admin calls without the author; E2 (Swagger UI) approved; E3 and E4 rejected. Before execution, Task 2 is rewritten on plan 4's final provider structure (one `PagedProvider`, a `CircuitBreakerRegistry`, no `WiredProvider`), and the out-of-scope note on plan 4's extras is updated.
 
+**Progress:** Tasks 1 to 13 and the approved extra E2 (Swagger UI, built on its own) are on `main`, each task marked DONE below. The end-of-plan review ran on 2026-11-16; its closing fix rounds are recorded in the [progress report](../progress/2026-11-15-search-api.md).
+
 ## Global Constraints
 
 - **Packages:** `com.flightaggregator.application.port.in|port.out|service`, `com.flightaggregator.adapter.provider|persistence|web`, `com.flightaggregator.bootstrap`. ArchUnit's rules hold; the web adapter uses only inbound ports.
@@ -173,7 +175,7 @@ The functional re-review of closing round 1 (`.superpowers/sdd/2026-11-15-search
 - An unknown flight answers the listing's own empty page with `200`, never `404`.
 - A partial flight key or a `departure` that is not a UTC instant → `400`. The quote needs the API key like the listing (no key → `401`).
 
-### Task 2: The provider adapter: download by origin, quote, concurrency limit, call counter
+### Task 2: The provider adapter: download by origin, quote, concurrency limit, call counter — DONE
 
 **Depends on:** Task 1 (done). **Parallel:** yes, with 3 and 11 (its own worktree). It changes `FlightProvider` and `PagedProvider`, which 7, 8 and 12 build on, so they wait for it.
 
@@ -189,12 +191,12 @@ The functional re-review of closing round 1 (`.superpowers/sdd/2026-11-15-search
 - The concurrency limit sits on `PagedProvider`, one class and one limit per provider: `@ConcurrencyLimit(limitString = "${providers.concurrency-limit}", policy = <Q9>)` on its three operations (not on `provider()`, which a rejection must never fail), shared by them. `ProvidersConfig` is `@EnableResilientMethods`; each `PagedProvider` bean built there is proxied on its own, so each provider has its own limit; the breakers stay the registry's, one per provider. `ProvidersProperties` gains `@DefaultValue("4") int concurrencyLimit` (it has `ignoreUnknownFields = false`, so the property must be declared there). A rejected call surfaces as `InvocationRejectedException`, a `RejectedExecutionException`. If Spring 7.0.10 counts the limit per method rather than per instance, the test of Step 2 shows it and the task stops and asks before choosing another seam.
 - `CountedFlightProvider implements FlightProvider` wraps each limited provider (applied after the proxy, so a rejected call is counted; `ProvidersConfigTest` pins the order) and counts `provider.calls{provider, operation=download|origin-download|quote, outcome=OK|NOT_SOLD|<FailureReason>|REJECTED}`.
 
-- [ ] **Step 1: page formats, one test at a time, per provider:** `AlphaPageTest.requestsOnlyAnOriginsLegs` (the path carries `origin=MAD`, the cursor still encoded), `buildsTheQuotePath` (the five parameters, `departure` ending in `Z`); the same two for Beta and Gamma.
-- [ ] **Step 2: `PagedProvider`, against WireMock, one test at a time, per provider:** `downloadsOnlyTheOriginsLegs` (every page carries `origin=MAD`), `quotesOneFlight` (`quotedAt` from the response's arrival), `quotesNothingForAFlightNoLongerSold` (the empty `200` page of Task 1), `failsAQuoteThatAnswersAnotherFlight`, `failsAQuoteWithAMalformedRecord`. Then `ProvidersConfigTest.limitsConcurrentCallsPerProvider`: limit 2, Alpha delayed 500 ms, a download, an origin download and a quote at once → at most 2 requests in flight in WireMock's journal and the third handled per Q9; a Beta quote meanwhile is not held back; `provider()` answers meanwhile. `ProvidersPropertiesTest.readsTheConcurrencyLimit`.
-- [ ] **Step 3: `CountedFlightProviderTest.countsEachOutcome`** (OK, not sold, `TIMEOUT`, rejected); `ProvidersConfigTest.countsARejectedCall`.
-- [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Download one origin and quote one flight from each provider, under a per-provider limit"`.
+- [x] **Step 1: page formats, one test at a time, per provider:** `AlphaPageTest.requestsOnlyAnOriginsLegs` (the path carries `origin=MAD`, the cursor still encoded), `buildsTheQuotePath` (the five parameters, `departure` ending in `Z`); the same two for Beta and Gamma.
+- [x] **Step 2: `PagedProvider`, against WireMock, one test at a time, per provider:** `downloadsOnlyTheOriginsLegs` (every page carries `origin=MAD`), `quotesOneFlight` (`quotedAt` from the response's arrival), `quotesNothingForAFlightNoLongerSold` (the empty `200` page of Task 1), `failsAQuoteThatAnswersAnotherFlight`, `failsAQuoteWithAMalformedRecord`. Then `ProvidersConfigTest.limitsConcurrentCallsPerProvider`: limit 2, Alpha delayed 500 ms, a download, an origin download and a quote at once → at most 2 requests in flight in WireMock's journal and the third handled per Q9; a Beta quote meanwhile is not held back; `provider()` answers meanwhile. `ProvidersPropertiesTest.readsTheConcurrencyLimit`.
+- [x] **Step 3: `CountedFlightProviderTest.countsEachOutcome`** (OK, not sold, `TIMEOUT`, rejected); `ProvidersConfigTest.countsARejectedCall`.
+- [x] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Download one origin and quote one flight from each provider, under a per-provider limit"`.
 
-### Task 3: Persistence groundwork: one time encoding, legs read back, ANALYZE, sort indexes
+### Task 3: Persistence groundwork: one time encoding, legs read back, ANALYZE, sort indexes — DONE
 
 **Depends on:** nothing (plan 4's repository). **Parallel:** yes, with 2 and 11. It edits `JdbcOfferStore`, `ItineraryRow` and `JdbcItineraryRepository`, which 7 and 8 extend, so they wait for it.
 
@@ -208,12 +210,12 @@ The functional re-review of closing round 1 (`.superpowers/sdd/2026-11-15-search
 - `final class LegsJson`: `static String write(List<Leg>, JsonFactory)` (the format `ItineraryRowTest` pins, unchanged) and `static List<Leg> read(String, JsonFactory)`; a document of another shape throws `IllegalStateException`.
 - V5 creates Q6's indexes on `itinerary_a` and `itinerary_b` (the parents, so present and future partitions inherit them). `JdbcItineraryRepository.load` runs `ANALYZE <slot>` after the `COPY` and the default-partition count, before `switchTo`; `Publication` (with its `partitionedUntil`), the publication-row lock and the constructor taking Boot's one transaction manager stay as they are.
 
-- [ ] **Step 1: `LegsJsonTest`, one test at a time:** `roundTripsLegsExactly` (a `-05:00` offset, a microsecond quote, `0.01` → equal legs and an equal `Itinerary.id()`); `failsOnADocumentOfAnotherShape`.
-- [ ] **Step 2: `ProviderTimeTest.roundTripsAnInstantAndItsOffset`** through a temporary table; then move `JdbcOfferStore` and `ItineraryRow` onto both helpers with their tests unchanged and green.
-- [ ] **Step 3: `JdbcItineraryRepositoryTest`, one test at a time:** `analyzesTheLoadedSlotBeforeTheSwitch` (a loaded day partition's `pg_class.reltuples` equals its rows, not -1); `indexesEverySortOrderOnBothSlots` (`pg_indexes` of both parents and of a day partition created by a run).
-- [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Share the provider-time encoding, read legs back, analyze each slot and index its sort orders"`.
+- [x] **Step 1: `LegsJsonTest`, one test at a time:** `roundTripsLegsExactly` (a `-05:00` offset, a microsecond quote, `0.01` → equal legs and an equal `Itinerary.id()`); `failsOnADocumentOfAnotherShape`.
+- [x] **Step 2: `ProviderTimeTest.roundTripsAnInstantAndItsOffset`** through a temporary table; then move `JdbcOfferStore` and `ItineraryRow` onto both helpers with their tests unchanged and green.
+- [x] **Step 3: `JdbcItineraryRepositoryTest`, one test at a time:** `analyzesTheLoadedSlotBeforeTheSwitch` (a loaded day partition's `pg_class.reltuples` equals its rows, not -1); `indexesEverySortOrderOnBothSlots` (`pg_indexes` of both parents and of a day partition created by a run).
+- [x] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Share the provider-time encoding, read legs back, analyze each slot and index its sort orders"`.
 
-### Task 4: The itinerary reader: keyset pages over the active slot
+### Task 4: The itinerary reader: keyset pages over the active slot — DONE
 
 **Extras approved by the user on 2026-11-15, after the task reached `main`:** a statement timeout of **2 s** on every search read (`SET LOCAL`, so a stuck read fails instead of holding a connection and its lock on the slot), and defensive copies of the lists in `StoredPage` and `SearchPage`. The guard on `limit` in the port stays out (the endpoint validates it).
 
@@ -231,11 +233,11 @@ The functional re-review of closing round 1 (`.superpowers/sdd/2026-11-15-search
 - `JdbcItineraryReader(DataSourceTransactionManager transactions, JsonFactory json)`, built in `PersistenceConfig` like the other stores (E6): its reads use a read-only `TransactionTemplate` of that manager, so the generation and the rows of a page are one snapshot.
 - SQL from fixed fragments: `… FROM <active slot> WHERE departure > ? [AND origin = ?] [AND destination = ?] [AND price <= ?] [AND single_carrier = ?] [AND (<key>, id) > (?, ?)] ORDER BY <key>, id LIMIT ?`, `<key>` one of `price`, `departure`, `duration_seconds`; the table from `Slot`, every value a parameter. Max Price is inclusive; Carrier matches `single_carrier` (§4). A row becomes `new Itinerary(LegsJson.read(legs))`.
 
-- [ ] **Step 1: `KeysetQueryTest.buildsTheQueryOfEachSortWithEveryFilter`** (text and parameters).
-- [ ] **Step 2: `JdbcItineraryReaderTest`, one test at a time:** `returnsNothingBeforeTheFirstPublication`; `readsAPageInPriceOrder`; `pagesThroughTiesWithoutRepeatsOrGaps` (25 at one price, pages of 10 → 25 distinct ids in SQL's `ORDER BY price, id`); `ordersByDepartureAndByDuration`; `appliesEachFilterAndTheirCombination` (a price equal to Max Price is in; an interline trip with an IB leg is out for Carrier IB); `hidesDepartedItineraries`; `readsTheActiveSlotWithItsGeneration`; `findsAnItineraryByIdEvenOnceDeparted`; `findsNothingForAnUnknownId`.
-- [ ] **Step 3: `./gradlew build` green, review, commit:** `git commit -m "Read keyset pages of the active slot with every filter and sort order"`.
+- [x] **Step 1: `KeysetQueryTest.buildsTheQueryOfEachSortWithEveryFilter`** (text and parameters).
+- [x] **Step 2: `JdbcItineraryReaderTest`, one test at a time:** `returnsNothingBeforeTheFirstPublication`; `readsAPageInPriceOrder`; `pagesThroughTiesWithoutRepeatsOrGaps` (25 at one price, pages of 10 → 25 distinct ids in SQL's `ORDER BY price, id`); `ordersByDepartureAndByDuration`; `appliesEachFilterAndTheirCombination` (a price equal to Max Price is in; an interline trip with an IB leg is out for Carrier IB); `hidesDepartedItineraries`; `readsTheActiveSlotWithItsGeneration`; `findsAnItineraryByIdEvenOnceDeparted`; `findsNothingForAnUnknownId`.
+- [x] **Step 3: `./gradlew build` green, review, commit:** `git commit -m "Read keyset pages of the active slot with every filter and sort order"`.
 
-### Task 5: Valkey: result cache, refresh coordination, request counters
+### Task 5: Valkey: result cache, refresh coordination, request counters — DONE
 
 **Extras approved by the user on 2026-11-15, after fix round 1:** the state of Valkey's circuit breaker as a meter, and fewer WARN lines when many cached values fail to parse at once (as after a format change). A meter for unreadable refresh marks stays out. All seven of Resilience4j's breaker meters are kept, under `valkey.circuitbreaker.*` (the user, after round 2). **Decided by the user on 2026-11-15, after the re-review:** a probe that throws anything (`Throwable`, a JVM `Error` included) releases the breaker's permission and rethrows, so a bug neither closes the breaker with a false recovery nor leaves it half-open for good; this replaces the earlier "recovery after a JVM `Error` stays out".
 
@@ -253,12 +255,12 @@ The functional re-review of closing round 1 (`.superpowers/sdd/2026-11-15-search
 - `interface RequestCounter { WindowCount increment(String bucket, Duration window); }`, `record WindowCount(long count, Duration resetsIn)` with `static WindowCount unavailable()`: a fixed window, `INCR` then `EXPIRE … NX`.
 - Fail open through `ValkeyFailures`: `get` empty, `put` dropped, `claim` false, `increment` unavailable; one WARN on the first failure after a success, one INFO on recovery. `ValkeyConfig` sets Q9's Lettuce timeouts and `REJECT_COMMANDS`, and `management.health.redis.enabled: false` (Task 12 reports Valkey as `DEGRADED`, never `DOWN`).
 
-- [ ] **Step 1:** pick the `valkey/valkey:9` tag by §6.1, pin tag and digest in `ValkeyImage` (shared with bootstrap tests like `PostgresImage`), run it as a `RedisContainer`; record it.
-- [ ] **Step 2: one test at a time:** `ValkeySearchCacheTest.roundTripsAPage`, `expiresAfterItsTtl` (`TTL` ≤ 300 s), `keysDifferByGeneration`; `ValkeyRefreshCoordinationTest.claimsOncePerOriginUntilTheClaimExpires`, `remembersWhenAnOriginWasRefreshed`; `ValkeyRequestCounterTest.countsWithinAWindowAndResets`.
-- [ ] **Step 3: `failsOpenWhenValkeyIsDown`** (Review Focus 3): with the container paused, each operation returns its fail-open value within 500 ms, `search.cache{result=error}` counts the cache's, and one WARN line is written, not one per call.
-- [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Cache search pages, coordinate refreshes and count requests in Valkey, failing open"`.
+- [x] **Step 1:** pick the `valkey/valkey:9` tag by §6.1, pin tag and digest in `ValkeyImage` (shared with bootstrap tests like `PostgresImage`), run it as a `RedisContainer`; record it.
+- [x] **Step 2: one test at a time:** `ValkeySearchCacheTest.roundTripsAPage`, `expiresAfterItsTtl` (`TTL` ≤ 300 s), `keysDifferByGeneration`; `ValkeyRefreshCoordinationTest.claimsOncePerOriginUntilTheClaimExpires`, `remembersWhenAnOriginWasRefreshed`; `ValkeyRequestCounterTest.countsWithinAWindowAndResets`.
+- [x] **Step 3: `failsOpenWhenValkeyIsDown`** (Review Focus 3): with the container paused, each operation returns its fail-open value within 500 ms, `search.cache{result=error}` counts the cache's, and one WARN line is written, not one per call.
+- [x] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Cache search pages, coordinate refreshes and count requests in Valkey, failing open"`.
 
-### Task 6: The search use case
+### Task 6: The search use case — DONE
 
 **Decided by the user on 2026-11-15, after the implementation:** `SearchConfig` is wired in this task with a provisional `RefreshScheduler` (one WARN per request, nothing else), so the application starts and Tasks 7 and 9 stay parallel; Task 7 replaces it, and both beans together stop startup, so it cannot linger. No refresh is requested before the first publication (no `publishedAt`; the first run loads every origin).
 
@@ -274,10 +276,10 @@ The functional re-review of closing round 1 (`.superpowers/sdd/2026-11-15-search
 - `interface SearchItineraries { SearchPage search(SearchQuery query); }`; `record SearchQuery(SearchCriteria criteria, int limit, Optional<PageCursor> cursor)`; `interface RefreshScheduler { void request(Airport origin); }` (Task 7 implements it).
 - `SearchItinerariesService(ItineraryReader, SearchCache, RefreshCoordination, RefreshScheduler, Clock, Duration freshnessThreshold)`: reads `limit + 1` rows and returns `next` only when the extra row exists, at the last returned row, with the page's generation. A cursor of another sort order throws `InvalidCursorException`. Q1: a cursor of another generation sets `inventoryChanged`. Q3: only the cached pages are read from and written to the cache, under `state().generation`; a page whose `StoredPage.generation` differs is served but not cached. With an origin in the query, if `now − max(publishedAt, refreshedAt(origin)) > threshold` and `claim(origin)` succeeds, it calls `request(origin)` (§6.4), never delaying or failing the search.
 
-- [ ] **Step 1: one test at a time:** `returnsAPageWithACursorWhenMoreRowsExist`; `returnsNoCursorOnTheLastPage`; `flagsACursorOfAnotherGeneration`; `rejectsACursorOfAnotherSortOrder`; `servesACachedFirstPageWithoutReading`; `cachesOnlyFirstPagesWithoutMaxPrice`; `doesNotCacheAPageOfAnotherGeneration`; `requestsOneRefreshForAStaleOrigin` (11 min old: requested once; a second search finds the claim taken); `doesNotRefreshAFreshOriginOrASearchWithoutOrigin`.
-- [ ] **Step 2: `./gradlew build` green, review, commit:** `git commit -m "Search the inventory page by page, cached by generation, asking to refresh stale origins"`.
+- [x] **Step 1: one test at a time:** `returnsAPageWithACursorWhenMoreRowsExist`; `returnsNoCursorOnTheLastPage`; `flagsACursorOfAnotherGeneration`; `rejectsACursorOfAnotherSortOrder`; `servesACachedFirstPageWithoutReading`; `cachesOnlyFirstPagesWithoutMaxPrice`; `doesNotCacheAPageOfAnotherGeneration`; `requestsOneRefreshForAStaleOrigin` (11 min old: requested once; a second search finds the claim taken); `doesNotRefreshAFreshOriginOrASearchWithoutOrigin`.
+- [x] **Step 2: `./gradlew build` green, review, commit:** `git commit -m "Search the inventory page by page, cached by generation, asking to refresh stale origins"`.
 
-### Task 7: The stale-route refresh (as Q2-B; with Q2-A, the service publishes through `replaceInventory` and the repository is unchanged)
+### Task 7: The stale-route refresh (as Q2-B; with Q2-A, the service publishes through `replaceInventory` and the repository is unchanged) — DONE
 
 **Depends on:** 2 (`downloadFrom`), 3, 5 (`RefreshCoordination`), 6 (`RefreshScheduler`). **Parallel:** with 9. With 8 only in a second worktree whose merge is by hand: both add a method to `ItineraryRepository`, `JdbcItineraryRepository` and its test.
 
@@ -292,12 +294,12 @@ The functional re-review of closing round 1 (`.superpowers/sdd/2026-11-15-search
 - `RefreshStaleRouteService(List<FlightProvider>, OfferStore, AirportCatalogue, DiscardedRecords, ItineraryRepository, RefreshCoordination, Clock)`: `downloadFrom(origin)` from every provider in parallel (a rejected call, `InvocationRejectedException`, is that provider failing, so its stored offers stay); each fresh provider's stored offers departing from the origin are replaced in memory (catalogue and discarded records as in ingestion; a download with no usable leg is `EMPTY_DOWNLOAD`, the provider kept as in `IngestInventoryService`, which owns that rule: the build and the checks it shares with the run are lifted out of it, not copied); deduplicate, build with `now`, push only the itineraries with a leg departing from the origin; then `refreshed(origin, now)`. `provider_offer` is not written. Every provider failing → `NOTHING_FRESH`, nothing written, origin not marked.
 - `BackgroundRefresh implements RefreshScheduler`: runs `refresh` on a virtual thread with its own correlation id in the MDC (`correlation.id`, as `IngestionJob` does, removed in the `finally`), logs the report (INFO) or the exception (ERROR), never throws to the caller.
 
-- [ ] **Step 1: service, one test at a time:** `replacesTheItinerariesThroughTheOrigin` (fresh Alpha MAD→LHR → the writer pushes MAD→LHR, MAD→LHR→JFK and BCN→MAD→LHR, not BCN→MAD); `keepsAFailedProvidersStoredOffersOfTheOrigin`; `writesNothingWhenEveryProviderFails`; `marksTheOriginRefreshedOnlyAfterTheWrite`.
-- [ ] **Step 2: repository, one test at a time:** `replacesOnlyTheItinerariesThroughTheOrigin` (other rows untouched, generation + 1, `published_at` unchanged); `aFailedRefreshLeavesTheActiveSlotWhole`; `aRunSwitchesAfterARefreshReleasesThePublicationRow` (two threads).
-- [ ] **Step 3: `BackgroundRefreshTest.logsAFailureWithoutThrowing`.**
-- [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Refresh a stale origin in the background and rewrite the itineraries through it"`.
+- [x] **Step 1: service, one test at a time:** `replacesTheItinerariesThroughTheOrigin` (fresh Alpha MAD→LHR → the writer pushes MAD→LHR, MAD→LHR→JFK and BCN→MAD→LHR, not BCN→MAD); `keepsAFailedProvidersStoredOffersOfTheOrigin`; `writesNothingWhenEveryProviderFails`; `marksTheOriginRefreshedOnlyAfterTheWrite`.
+- [x] **Step 2: repository, one test at a time:** `replacesOnlyTheItinerariesThroughTheOrigin` (other rows untouched, generation + 1, `published_at` unchanged); `aFailedRefreshLeavesTheActiveSlotWhole`; `aRunSwitchesAfterARefreshReleasesThePublicationRow` (two threads).
+- [x] **Step 3: `BackgroundRefreshTest.logsAFailureWithoutThrowing`.**
+- [x] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Refresh a stale origin in the background and rewrite the itineraries through it"`.
 
-### Task 8: Re-price on selection, with the alternative flow
+### Task 8: Re-price on selection, with the alternative flow — DONE
 
 **Extra approved by the user on 2026-11-15, after fix round 1:** a test that pins two re-prices of the same itinerary at once (the second answers `GONE`, the store keeps the first's quote).
 
@@ -318,12 +320,12 @@ The functional re-review of closing round 1 (`.superpowers/sdd/2026-11-15-search
 - `ItineraryRepository.updateInPlace(Itinerary repriced) → StoreOutcome` (`STORED`, `GONE`, `BUSY`; Q5, as built in fix round 1): a method of `JdbcItineraryRepository`, so in its `TransactionTemplate` of the one transaction manager (E6), its statements bounded by the stores' `StatementTimeout`. It takes the publication row `FOR SHARE NOWAIT`: shared among re-prices, refused at once while a run holds it `FOR UPDATE`, which answers `BUSY` and writes nothing; any other failure to read the row throws. It then deletes the row of that id in the active slot by `(id, departure)` (the id fixes the departure) and copies it back through the load's own `copy()` and `ItineraryRow`, so every column derived from the legs follows the re-quote (N1), generation unchanged; `GONE` when the row no longer exists. A run that starts during an update waits for it, so the write lands in the slot that stays active until the update commits. The WARN for `BUSY` and the counter `reprice.store{outcome}` live in the bootstrap decorator `CountedItineraryRepository`, as `CountedFlightProvider` counts provider calls; the service answers the live result for every outcome.
 - `RepriceItineraryService(ItineraryReader, OfferStore, List<FlightProvider>, ItineraryRepository, Clock, RepriceSettings)`, `record RepriceSettings(int maxAlternatives, Duration budget)` (Q9). To confirm an itinerary: it must be `isSellable(now)`; every leg is quoted from its provider (`FlightProvider.quote`, found by `provider()`) in parallel; a leg not sold, or whose provider fails or rejects the call, is quoted from the other providers' stored offers of the flight, cheapest first; offers match by `LegKey`; `new Itinerary(quoted)` throwing means not confirmable (R5). Same price → `Confirmed`, else `PriceChanged`; both `updateInPlace`. If the choice cannot be confirmed, up to `maxAlternatives` itineraries of the same origin and destination by price (`ItineraryReader.page`, the choice excluded) are tried in turn: the first confirmed → `Alternative`, also updated; none → `Unconfirmable`. No quote starts after `budget`; one in flight is bounded by its own timeouts.
 
-- [ ] **Step 1: `ItineraryTest.isSellableUntilItsFirstLegDeparts`** (at the departure instant it is not).
-- [ ] **Step 2: service, one test at a time:** `answersNotFoundForAnUnknownId`; `confirmsAnUnchangedPrice`; `reportsAChangedPriceAndStoresIt`; `confirmsALegWithAnotherProvidersOfferOfTheSameFlight` (Beta down, Gamma sells it); `treatsRequotedLegsThatNoLongerConnectAsUnconfirmed` (a re-quoted arrival leaves 30 min to connect); `offersTheNextCheapestConfirmableItinerary`; `aDepartedChoiceGoesToTheAlternative` (Q4); `answersUnconfirmableWithAllProvidersDown` (Review Focus 4: nothing updated, at most `1 + maxAlternatives` itineraries tried); `startsNoQuoteAfterItsBudget` (quotes of 300 ms, budget 500 ms).
-- [ ] **Step 3: persistence, one test at a time:** `JdbcOfferStoreTest.findsEveryProvidersOfferOfAFlight`; `JdbcItineraryRepositoryTest.updatesAnItineraryInPlaceWithoutChangingTheGeneration`.
-- [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Re-price a chosen itinerary live, falling back to another offer or the next confirmable itinerary"`.
+- [x] **Step 1: `ItineraryTest.isSellableUntilItsFirstLegDeparts`** (at the departure instant it is not).
+- [x] **Step 2: service, one test at a time:** `answersNotFoundForAnUnknownId`; `confirmsAnUnchangedPrice`; `reportsAChangedPriceAndStoresIt`; `confirmsALegWithAnotherProvidersOfferOfTheSameFlight` (Beta down, Gamma sells it); `treatsRequotedLegsThatNoLongerConnectAsUnconfirmed` (a re-quoted arrival leaves 30 min to connect); `offersTheNextCheapestConfirmableItinerary`; `aDepartedChoiceGoesToTheAlternative` (Q4); `answersUnconfirmableWithAllProvidersDown` (Review Focus 4: nothing updated, at most `1 + maxAlternatives` itineraries tried); `startsNoQuoteAfterItsBudget` (quotes of 300 ms, budget 500 ms).
+- [x] **Step 3: persistence, one test at a time:** `JdbcOfferStoreTest.findsEveryProvidersOfferOfAFlight`; `JdbcItineraryRepositoryTest.updatesAnItineraryInPlaceWithoutChangingTheGeneration`.
+- [x] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Re-price a chosen itinerary live, falling back to another offer or the next confirmable itinerary"`.
 
-### Task 9: The search endpoint
+### Task 9: The search endpoint — DONE
 
 **Depends on:** 6 (`SearchItineraries`, `InvalidCursorException`, with 4's types). **Parallel:** yes, with 7, 8, 11; 10 and 12 build on its `ProblemResponses` and response records.
 
@@ -338,13 +340,13 @@ The functional re-review of closing round 1 (`.superpowers/sdd/2026-11-15-search
 - 200: `{"itineraries":[{"id","origin","destination","departure","arrival","durationMinutes","stops","price":{"amount":"129.90","currency":"EUR"},"quotedAt","legs":[{"carrier","flightNumber","origin","destination","departure","arrival"}]}],"nextCursor":"…"|null,"inventoryChanged":false}`.
 - `CursorCodec`: `String encode(PageCursor)`, `PageCursor decode(String)`, base64url without padding of `1|<generation>|<sort>|<price>|<departure instant>|<duration seconds>|<id>`; anything else, or over 200 characters → `InvalidCursorException` → 400.
 
-- [ ] **Step 1: `CursorCodecTest`, one test at a time:** `roundTrips`; `rejectsGarbageTamperedAndOverlongCursors` (Review Focus 2).
-- [ ] **Step 2: `SearchParametersTest`, one test at a time:** `normalisesCodesAndAmounts` (`mad` → `MAD`; `100` and `100.00` equal); `rejectsEachInvalidParameter` (parameterised: `MADR`, `1e3`, `-1`, `0`, `IBX`, `best`, `limit` 0 and above the maximum).
-- [ ] **Step 3: `SearchControllerTest` (`@WebMvcTest`, a fake `SearchItineraries`), one test at a time:** `searchesWithNoFilters` (price, 20); `writesLocalTimesAndThePriceButNeverTheProvider` (`+01:00` offsets; no `provider` and no leg price anywhere in the body); `flagsAChangedInventory`; `answersAProblemForABadCursor`.
-- [ ] **Step 4: `OpenApiContractTest.servedContractMatchesTheCommittedOne`** (red: no file yet); `-Dopenapi.write=true` writes it. CI's `./gradlew build` then fails on drift (§6.11 step 3, the backend half; plan 6 adds the types).
-- [ ] **Step 5: `./gradlew build` green, review, commit:** `git commit -m "Serve the search over HTTP with an opaque cursor and strict parameters"`.
+- [x] **Step 1: `CursorCodecTest`, one test at a time:** `roundTrips`; `rejectsGarbageTamperedAndOverlongCursors` (Review Focus 2).
+- [x] **Step 2: `SearchParametersTest`, one test at a time:** `normalisesCodesAndAmounts` (`mad` → `MAD`; `100` and `100.00` equal); `rejectsEachInvalidParameter` (parameterised: `MADR`, `1e3`, `-1`, `0`, `IBX`, `best`, `limit` 0 and above the maximum).
+- [x] **Step 3: `SearchControllerTest` (`@WebMvcTest`, a fake `SearchItineraries`), one test at a time:** `searchesWithNoFilters` (price, 20); `writesLocalTimesAndThePriceButNeverTheProvider` (`+01:00` offsets; no `provider` and no leg price anywhere in the body); `flagsAChangedInventory`; `answersAProblemForABadCursor`.
+- [x] **Step 4: `OpenApiContractTest.servedContractMatchesTheCommittedOne`** (red: no file yet); `-Dopenapi.write=true` writes it. CI's `./gradlew build` then fails on drift (§6.11 step 3, the backend half; plan 6 adds the types).
+- [x] **Step 5: `./gradlew build` green, review, commit:** `git commit -m "Serve the search over HTTP with an opaque cursor and strict parameters"`.
 
-### Task 10: The re-price endpoint and the rate limit
+### Task 10: The re-price endpoint and the rate limit — DONE
 
 **Depends on:** 5 (`RequestCounter`), 8 (`RepriceItinerary`), 9 (`ItineraryResponse`, `ProblemResponses`, the web module). **Parallel:** with 12 and 13's compose step (not the same files: 10 and 12 each add a controller and a bean config; `application.yaml` is shared, merged by hand), not with 9.
 
@@ -362,12 +364,12 @@ The functional re-review of closing round 1 (`.superpowers/sdd/2026-11-15-search
 
 - **From Task 9 (its implementer and review):** each new error response is documented on its own operation with `@ApiResponse`, never with `@ResponseStatus` on the shared advice (springdoc would put that code on every operation); controllers bind with named `@RequestParam`s or `@PathVariable`s, because Spring 7 binds request headers into objects bound from the query.
 
-- [ ] **Step 1: `RateLimitServiceTest`, one test at a time:** `admitsUpToTheLimitInAWindow`; `rejectsPastItWithTheTimeLeft`; `countsSearchAndRepriceApart`; `admitsWhenTheCounterIsUnavailable`.
-- [ ] **Step 2: one test at a time:** `RepriceControllerTest.answersEachOutcome` (parameterised over the three 200s, notice text exact), `answers503WithRetryAfterAndTheMessage`, `answers404ForAnUnknownId`, `answers400ForAMalformedId`; `RateLimitInterceptorTest.answers429WithRetryAfter`.
-- [ ] **Step 3: `ClientAddressTest` (real port), one test at a time:** `countsTheSocketAddressOfANonProxyClient` (Review Focus 5: with `server.tomcat.remoteip.internal-proxies` excluding loopback, `X-Forwarded-For: 203.0.113.9` is ignored); `honoursForwardedForFromAnInternalProxy`.
-- [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Serve re-price over HTTP and limit search and re-price per client address"`.
+- [x] **Step 1: `RateLimitServiceTest`, one test at a time:** `admitsUpToTheLimitInAWindow`; `rejectsPastItWithTheTimeLeft`; `countsSearchAndRepriceApart`; `admitsWhenTheCounterIsUnavailable`.
+- [x] **Step 2: one test at a time:** `RepriceControllerTest.answersEachOutcome` (parameterised over the three 200s, notice text exact), `answers503WithRetryAfterAndTheMessage`, `answers404ForAnUnknownId`, `answers400ForAMalformedId`; `RateLimitInterceptorTest.answers429WithRetryAfter`.
+- [x] **Step 3: `ClientAddressTest` (real port), one test at a time:** `countsTheSocketAddressOfANonProxyClient` (Review Focus 5: with `server.tomcat.remoteip.internal-proxies` excluding loopback, `X-Forwarded-For: 203.0.113.9` is ignored); `honoursForwardedForFromAnInternalProxy`.
+- [x] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Serve re-price over HTTP and limit search and re-price per client address"`.
 
-### Task 11: OAuth2 for the admin side, and Keycloak in compose
+### Task 11: OAuth2 for the admin side, and Keycloak in compose — DONE
 
 **Depends on:** nothing (it secures paths by name, and its `SecurityTest` uses Actuator's `metrics`). **Parallel:** yes, from the start, with 2, 3 and everything else; it shares `libs.versions.toml`, `bootstrap/build.gradle.kts`, `application.yaml` and `compose.yaml` with 5, 10, 12 and 13, merged by hand. 12 needs it merged first for its admin tests.
 
@@ -381,12 +383,12 @@ The functional re-review of closing round 1 (`.superpowers/sdd/2026-11-15-search
 - **Changed in the fix round (controller's ruling, spec §6.6):** no hand-written decoder or role converter. Spring Boot's own resource-server settings do it, so that Keycloak can be swapped through configuration only: `spring.security.oauth2.resourceserver.jwt.jwk-set-uri` (in compose `http://keycloak:8080/realms/flight-aggregator/protocol/openid-connect/certs`, set as `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI`), `issuer-uri` (`http://localhost:8180/realms/flight-aggregator`, fixed by `KC_HOSTNAME`, checked on each token with no lookup at startup), `authorities-claim-expressions` `[realm_access][roles]` with `authority-prefix` `ROLE_`. The internal forward to `/error` is permitted (`DispatcherType.ERROR`), so a public path's error reaches an anonymous client with its own status.
 - Keycloak image by §6.1 (tag and digest), `start-dev --import-realm`, health enabled; realm `flight-aggregator` with realm role `ADMIN` and the user `admin` holding it, its password a committed demo default like the provider keys (§6.6). Keycloak has no administrator account of its own: no bootstrap admin, no console login (the user's decision of 2026-11-15); the admin token comes from the client-credentials client `admin-service`. The dashboard's client comes with plan 6.
 
-- [ ] **Step 1: `SecurityTest` maps the realm roles to authorities** (no claim → none) through Boot's settings.
-- [ ] **Step 2: `SecurityTest` (`jwt()` from `spring-security-test`), one test at a time:** `searchAndRepriceNeedNoToken`; `healthNeedsNoTokenAndShowsNoDetails`; `metricsAnswer401WithoutAToken`; `metricsAnswer403WithoutTheAdminRole`; `metricsAnswer200WithTheAdminRealmRole`; `rejectsATokenOfAnotherIssuer`.
-- [ ] **Step 3:** `docker compose up keycloak --wait`; the realm's `.well-known/openid-configuration` names the public issuer. Record it.
-- [ ] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Protect the admin side with Keycloak tokens and the ADMIN role"`.
+- [x] **Step 1: `SecurityTest` maps the realm roles to authorities** (no claim → none) through Boot's settings.
+- [x] **Step 2: `SecurityTest` (`jwt()` from `spring-security-test`), one test at a time:** `searchAndRepriceNeedNoToken`; `healthNeedsNoTokenAndShowsNoDetails`; `metricsAnswer401WithoutAToken`; `metricsAnswer403WithoutTheAdminRole`; `metricsAnswer200WithTheAdminRealmRole`; `rejectsATokenOfAnotherIssuer`.
+- [x] **Step 3:** `docker compose up keycloak --wait`; the realm's `.well-known/openid-configuration` names the public issuer. Record it.
+- [x] **Step 4: `./gradlew build` green, review, commit:** `git commit -m "Protect the admin side with Keycloak tokens and the ADMIN role"`.
 
-### Task 12: Admin status, manual ingestion and the DEGRADED health (as Q7-B and Q8-A)
+### Task 12: Admin status, manual ingestion and the DEGRADED health (as Q7-B and Q8-A) — DONE
 
 **Decided by the user on 2026-11-16, after the task's review (Important C-I1):** the manual run takes the same ShedLock lock (`ingestion`) but with `lockAtLeastFor` zero, so the lock is released when the run ends and the 409 "An ingestion is already running." is answered only while a run is really running; the scheduled run keeps its one-minute minimum. A scheduled run may start right after a manual one, which is harmless. This replaces "the same `LockConfiguration`" below for the manual entry.
 
@@ -408,13 +410,13 @@ The functional re-review of closing round 1 (`.superpowers/sdd/2026-11-15-search
 - `GET /api/admin/status` → `StatusReport`; `POST /api/admin/ingestions` → 202, or 409 *"An ingestion is already running."*.
 - `InventoryHealthIndicator` → custom `DEGRADED` (HTTP 200; order `DOWN, OUT_OF_SERVICE, DEGRADED, UP, UNKNOWN`), Valkey checked with a ping; PostgreSQL down stays Boot's `DOWN`.
 
-- [ ] **Step 1: one test at a time:** `IngestInventoryServiceTest.recordsEveryRunsProviderStatus` (a `KEPT` provider with its failure and `newestQuotedAt`; `NOTHING_TO_PUBLISH` included); `JdbcIngestionStatusStoreTest.keepsTheLatestRunPerProvider`.
-- [ ] **Step 2: `InventoryStatusServiceTest`, one test at a time:** `reportsEachProvidersHealthAndStaleness`; `computesTheNextIngestion`; `reportsNothingBeforeTheFirstRun`.
-- [ ] **Step 3: one test at a time:** `IngestionJobTest.launchesARunUnderTheLock` and `refusesToLaunchWhileTheLockIsHeld`; `AdminControllerTest.startsAnIngestion`, `refusesASecondRunWhileOneHoldsTheLock`; `SecurityTest.adminEndpointsNeedTheAdminRole` (401, 403).
-- [ ] **Step 4: `InventoryHealthIndicatorTest`, one test at a time:** `isUpWithEveryProviderFresh`; `isDegradedWith200WhenAProviderIsKept`; `isDegradedWhenValkeyIsDown`; then `SearchWithoutValkeyTest.searchesAndRepricesWhileValkeyIsDown` (§6.2's integration test: PostgreSQL and Valkey containers, Valkey paused → search answers 200 from PostgreSQL, a request past the rate limit is admitted, health is `DEGRADED` with 200).
-- [ ] **Step 5: `./gradlew build` green, review, commit:** `git commit -m "Report each provider's status, run an ingestion on demand and degrade health without failing"`.
+- [x] **Step 1: one test at a time:** `IngestInventoryServiceTest.recordsEveryRunsProviderStatus` (a `KEPT` provider with its failure and `newestQuotedAt`; `NOTHING_TO_PUBLISH` included); `JdbcIngestionStatusStoreTest.keepsTheLatestRunPerProvider`.
+- [x] **Step 2: `InventoryStatusServiceTest`, one test at a time:** `reportsEachProvidersHealthAndStaleness`; `computesTheNextIngestion`; `reportsNothingBeforeTheFirstRun`.
+- [x] **Step 3: one test at a time:** `IngestionJobTest.launchesARunUnderTheLock` and `refusesToLaunchWhileTheLockIsHeld`; `AdminControllerTest.startsAnIngestion`, `refusesASecondRunWhileOneHoldsTheLock`; `SecurityTest.adminEndpointsNeedTheAdminRole` (401, 403).
+- [x] **Step 4: `InventoryHealthIndicatorTest`, one test at a time:** `isUpWithEveryProviderFresh`; `isDegradedWith200WhenAProviderIsKept`; `isDegradedWhenValkeyIsDown`; then `SearchWithoutValkeyTest.searchesAndRepricesWhileValkeyIsDown` (§6.2's integration test: PostgreSQL and Valkey containers, Valkey paused → search answers 200 from PostgreSQL, a request past the rate limit is admitted, health is `DEGRADED` with 200).
+- [x] **Step 5: `./gradlew build` green, review, commit:** `git commit -m "Report each provider's status, run an ingestion on demand and degrade health without failing"`.
 
-### Task 13: Compose, the complete OpenAPI contract, and the search measured on the real volume
+### Task 13: Compose, the complete OpenAPI contract, and the search measured on the real volume — DONE
 
 **Depends on:** every other task (the contract documents all endpoints; the measures need the whole stack). **Parallel:** no; it runs last, alone. Its compose step (`valkey`) may start earlier, after 5.
 
@@ -424,8 +426,8 @@ The functional re-review of closing round 1 (`.superpowers/sdd/2026-11-15-search
 
 **Interfaces:** `/v3/api-docs` documents every endpoint, its parameters and bodies, the 400/404/409/429/503 problem responses with `Retry-After`, and the admin bearer scheme.
 
-- [ ] **Step 1: the contract is complete:** a test in `OpenApiContractTest` that every endpoint of Tasks 9, 10 and 12 is documented with its parameters, bodies, the problem responses and the admin bearer scheme (red if any is missing); the committed file regenerated if needed.
-- [ ] **Step 2: compose:** `valkey` with Task 5's tag and digest, `--maxmemory 256mb --maxmemory-policy allkeys-lru` (§6.2) and a `valkey-cli ping` health check.
-- [ ] **Step 3: run and measure** (no production Java; recorded in the progress report): `docker compose up --build -d --wait`; after the first run, `EXPLAIN (ANALYZE, BUFFERS)` of the first and the fiftieth page of each sort × {no filter, origin, origin + destination, carrier} (Q6), and the load time against plan 4's; a stale-origin search triggering one refresh, and its duration (Q2); a re-price confirmed, then with Beta stopped and with all three stopped (503 within the budget); search with `valkey` stopped; 61 searches in a minute → 429.
-- [ ] **Step 4: docs:** `search-api.md` (endpoints, cursor and generation, cache, refresh, re-price, auth, rate limit); the README index (this plan, `search-api.md`, `openapi.json`); roadmap plan 5 done.
-- [ ] **Step 5: `./gradlew build` green, review, commit:** `git commit -m "Publish the OpenAPI contract and run the search API with Valkey and Keycloak in compose"`.
+- [x] **Step 1: the contract is complete:** a test in `OpenApiContractTest` that every endpoint of Tasks 9, 10 and 12 is documented with its parameters, bodies, the problem responses and the admin bearer scheme (red if any is missing); the committed file regenerated if needed.
+- [x] **Step 2: compose:** `valkey` with Task 5's tag and digest, `--maxmemory 256mb --maxmemory-policy allkeys-lru` (§6.2) and a `valkey-cli ping` health check.
+- [x] **Step 3: run and measure** (no production Java; recorded in the progress report): `docker compose up --build -d --wait`; after the first run, `EXPLAIN (ANALYZE, BUFFERS)` of the first and the fiftieth page of each sort × {no filter, origin, origin + destination, carrier} (Q6), and the load time against plan 4's; a stale-origin search triggering one refresh, and its duration (Q2); a re-price confirmed, then with Beta stopped and with all three stopped (503 within the budget); search with `valkey` stopped; 61 searches in a minute → 429.
+- [x] **Step 4: docs:** `search-api.md` (endpoints, cursor and generation, cache, refresh, re-price, auth, rate limit); the README index (this plan, `search-api.md`, `openapi.json`); roadmap plan 5 done.
+- [x] **Step 5: `./gradlew build` green, review, commit:** `git commit -m "Publish the OpenAPI contract and run the search API with Valkey and Keycloak in compose"`.
