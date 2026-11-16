@@ -1142,6 +1142,7 @@ Only copy already fixed or approved is used: the spec's "Price changed: was X, n
 ### ⚠ For the user
 
 - A `PRICE_CHANGED` answer still says "was" with the API's `previousPrice`, the stored price, which a cached page may not show either. Wording every answer only against the card's price would fix that too, but drops `previousPrice` and the approved "Price changed: now €…". Left as it is unless you decide otherwise.
+- **Decided (2026-11-16, option A):** every answer is worded against the card's price; see "The "was" price of a changed price (option A)" below.
 
 ### Gates
 
@@ -1187,3 +1188,16 @@ One finding fixed: the two concurrency tests repeated a held-open-transaction sc
 One reviewer, functional then code, over `467263d..591249d`: **Functional APPROVED, Code APPROVED**; no Critical or Important. Code I1 closed (`replaceFrom` inside `StoreTransactions.inOne` after the rewrite; one transaction manager; lock order publication row then `provider_offer`, no cycle; the 5 s lock timeout bounds the `LOCK TABLE` wait; a failure rolls back both). Code I2 closed with approved copy only. Functional I1 closed (one 240 s budget; generation read before each POST). Ten mutations, each red (the `replaceFrom` call removed or moved out of the transaction; the `LOCK TABLE` dropped; the DELETE's origin inverted; the next position 0; `StoreTransactions` not transactional; `observation.error` removed; the Grafana CSRF setting removed; `CONFIRMED` always "confirmed"; the search's price passed instead of the stub's). `./gradlew build --rerun-tasks` 1,116 tests; `npm run verify` 157. CI 43874670820 on `591249d`: images, frontend, e2e green; backend red on three `ValkeySearchCacheTest` cases, `RedisCommandTimeoutException` in `@BeforeEach ValkeyTestServer.empty()`, code the round did not touch and green locally three times: re-run.
 
 Minors: (1) `RefreshStaleRouteService.java:129` a re-price's stored quote is lost when a refresh of another origin of that trip rebuilds it from `provider_offer` (the card shows the older price until the next re-price, which never sells unconfirmed): recorded as a limitation; (2) `RepricePanel.tsx:39` a `PRICE_CHANGED`'s "was" is the stored `previousPrice`: put to the user; (3) `JdbcOfferStore.java:86` `replaceFrom` trusts a download from one origin holds only that origin's offers (hardening; the mocks filter by origin); (4) `JdbcOfferStoreTest.java:331` reads `pg_backend_pid()` itself although `LockWaits.backendPid` exists.
+
+## The "was" price of a changed price (option A)
+
+**The user's decision (2026-11-16, about 14:40), option A**, closing the fix round's "⚠ For the user" and the re-review's Minor (2): a `PRICE_CHANGED` answer's "was" is the price the card showed when it was opened (`shownPrice`, as for `CONFIRMED`), not the API's stored `previousPrice`, so the customer always sees the difference from what they had in front of them. Approved wording only. Worktree `was-price` on `main` `4460fdc`.
+
+1. **`'says a changed price was the one the card showed, not the stored one'`** (the card shows €500.00; `PRICE_CHANGED`, `previousPrice` €520.00, price €540.00).
+   - Red: `Unable to find an element with the text: Price changed: was €500.00, now €540.00.` The panel said `was €520.00`.
+   - Green: the `PRICE_CHANGED` branch words the answer against the card's price. `'shows a changed price without the one shown before'` pinned the "Price changed: now €…" fallback for a missing `previousPrice`, which option A drops: removed.
+2. **`'confirms a changed price that is the one the card showed'`** (the card shows €500.00; `PRICE_CHANGED` from a stored €520.00 to €500.00, as after another customer's re-price with a cached page).
+   - Red: `Unable to find an element with the text: Price confirmed: €500.00.` The panel said `Price changed: was €500.00, now €500.00`.
+   - Green: `CONFIRMED` and `PRICE_CHANGED` share one branch: the card's price reads "Price confirmed: €…", another "Price changed: was €…, now €…".
+
+`dashboard.md`'s re-price table and paragraph say so. `frontend/e2e/re-price.spec.ts` matches "Price confirmed: €" or "Price changed: " without an amount, so it still holds (read, not run).

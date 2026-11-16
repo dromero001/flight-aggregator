@@ -52,7 +52,7 @@ A card's summary is one disclosure button (`aria-expanded`). Opening it shows ea
 |---|---|
 | Pending | "Checking the price…" |
 | `CONFIRMED` | "Price confirmed: €412.60" and "Select"; a price other than the one the stub showed when the card was opened is worded "Price changed: was €412.60, now €431.00" (below) |
-| `PRICE_CHANGED` | "Price changed: was €412.60, now €431.00" and "Select"; the card's stub shows the new price and its freshness |
+| `PRICE_CHANGED` | "Price changed: was €412.60, now €431.00" and "Select", where "was" is the price the stub showed when the card was opened; a new price equal to that one reads "Price confirmed: €412.60" (below). The card's stub shows the new price and its freshness |
 | `ALTERNATIVE` | §6.5's notice, *"We couldn't confirm this flight. This is the best alternative we found."*, the alternative's legs, "Price confirmed: €…" and "Select", inside the same card (Q5-A) |
 | `503` | §6.5's *"We can't confirm the price right now. Please try again in a few minutes."* (a 502 or a network error says the same) |
 | `404` | "This flight is no longer available. Search again for current flights." |
@@ -62,7 +62,7 @@ A card's summary is one disclosure button (`aria-expanded`). Opening it shows ea
 
 The stub always shows one quote of the itinerary with the time it was quoted: the search's, or the last re-price that confirmed or changed it, unless the search's is newer (a "Reload" after it). A reopened card keeps that quote while "Checking the price…" runs; an alternative is another itinerary and leaves the stub as it was.
 
-The API decides `CONFIRMED` or `PRICE_CHANGED` against the price it has stored, which a cached search page (up to 5 minutes) may not show yet: after another customer's re-price changed it, the API confirms the new price. So the card words a `CONFIRMED` answer against the price its stub showed when it was opened, and a different one reads as a change (final review, code I2).
+The API decides `CONFIRMED` or `PRICE_CHANGED` against the price it has stored, which a cached search page (up to 5 minutes) may not show yet: after another customer's re-price changed it, the API confirms the new price, or reports a change from a price this card never showed. So the card words a `CONFIRMED` or `PRICE_CHANGED` answer against the price its stub showed when it was opened: a different price reads as a change from that one, the same price as confirmed, and the API's `previousPrice` is not shown (final review, code I2; the user's decision of 2026-11-16, option A).
 
 ### Provider status (`/admin`, admin only)
 
