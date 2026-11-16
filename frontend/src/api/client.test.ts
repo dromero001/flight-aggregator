@@ -61,6 +61,61 @@ test('renews the session once when an admin call answers 401', async () => {
   expect(auth.signinRedirect).not.toHaveBeenCalled();
 });
 
+test('shares one renewal among admin calls that answer 401 at once', async () => {
+  // The status poll and "Run ingestion now" both carried the token that has just expired.
+  const seen = recordAuthorization((authorization) =>
+    authorization === 'Bearer renewed-token'
+      ? HttpResponse.json(REPORT)
+      : new HttpResponse(null, { status: 401 }),
+  );
+  const auth = fakeAuth();
+  auth.getUser.mockResolvedValue(adminUser('expired-token', { expired: true }));
+  // Slow enough that the second 401 arrives while the first renewal is still running.
+  auth.signinSilent.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(adminUser('renewed-token'));
+        }, 50);
+      }),
+  );
+  const client = adminClient(auth);
+
+  const answers = await Promise.all([
+    client.GET('/api/admin/status'),
+    client.GET('/api/admin/status'),
+  ]);
+
+  expect(answers.map(({ data }) => data)).toEqual([REPORT, REPORT]);
+  expect(auth.signinSilent).toHaveBeenCalledOnce();
+  expect(seen.filter((each) => each === 'Bearer renewed-token')).toHaveLength(2);
+});
+
+test('signs in again once when admin calls that answer 401 at once cannot renew', async () => {
+  const seen = recordAuthorization(() => new HttpResponse(null, { status: 401 }));
+  const auth = fakeAuth();
+  auth.getUser.mockResolvedValue(adminUser('expired-token', { expired: true }));
+  auth.signinSilent.mockImplementation(
+    () =>
+      new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('invalid_grant'));
+        }, 50);
+      }),
+  );
+  const client = adminClient(auth);
+
+  const answers = await Promise.allSettled([
+    client.GET('/api/admin/status'),
+    client.GET('/api/admin/status'),
+  ]);
+
+  expect(answers.map(({ status }) => status)).toEqual(['rejected', 'rejected']);
+  expect(auth.signinSilent).toHaveBeenCalledOnce();
+  expect(auth.signinRedirect).toHaveBeenCalledOnce();
+  expect(seen).toEqual(['Bearer expired-token', 'Bearer expired-token']);
+});
+
 test('signs in again when the renewal fails', async () => {
   // Keycloak's session ended too, so the refresh token is refused.
   const seen = recordAuthorization(() => new HttpResponse(null, { status: 401 }));
