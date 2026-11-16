@@ -3,6 +3,7 @@ package com.flightaggregator.application.port.in;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 import java.time.Duration;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -18,6 +19,14 @@ class RateLimitTest {
     assertThatIllegalArgumentException()
         .isThrownBy(() -> new RateLimit(60, Duration.parse(window)))
         .withMessageContaining("window");
+  }
+
+  /** A limit set without its window, as a setting may be, is refused by name, not by a bare NPE. */
+  @Test
+  void refusesAMissingWindow() {
+    assertThatIllegalArgumentException()
+        .isThrownBy(() -> new RateLimit(60, null))
+        .withMessage("A rate limit needs a window");
   }
 
   /** A limit of no request at all would refuse every request: a setting's mistake, not a limit. */

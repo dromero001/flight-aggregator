@@ -14,6 +14,9 @@ public record RateLimit(int requests, Duration window) {
       throw new IllegalArgumentException(
           "A rate limit must admit at least 1 request, not " + requests);
     }
+    if (window == null) {
+      throw new IllegalArgumentException("A rate limit needs a window");
+    }
     if (window.toMillis() < 1) {
       throw new IllegalArgumentException(
           "A rate limit's window must be 1 ms or more, not " + window);
