@@ -296,6 +296,8 @@ Alertmanager, SLO burn-rate alerts and a trace id in error responses (rejected, 
 
 - [ ] **Step 1: draft** with the `writing-clearly-and-concisely` skill (as `docs/ai/README.md` lists it for this file). (§1)
 - [ ] **Step 2: check.** Every §2 item has its section; every relative link resolves (each `](…)` target exists); each figure matches its progress report. Record. (§1 "justifies every decision")
+**Decided by the user (2026-11-16, about 09:00), review point 1:** the cadence stays at 30 minutes, argued as a setting tuned on the cost of refreshing the inventory (provider downloads, a new generation that empties the cache) against the measured use of the searches; the paragraph cites spec §6.4 as rewritten, both measured runs, and says demand per route is not measured. Review points 2–4 (hit ratio, the three inferred rejections, the presentation) are still open.
+
 - [ ] **Step 3: the user reviews it (👤);** fixes; gates green, review, commit: `git commit -m "Write SOLUTION.md: architecture, modelling, pagination at 1M, assumptions, limitations and AI usage"`. (§7 Monday)
 
 ### Task 10: Delivery: the final reviews, the README and the clean-clone check 👤

@@ -184,11 +184,11 @@ All values are configurable, and will be tuned by measuring how long the real in
 
 | Setting | Value | Why |
 |---|---|---|
-| Full ingestion | every **30 min** | Rebuilding ~1M itineraries takes minutes; running it more often would keep the database permanently busy |
+| Full ingestion | every **30 min** (`ingestion.interval`, a setting) | A run costs the database little (plan 4 measured 12–14 s; plan 5 Task 13, 24–28 s on compose). Its cost is elsewhere: each run downloads every provider's whole inventory (with a real GDS, calls under a quota or paid for) and starts a new generation, which empties the Valkey cache. What people search is kept fresher by the per-origin refresh, and the price at purchase by the re-price (§6.3), so the rest can wait 30 minutes. The value is tuned on measurements: the cost of a run (`ingestion.duration`, `provider.calls`) against how searches use the inventory (`http.server.requests`, the cache hit ratio). Demand per route is not measured yet. (The user's decision of 2026-11-16; the earlier reason, "rebuilding takes minutes", did not survive plan 4's measurement.) |
 | Per-origin freshness threshold | **10 min** | A search on an origin older than this triggers a background refresh of that origin's legs (deduplicated with `SET NX`, §6.2) |
 | Valkey result TTL | **5 min** | Below the threshold, so the cache never extends staleness |
 
-Resulting guarantees: origins that people search are at most ~10 min old; the rest at most ~30 min. The re-price on selection (§6.3) protects the moment of purchase regardless of these bounds. The ingestion duration is exposed as a metric, so that the 30-minute cadence can be checked against it.
+Resulting guarantees: origins that people search are at most ~10 min old; the rest at most ~30 min. The re-price on selection (§6.3) protects the moment of purchase regardless of these bounds. The ingestion duration, the provider calls, the search requests and the cache hit ratio are exposed as metrics, so that the 30-minute cadence can be tuned against them.
 
 ### 6.5 Provider outages (decided in the grill-me, Q5)
 
