@@ -53,7 +53,10 @@ test('completes the sign-in on the way back and cleans the URL', async () => {
   expect(await screen.findByText('The admin screen')).toBeInTheDocument();
   expect(auth.signinRedirectCallback).toHaveBeenCalledOnce();
   expect(auth.signinRedirect).not.toHaveBeenCalled();
-  expect(screen.getByTestId('location')).toHaveTextContent(/^\/admin$/);
+  // The URL is replaced without being awaited, so on a loaded machine it can land after the screen.
+  await waitFor(() => {
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/admin$/);
+  });
 });
 
 test('shows a sign-in failure', async () => {
