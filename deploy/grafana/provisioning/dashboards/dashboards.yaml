@@ -1,0 +1,11 @@
+# The dashboards (spec 6.10), provisioned from deploy/grafana/dashboards/, which compose mounts at
+# the path below. Read-only: a change in the UI cannot be saved, and the files stay the source.
+apiVersion: 1
+
+providers:
+  - name: flight-aggregator
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards
