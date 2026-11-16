@@ -25,7 +25,7 @@ flowchart LR
 | `POST /api/itineraries/{id}/reprice` | public, 10 a minute per address | `200` `CONFIRMED`, `PRICE_CHANGED` or `ALTERNATIVE`; `400` not an id; `404` not on sale; `429`; `503` nothing confirmable |
 | `GET /api/admin/status` | `ADMIN` | `200` the inventory's and each provider's status; `401`; `403` |
 | `POST /api/admin/ingestions` | `ADMIN` | `202` a run started; `409` a run is going on; `401`; `403` |
-| `GET /actuator/health` | public (status only; components for `ADMIN`) | `200` `UP` or `DEGRADED`; `503` `DOWN` |
+| `GET /health` | public (status only; components for `ADMIN`) | `200` `UP` or `DEGRADED`; `503` `DOWN` |
 | `GET /v3/api-docs` | public | the OpenAPI contract |
 
 Every error the application writes is an RFC 9457 problem (`application/problem+json`) whose `detail` names the parameter or says what to do; a `429` and a `503` carry `Retry-After` in whole seconds. A `401` or `403` is Spring Security's bearer challenge: a `WWW-Authenticate` header and no body. The contract documents each of these on its own operation, the admin bearer scheme (`bearer`, a JWT) on the admin operations only, and `OpenApiContractTest` fails when the served contract drifts from the committed file or loses any of them.
@@ -56,9 +56,11 @@ Valkey is a cache and a coordinator, never a source of truth (§6.2). A failed c
 
 ## Admin side and health
 
-The admin endpoints and the other Actuator endpoints need a JWT whose `realm_access.roles` holds `ADMIN`, signed by Keycloak's realm `flight-aggregator` (§6.6). How to get a token with the `admin-service` client is in the [README](../../README.md#admin-access). `GET /api/admin/status` shows the generation, when it was published, when the next run is due, and each provider's health, breaker state, newest quote, legs and discarded records (Q7-B: recorded at the end of every run, so every instance shows the same). `POST /api/admin/ingestions` starts a run under the same ShedLock lock as the scheduled one.
+The admin endpoints need a JWT whose `realm_access.roles` holds `ADMIN`, signed by Keycloak's realm `flight-aggregator` (§6.6). How to get a token with the `admin-service` client is in the [README](../../README.md#admin-access). `GET /api/admin/status` shows the generation, when it was published, when the next run is due, and each provider's health, breaker state, newest quote, legs and discarded records (Q7-B: recorded at the end of every run, so every instance shows the same). `POST /api/admin/ingestions` starts a run under the same ShedLock lock as the scheduled one.
 
-`/actuator/health` is `DEGRADED`, still `200`, when a provider is not `UP` (its last run kept its offers, or its breaker is not closed) or Valkey does not answer, and `DOWN` (`503`) only when PostgreSQL is (Q8-A). Compose's health check of the app accepts `UP` and `DEGRADED`.
+`/health` is `DEGRADED`, still `200`, when a provider is not `UP` (its last run kept its offers, or its breaker is not closed) or Valkey does not answer, and `DOWN` (`503`) only when PostgreSQL is (Q8-A). Compose's health check of the app accepts `UP` and `DEGRADED`.
+
+Actuator itself is on the management port, 8079, reached only on compose's network and open there with no token: `/actuator/health` (the same status), `/actuator/metrics` and `/actuator/prometheus`, which Prometheus scrapes (§6.6, the user's decision of 2026-11-15). The API port serves no Actuator endpoint. Its `/health` is the additional path of a health group (`management.endpoint.health.group.api`), which takes every component and the root health's settings; Boot accepts only one segment there, hence `/health` and not `/actuator/health` (plan 7, the user's decision of 2026-11-16).
 
 ## Measured on the real volume
 
