@@ -23,13 +23,13 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Q8-A's one cause of {@code DOWN}, on a real server: with PostgreSQL stopped, {@code
- * /actuator/health} answers Boot's 503 {@code DOWN} within the 5 s compose gives its health check
- * (the {@code app} service's {@code timeout}), so the orchestrator reads a status, not a timeout.
- * Right after the stop, a probe finds pooled connections that fail at once; the slow case is the
- * one after, when the pool holds none and every read waits for a new one, so the probes are timed
- * from then on. The test stops a PostgreSQL of its own, never the one the other test classes share,
- * and closes its context afterwards.
+ * Q8-A's one cause of {@code DOWN}, on a real server: with PostgreSQL stopped, the API port's
+ * {@code /health} (plan 7 Task 2) answers Boot's 503 {@code DOWN} within the 5 s compose gives its
+ * health check (the {@code app} service's {@code timeout}), so the orchestrator reads a status, not
+ * a timeout. Right after the stop, a probe finds pooled connections that fail at once; the slow
+ * case is the one after, when the pool holds none and every read waits for a new one, so the probes
+ * are timed from then on. The test stops a PostgreSQL of its own, never the one the other test
+ * classes share, and closes its context afterwards.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -95,7 +95,7 @@ class HealthWithoutPostgresTest {
   private HttpResponse<String> health() throws Exception {
     try (HttpClient http = HttpClient.newHttpClient()) {
       return http.send(
-          HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/actuator/health"))
+          HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/health"))
               .timeout(Duration.ofMinutes(2))
               .build(),
           HttpResponse.BodyHandlers.ofString());
