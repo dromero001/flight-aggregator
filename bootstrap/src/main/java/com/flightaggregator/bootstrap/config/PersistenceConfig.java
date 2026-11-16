@@ -1,16 +1,19 @@
 package com.flightaggregator.bootstrap.config;
 
 import com.flightaggregator.adapter.persistence.JdbcAirportCatalogue;
+import com.flightaggregator.adapter.persistence.JdbcIngestionLock;
 import com.flightaggregator.adapter.persistence.JdbcIngestionStatusStore;
 import com.flightaggregator.adapter.persistence.JdbcItineraryReader;
 import com.flightaggregator.adapter.persistence.JdbcItineraryRepository;
 import com.flightaggregator.adapter.persistence.JdbcOfferStore;
 import com.flightaggregator.application.port.out.AirportCatalogue;
+import com.flightaggregator.application.port.out.IngestionLock;
 import com.flightaggregator.application.port.out.IngestionStatusStore;
 import com.flightaggregator.application.port.out.ItineraryReader;
 import com.flightaggregator.application.port.out.ItineraryRepository;
 import com.flightaggregator.application.port.out.OfferStore;
 import com.flightaggregator.application.port.out.StoreTransactions;
+import com.flightaggregator.bootstrap.ingestion.IngestionJob;
 import java.util.function.Supplier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -73,5 +76,11 @@ class PersistenceConfig {
   @Bean
   IngestionStatusStore ingestionStatusStore(DataSourceTransactionManager transactions) {
     return new JdbcIngestionStatusStore(transactions);
+  }
+
+  /** The ingestion job's lock (SchedulingConfig), read for the status screen. */
+  @Bean
+  IngestionLock ingestionLock(DataSourceTransactionManager transactions) {
+    return new JdbcIngestionLock(transactions, IngestionJob.LOCK);
   }
 }

@@ -61,6 +61,7 @@ class AdminControllerTest {
             7,
             Optional.of(Instant.parse("2026-11-20T08:01:00Z")),
             Optional.empty(),
+            false,
             List.of(
                 new ProviderStatus(
                     Provider.ALPHA,

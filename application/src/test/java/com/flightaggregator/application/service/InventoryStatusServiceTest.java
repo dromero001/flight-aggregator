@@ -15,6 +15,7 @@ import com.flightaggregator.application.port.in.ProviderStatus.Health;
 import com.flightaggregator.application.port.in.StatusReport;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.FailureReason;
+import com.flightaggregator.application.port.out.IngestionLock;
 import com.flightaggregator.application.port.out.IngestionStatusStore;
 import com.flightaggregator.application.port.out.LatestRun;
 import com.flightaggregator.application.port.out.ProviderBreakers.BreakerState;
@@ -38,6 +39,7 @@ class InventoryStatusServiceTest {
   private static final Instant RUN_END = Instant.parse("2026-11-20T08:01:30Z");
   private static final Instant NEWEST_QUOTE = Instant.parse("2026-11-20T08:00:40Z");
   private static final Duration INTERVAL = Duration.ofMinutes(30);
+  private static final IngestionLock NOT_RUNNING = () -> false;
 
   private final InMemoryIngestionStatusStore statuses = new InMemoryIngestionStatusStore();
 
@@ -67,7 +69,11 @@ class InventoryStatusServiceTest {
         RUN_END);
     InventoryStatusService service =
         new InventoryStatusService(
-            statuses, new ScriptedItineraryReader(7, PUBLISHED_AT), provider -> breaker, INTERVAL);
+            statuses,
+            new ScriptedItineraryReader(7, PUBLISHED_AT),
+            provider -> breaker,
+            NOT_RUNNING,
+            INTERVAL);
 
     StatusReport report = service.status();
 
@@ -85,6 +91,20 @@ class InventoryStatusServiceTest {
                 stale));
   }
 
+  /** A run holds the ingestion's lock while it goes on, on whichever instance runs it. */
+  @Test
+  void reportsAnIngestionGoingOn() {
+    InventoryStatusService service =
+        new InventoryStatusService(
+            statuses,
+            new ScriptedItineraryReader(7, PUBLISHED_AT),
+            provider -> CLOSED,
+            () -> true,
+            INTERVAL);
+
+    assertThat(service.status().ingestionRunning()).isTrue();
+  }
+
   /** §6.4: the next run starts the interval after the last one ended. */
   @Test
   void computesTheNextIngestion() {
@@ -93,7 +113,11 @@ class InventoryStatusServiceTest {
         RUN_END);
     InventoryStatusService service =
         new InventoryStatusService(
-            statuses, new ScriptedItineraryReader(7, PUBLISHED_AT), provider -> CLOSED, INTERVAL);
+            statuses,
+            new ScriptedItineraryReader(7, PUBLISHED_AT),
+            provider -> CLOSED,
+            NOT_RUNNING,
+            INTERVAL);
 
     assertThat(service.status().nextIngestionAt()).contains(RUN_END.plus(INTERVAL));
   }
@@ -116,6 +140,7 @@ class InventoryStatusServiceTest {
                 RUN_END.plus(INTERVAL)),
             new ScriptedItineraryReader(7, PUBLISHED_AT),
             provider -> CLOSED,
+            NOT_RUNNING,
             INTERVAL);
 
     StatusReport report = service.status();
@@ -135,10 +160,11 @@ class InventoryStatusServiceTest {
             statuses,
             new ScriptedItineraryReader(7, PUBLISHED_AT).beforeTheFirstPublication(),
             provider -> CLOSED,
+            NOT_RUNNING,
             INTERVAL);
 
     assertThat(service.status())
-        .isEqualTo(new StatusReport(0, Optional.empty(), Optional.empty(), List.of()));
+        .isEqualTo(new StatusReport(0, Optional.empty(), Optional.empty(), false, List.of()));
   }
 
   /** A store in which a run, the provider's next, is recorded right after its first read ends. */
