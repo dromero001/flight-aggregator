@@ -23,6 +23,11 @@ export class ApiError extends Error implements ApiErrorFields {
   }
 }
 
+/** The wait a rate limit asks for, in seconds; none for any other failure, or a 429 without one. */
+export function rateLimitWait(error: Error | null): number | undefined {
+  return error instanceof ApiError && error.status === 429 ? error.retryAfterSeconds : undefined;
+}
+
 /**
  * `Retry-After` in seconds: whole seconds, as the API sends it, or an HTTP date (RFC 9110), which a
  * proxy may send instead. Anything else is left out, so no screen shows "NaN seconds" or a

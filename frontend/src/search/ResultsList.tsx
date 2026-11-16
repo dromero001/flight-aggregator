@@ -1,4 +1,4 @@
-import { ApiError } from '../api/apiError';
+import { ApiError, rateLimitWait } from '../api/apiError';
 import { ItineraryCard } from '../itinerary/ItineraryCard';
 import { useNow } from '../time/useNow';
 import { useWaitOver } from '../time/useWaitOver';
@@ -9,11 +9,6 @@ import { useItinerarySearch, useSearchResets } from './useItinerarySearch';
 
 /** How often the cards' "Updated N min ago" is worked out again (Q7). */
 const FRESHNESS_TICK_MS = 60_000;
-
-/** The wait a rate limit asks for, in seconds; none for any other failure, or a 429 without one. */
-function rateLimitWait(error: Error | null): number | undefined {
-  return error instanceof ApiError && error.status === 429 ? error.retryAfterSeconds : undefined;
-}
 
 /**
  * What a failed search tells the customer (plan 6, Q7), and whether "Try again" (E9) may help: a
