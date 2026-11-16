@@ -13,6 +13,7 @@ import {
   tempoExploreUrl,
   tempoTrace,
 } from './telemetry.js';
+import { RUN_PUBLISHED_WITHIN_MS } from './ingestion.js';
 
 // The three signals end to end (spec 6.10), read through Grafana with no login, as the team reads
 // them (spec 6.6). Each read polls for up to a minute, the time telemetry may take to arrive.
@@ -20,12 +21,6 @@ test.describe.configure({ timeout: 180_000 });
 
 /** The application's logs in Loki: their one stream label (plan 7 Task 5). */
 const APP_LOGS = '{service_name="flight-aggregator"}';
-
-/**
- * A run takes about half a minute (search-api.md), but two and a half minutes on a laptop running
- * a second stack beside this one (plan 7 Task 7's run).
- */
-const RUN_PUBLISHED_WITHIN_MS = 240_000;
 
 /** The alerts of deploy/prometheus/rules, in alphabetical order. */
 const ALERTS = [
@@ -154,21 +149,27 @@ test('lists the alert rules on the dashboard', async ({ page }) => {
  */
 async function runAnIngestion(request: APIRequestContext): Promise<number> {
   const headers = { Authorization: `Bearer ${await adminToken()}` };
-  await expect
-    .poll(async () => (await request.post('/api/admin/ingestions', { headers })).status(), {
-      message: 'a run started (202)',
-      intervals: [5_000],
-      timeout: RUN_PUBLISHED_WITHIN_MS,
-    })
-    .toBe(202);
-
-  // The run holds the ingestion's lock, so the next generation is this run's.
   const generation = async () => {
     const status = await request.get('/api/admin/status', { headers });
     expect(status.status()).toBe(200);
     return ((await status.json()) as { generation: number }).generation;
   };
-  const published = (await generation()) + 1;
+
+  // The generation is read before each POST: read after the 202, a run that had already published
+  // would leave the test waiting for a generation no run makes (review group 1, M5).
+  let before = 0;
+  await expect
+    .poll(
+      async () => {
+        before = await generation();
+        return (await request.post('/api/admin/ingestions', { headers })).status();
+      },
+      { message: 'a run started (202)', intervals: [5_000], timeout: RUN_PUBLISHED_WITHIN_MS },
+    )
+    .toBe(202);
+
+  // The run holds the ingestion's lock, so the next generation is this run's.
+  const published = before + 1;
   await expect
     .poll(generation, { message: 'the run published', timeout: RUN_PUBLISHED_WITHIN_MS })
     .toBe(published);

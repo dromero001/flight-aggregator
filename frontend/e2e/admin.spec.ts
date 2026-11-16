@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { expectNoAxeViolations } from './axe.js';
+import { RUN_PUBLISHED_WITHIN_MS } from './ingestion.js';
 
 // The realm's demo admin (README, "Admin access"; deploy/keycloak/flight-aggregator-realm.json),
 // whose password compose takes from ADMIN_USER_PASSWORD, with the same demo default.
@@ -39,10 +40,8 @@ test('fits the provider status on a phone', async ({ page }) => {
   expect(box && box.x + box.width, 'the table ends within the phone').toBeLessThanOrEqual(390);
 });
 
-/** A run takes about half a minute (search-api.md); the screen reads the status every 10 s. */
-const RUN_PUBLISHED_WITHIN_MS = 90_000;
-
 test('runs an ingestion on demand', async ({ page }) => {
+  // The screen reads the status every 10 s, so it sees the run's generation soon after it publishes.
   test.setTimeout(RUN_PUBLISHED_WITHIN_MS + 30_000);
   await signIn(page);
   const generationLine = page.getByText(/^Generation \d+$/);
