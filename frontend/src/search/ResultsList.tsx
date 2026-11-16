@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../api/apiError';
 import { ItineraryCard } from '../itinerary/ItineraryCard';
-import { useNow } from '../itinerary/useNow';
+import { useNow } from '../time/useNow';
 import styles from './ResultsList.module.css';
 import { mergePages } from './mergePages';
 import type { SearchCriteria } from './searchParams';

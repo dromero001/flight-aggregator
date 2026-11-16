@@ -1,17 +1,15 @@
 import type { StatusReport } from '../api/types';
-import { timeAgo } from '../itinerary/format';
-import { useNow } from '../itinerary/useNow';
+import { minutesUntil, timeAgo } from '../time/relative';
+import { useNow } from '../time/useNow';
 import { adminFailure } from './adminFailure';
 import { ProviderTable } from './ProviderTable';
 import { RunIngestionButton } from './RunIngestionButton';
 import styles from './StatusPage.module.css';
 import { STATUS_REFRESH_MS, useInventoryStatus } from './useInventoryStatus';
 
-const MILLIS_PER_MINUTE = 60_000;
-
 /** "Next ingestion in 18 min", or "Next ingestion due" once its time has come (plan 6, Q7). */
 function nextIngestion(at: string, now: Date): string {
-  const minutes = Math.ceil((new Date(at).getTime() - now.getTime()) / MILLIS_PER_MINUTE);
+  const minutes = minutesUntil(at, now);
   return minutes > 0 ? `Next ingestion in ${String(minutes)} min` : 'Next ingestion due';
 }
 
