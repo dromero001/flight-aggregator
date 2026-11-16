@@ -16,7 +16,9 @@ import org.springframework.http.ResponseEntity;
 
 /**
  * The public paths on a real server, where an error goes through the servlet container's error
- * page: MockMvc never makes that round trip, so {@code SecurityTest} cannot see it.
+ * page, and where a client follows redirects as a browser does (Swagger UI's page is a redirect
+ * from springdoc): MockMvc makes neither round trip, so {@code SecurityTest} cannot see them. The
+ * key endpoint names a port where nothing listens, so the application runs as with Keycloak down.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -27,7 +29,8 @@ import org.springframework.http.ResponseEntity;
       "providers.beta.api-key=beta-key",
       "providers.gamma.base-url=http://localhost:1/",
       "providers.gamma.api-key=gamma-key",
-      "ingestion.schedule.enabled=false"
+      "ingestion.schedule.enabled=false",
+      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/certs"
     })
 @ImportTestcontainers(PostgresContainers.class)
 @AutoConfigureTestRestTemplate
@@ -68,6 +71,14 @@ class PublicAccessOverHttpTest {
   @ValueSource(strings = {"/api/admin/status", "/v3/api-docs.yaml"})
   void swaggerUiOpensNothingElse(String path) {
     assertThat(http.getForEntity(path, String.class).getStatusCode())
+        .isEqualTo(HttpStatus.UNAUTHORIZED);
+  }
+
+  /** Swagger UI is opened to GET alone: any other method on its paths still asks for a token. */
+  @Test
+  void swaggerUiIsOpenToGetAlone() {
+    assertThat(
+            http.postForEntity("/v3/api-docs/swagger-config", null, String.class).getStatusCode())
         .isEqualTo(HttpStatus.UNAUTHORIZED);
   }
 
