@@ -1560,3 +1560,41 @@ The double review (`.superpowers/sdd/2026-11-15-search-api/task-13-review.md`) a
 - C1: which admin paths need a token is set in `SecurityConfig` and stated again in `AdminController`; no test checks one against the other.
 - C2: each operation's statuses sit in three parallel test tables, and the first status is assumed to be the success one.
 - C3: `compose.yaml`'s first line and `ingestion.md`'s "Running it" list only part of the stack.
+
+## Extra E2 (Swagger UI) — evidence
+
+Plan 5's extra E2, approved by the user on 2026-11-15 (the plan's status line) and built by no task until now; the night rules in `continuation.md` say approved extras are built. Built in its own worktree from `main` at `396bc6c`. One test at a time; a test green on its first run is shown red by a labelled mutation of the production code, then restored.
+
+**Version (§6.1).** `org.springdoc:springdoc-openapi-starter-webmvc-ui` **3.2.0**, the release of the `-api` starter Task 9 pinned, through the same `springdoc` version in the catalog. Checked on 2026-11-16 against Maven Central:
+- `maven-metadata.xml` gives `<latest>3.2.0</latest>` and `<release>3.2.0</release>`; the list ends `3.1.0, 3.1.1, 3.2.0`, with no newer milestone or release candidate.
+- The 3.2.0 POM's `Last-Modified` is Sat, 24 Oct 2026 14:13:30 GMT: 23 days old, past the 14-day rule.
+- It brings `springdoc-openapi-starter-webmvc-api` 3.2.0 (the same), `org.webjars:swagger-ui` 5.34.0 and `webjars-locator-lite` 1.1.5, the Boot BOM's (`./gradlew :bootstrap:dependencies --configuration runtimeClasspath`).
+
+Design notes:
+- **`runtimeOnly` in `bootstrap`**, not in `adapters/web`. No code uses the UI; it is the application's, like Flyway's PostgreSQL module. The web adapter keeps only the contract (`-api`), so its tests and Task 9's note C1 (the `api` dependency) are untouched.
+- **Three public paths, GET only** (`SecurityConfig`): `/swagger-ui.html` (springdoc redirects it to `/swagger-ui/index.html`), `/swagger-ui/**` (the page and its assets) and `/v3/api-docs/swagger-config` (the configuration the page reads first, which names `/v3/api-docs`). Nothing else opens: the operations the UI tries call the API's own paths, so the admin ones answer 401 without a token. The contract's bearer scheme comes with Task 13; until it is on `main`, Swagger UI shows no "Authorize" button.
+- **No existing test pinned 401 on these paths.** Task 9's check that `/swagger-ui.html` and `/v3/api-docs/swagger-config` answer 401 was a throwaway, not committed (Task 9's evidence above), so no test had to change.
+- **The tests are in `PublicAccessOverHttpTest`**, the real-server test of the public paths: the client follows springdoc's redirect as a browser does, which MockMvc would not.
+
+Red → green:
+1. `PublicAccessOverHttpTest.swaggerUiAnswersAnAnonymousClient` (GET `/swagger-ui.html` → 200, the page titled "Swagger UI").
+   - Red: `expected: 200 OK but was: 401 UNAUTHORIZED`.
+   - Green: the starter in `bootstrap/build.gradle.kts` (and the catalog), and `/swagger-ui.html` and `/swagger-ui/**` permitted for GET.
+2. `swaggerUiConfigurationAnswersAnAnonymousClient` (GET `/v3/api-docs/swagger-config` → 200, naming `"url":"/v3/api-docs"`).
+   - Red: `expected: 200 OK but was: 401 UNAUTHORIZED`.
+   - Green: `/v3/api-docs/swagger-config` added to the same GET matcher.
+3. `swaggerUiOpensNothingElse` (parameterised: anonymous GET `/api/admin/status` and `/v3/api-docs.yaml` → 401). Green on its first run, as expected: it pins what step 1 and 2 must not open.
+   - Mutation M1 (`/v3/api-docs/swagger-config` widened to `/v3/**`): red, `[2] path = "/v3/api-docs.yaml" expected: 401 UNAUTHORIZED but was: 200 OK`.
+   - Mutation M2 (`/swagger-ui/**` widened to `/**`): red, `[1] path = "/api/admin/status" … but was: 200 OK` and `[2] … "/v3/api-docs.yaml" … but was: 200 OK`; the existing `anAnonymousAdminCallIsStillAskedForAToken` failed too.
+   - Both restored (file compared with its copy).
+
+**The contract did not change.** `OpenApiContractTest.servedContractMatchesTheCommittedOne` passed with the UI on the classpath, and `docs/architecture/openapi.json` is untouched, so `frontend/src/api/schema.d.ts` needs no regeneration.
+
+Docs: the README's "Admin access" lists the three paths among the public ones and says where Swagger UI is (`http://localhost:8080/swagger-ui.html`); `SecurityConfig`'s Javadoc names it.
+
+Gates:
+- `./gradlew build` exited 0. Tests: `application` 109, `adapters/persistence` 123, `adapters/web` 69, `bootstrap` 188 (four added: two tests and a parameterised one of two rows), `adapters/providers` 197, `domain` 91, architecture 39, `mock-gds` 201. None failed or was skipped. Docker shared with other agents; no container failed to connect.
+- Thermo-nuclear self-review: one finding, fixed (the `SecurityConfig` comment said the admin operations were "asked for by each operation's own path"; it now says the UI calls the API's own paths). Considered and kept: deriving the paths from springdoc's `springdoc.swagger-ui.path` setting (a mechanism for a setting nobody changes; the tests catch a mismatch); a separate filter chain for the UI (one more chain for three matchers).
+
+Extras for the user to decide:
+- **The "Authorize" button and a README line for it** once Task 13's bearer scheme is on `main`: Swagger UI then lets an admin paste the client-credentials token and try the admin operations. Value: the admin side tried from the UI. Cost: one README sentence. Left out unless you approve.
