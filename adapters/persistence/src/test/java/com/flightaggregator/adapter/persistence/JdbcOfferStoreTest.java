@@ -21,6 +21,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -117,37 +118,12 @@ class JdbcOfferStoreTest {
     Leg runMadrid = leg(ALPHA, 1, "2026-11-20T07:00:00Z", "55.00");
     Leg runBarcelona = from("BCN", leg(ALPHA, 2, "2026-11-20T08:00:00Z", "60.00"));
     Leg refreshMadrid = leg(ALPHA, 1, "2026-11-20T07:00:00Z", "80.00");
-    DataSourceTransactionManager runTransactions = new DataSourceTransactionManager(dataSource);
-    CompletableFuture<Integer> runBackend = new CompletableFuture<>();
-    CountDownLatch refreshWaits = new CountDownLatch(1);
-    CompletableFuture<Void> runCommitted =
-        CompletableFuture.runAsync(
-            () ->
-                new TransactionTemplate(runTransactions)
-                    .executeWithoutResult(
-                        status -> {
-                          new JdbcOfferStore(runTransactions)
-                              .replace(ALPHA, List.of(runMadrid, runBarcelona));
-                          runBackend.complete(
-                              JdbcClient.create(dataSource)
-                                  .sql("SELECT pg_backend_pid()")
-                                  .query(Integer.class)
-                                  .single());
-                          try {
-                            refreshWaits.await(10, TimeUnit.SECONDS);
-                          } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            throw new IllegalStateException(e);
-                          }
-                        }));
-    int backend = runBackend.get(10, TimeUnit.SECONDS);
+    HeldWrite run = new HeldWrite(runs -> runs.replace(ALPHA, List.of(runMadrid, runBarcelona)));
     CompletableFuture<Void> refresh =
         CompletableFuture.runAsync(
             () -> store.replaceFrom(ALPHA, new Airport("MAD"), List.of(refreshMadrid)));
 
-    awaitAStatementBlockedBy(JdbcClient.create(dataSource), backend);
-    refreshWaits.countDown();
-    runCommitted.get(10, TimeUnit.SECONDS);
+    run.commitOnceAnotherWriteWaits();
     refresh.get(10, TimeUnit.SECONDS);
 
     assertThat(store.offers(ALPHA)).containsExactly(runBarcelona, refreshMadrid);
@@ -164,36 +140,13 @@ class JdbcOfferStoreTest {
     Leg refreshMadrid = leg(ALPHA, 1, "2026-11-20T07:00:00Z", "80.00");
     Leg runMadrid = leg(ALPHA, 1, "2026-11-20T07:00:00Z", "55.00");
     Leg runBarcelona = from("BCN", leg(ALPHA, 2, "2026-11-20T08:00:00Z", "60.00"));
-    DataSourceTransactionManager refreshTransactions = new DataSourceTransactionManager(dataSource);
-    CompletableFuture<Integer> refreshBackend = new CompletableFuture<>();
-    CountDownLatch runWaits = new CountDownLatch(1);
-    CompletableFuture<Void> refreshCommitted =
-        CompletableFuture.runAsync(
-            () ->
-                new TransactionTemplate(refreshTransactions)
-                    .executeWithoutResult(
-                        status -> {
-                          new JdbcOfferStore(refreshTransactions)
-                              .replaceFrom(ALPHA, new Airport("MAD"), List.of(refreshMadrid));
-                          refreshBackend.complete(
-                              JdbcClient.create(dataSource)
-                                  .sql("SELECT pg_backend_pid()")
-                                  .query(Integer.class)
-                                  .single());
-                          try {
-                            runWaits.await(10, TimeUnit.SECONDS);
-                          } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            throw new IllegalStateException(e);
-                          }
-                        }));
-    int backend = refreshBackend.get(10, TimeUnit.SECONDS);
+    HeldWrite refresh =
+        new HeldWrite(
+            refreshes -> refreshes.replaceFrom(ALPHA, new Airport("MAD"), List.of(refreshMadrid)));
     CompletableFuture<Void> run =
         CompletableFuture.runAsync(() -> store.replace(ALPHA, List.of(runMadrid, runBarcelona)));
 
-    awaitAStatementBlockedBy(JdbcClient.create(dataSource), backend);
-    runWaits.countDown();
-    refreshCommitted.get(10, TimeUnit.SECONDS);
+    refresh.commitOnceAnotherWriteWaits();
     run.get(10, TimeUnit.SECONDS);
 
     assertThat(store.offers(ALPHA)).containsExactly(runMadrid, runBarcelona);
@@ -351,5 +304,48 @@ class JdbcOfferStoreTest {
         .hasMessage("second offer failed");
 
     assertThat(store.offers(ALPHA)).containsExactly(old);
+  }
+
+  /**
+   * A write through a store of its own, in a transaction of its own on another thread, held open
+   * once written: the constructor returns then, and {@link #commitOnceAnotherWriteWaits} lets it
+   * commit.
+   */
+  private final class HeldWrite {
+
+    private final CompletableFuture<Integer> backend = new CompletableFuture<>();
+    private final CountDownLatch released = new CountDownLatch(1);
+    private final CompletableFuture<Void> committed;
+
+    HeldWrite(Consumer<JdbcOfferStore> write) throws Exception {
+      DataSourceTransactionManager transactions = new DataSourceTransactionManager(dataSource);
+      committed =
+          CompletableFuture.runAsync(
+              () ->
+                  new TransactionTemplate(transactions)
+                      .executeWithoutResult(
+                          status -> {
+                            write.accept(new JdbcOfferStore(transactions));
+                            backend.complete(
+                                JdbcClient.create(dataSource)
+                                    .sql("SELECT pg_backend_pid()")
+                                    .query(Integer.class)
+                                    .single());
+                            try {
+                              released.await(10, TimeUnit.SECONDS);
+                            } catch (InterruptedException e) {
+                              Thread.currentThread().interrupt();
+                              throw new IllegalStateException(e);
+                            }
+                          }));
+      backend.get(10, TimeUnit.SECONDS);
+    }
+
+    /** Waits until a statement of another connection waits for this write, then commits it. */
+    void commitOnceAnotherWriteWaits() throws Exception {
+      awaitAStatementBlockedBy(JdbcClient.create(dataSource), backend.get());
+      released.countDown();
+      committed.get(10, TimeUnit.SECONDS);
+    }
   }
 }
