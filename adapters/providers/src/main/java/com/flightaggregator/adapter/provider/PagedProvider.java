@@ -21,12 +21,13 @@ import org.springframework.util.ConcurrencyThrottleSupport;
  * format, fetched by its HTTP client and parsed, under the bounds of {@link PagedDownload}. Every
  * part is built from the endpoint, so the provider is named once: by its endpoint.
  *
- * <p>Its calls share one limit, {@code providers.concurrency-limit} at once (Q9), applied when the
- * bean is proxied ({@code @EnableResilientMethods}); a call over it is rejected at once with an
- * {@link org.springframework.resilience.InvocationRejectedException}, a {@link
+ * <p>Its origin downloads and quotes share one limit, {@code providers.concurrency-limit} at once
+ * (Q9), applied when the bean is proxied ({@code @EnableResilientMethods}); a run's whole download
+ * is outside it (I2). A call over it is rejected at once with an {@link
+ * org.springframework.resilience.InvocationRejectedException}, a {@link
  * java.util.concurrent.RejectedExecutionException}. It is not {@code final}: Boot proxies it by
- * subclassing, and an interface proxy would not see the exemptions of {@link #provider()} and
- * {@link #toString()}.
+ * subclassing, and an interface proxy would not see the exemptions of {@link #download()}, {@link
+ * #provider()} and {@link #toString()}.
  */
 @ConcurrencyLimit(limitString = "${providers.concurrency-limit}", policy = ThrottlePolicy.REJECT)
 public class PagedProvider implements FlightProvider {
@@ -77,7 +78,13 @@ public class PagedProvider implements FlightProvider {
     return "PagedProvider[" + provider + "]";
   }
 
+  /**
+   * Never limited (plan 5's end-of-plan review, I2): a run downloads each provider once, under its
+   * own lock, and refreshes and re-prices taking every call of the limit must never make it keep a
+   * healthy provider's old offers.
+   */
   @Override
+  @ConcurrencyLimit(ConcurrencyThrottleSupport.UNBOUNDED_CONCURRENCY)
   public ProviderDownload download() {
     return downloadOf(Optional.empty());
   }
