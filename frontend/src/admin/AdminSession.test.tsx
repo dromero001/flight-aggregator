@@ -69,8 +69,11 @@ test('shows a sign-in failure', async () => {
   );
   expect(auth.signinRedirect).not.toHaveBeenCalled();
   expect(screen.queryByText('The admin screen')).not.toBeInTheDocument();
-  // A reload then starts a new sign-in instead of repeating the failed answer.
-  expect(screen.getByTestId('location')).toHaveTextContent(/^\/admin$/);
+  // A reload then starts a new sign-in instead of repeating the failed answer. The URL is
+  // replaced without being awaited, so on a loaded machine it can land after the alert.
+  await waitFor(() => {
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/admin$/);
+  });
 });
 
 test('shows a sign-in failure when Keycloak cannot be reached', async () => {
