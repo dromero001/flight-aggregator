@@ -1,5 +1,7 @@
 # Progress — plan 6 (dashboard), 2026-11-15
 
+Plan 6 keeps its evidence in this file of its own, rather than in a "Dashboard run (plan 6)" section of the day's report as its Global Constraints say: its tasks run in parallel worktrees beside plans 5 and 7, which append to their own reports, and one file per plan avoids their conflicts (as plan 5's file does).
+
 ## Task 1 — evidence
 
 Scaffold of `frontend/` (a standalone npm project, Q1-A), its quality gate (`npm run verify`) and the CI job `frontend`.
@@ -10,7 +12,7 @@ Rule applied: the newest stable GA whose registry publication date is on or befo
 
 | Package | Pinned | Published | Note |
 |---|---|---|---|
-| Node (`frontend/.nvmrc`, `engines` `^26.13.0`) | 26.13.0 | 2026-10-28 | The active LTS line (26, "Lithium"); 26.13.1 (2026-11-10) is too new |
+| Node (`frontend/.nvmrc`, `engines` `^26.13.0`) | 26.13.0 | 2026-10-28 | The active LTS line (26, "Lithium"); 26.13.1 (2026-11-10) is too new (a security release, `security: true` in `index.json`; eligible from 2026-11-24) |
 | react, react-dom | 19.3.1 | 2026-10-14 | |
 | @tanstack/react-query | 5.105.1 | 2026-11-01 | 5.106+ are newer than 14 days |
 | vite | 8.3.5 | 2026-10-21 | |
@@ -71,7 +73,7 @@ A throwaway file was written, the gate run, and the file removed (each gate was 
 - Type check: `src/bad.ts` with `export const a = (x) => x;` gives `error TS7006: Parameter 'x' implicitly has an 'any' type.`
 - Format: `src/bad.ts` with `export const b   =   1;` gives `[warn] src/bad.ts`, `Code style issues found`.
 - Lint (and E7, the jsx-a11y plugin): `src/bad.tsx` gives `jsx-a11y/alt-text` (`<img src="x.png" />`), `no-debugger` and `@typescript-eslint/no-unnecessary-type-assertion`.
-- Test: a test that fetches an URL no MSW handler covers failed (`promise rejected "TypeError: fetch failed"`), which proves `onUnhandledFrame: 'error'` stops unmocked requests and that `npm test` exits red.
+- Test: a test that fetches an URL no MSW handler covers failed (`promise rejected "TypeError: fetch failed"`), which proves `onUnhandledFrame: 'error'` stops unmocked requests and that `npm test` exits red. That message alone is also what an unreachable host gives; the cause proves MSW stopped it (re-established by a throwaway probe in the end-of-plan fix round, 2026-11-16): `[MSW] Error: intercepted a request without a matching request handler`, `Caused by: InternalError: [MSW] Cannot bypass a request when using the "error" strategy for the "onUnhandledFrame" option.`
 
 ### CI job `frontend`
 
@@ -766,3 +768,182 @@ Worktree branch `worktree-agent-a83fa39838af333e3`, from `main` at `2e4839c`. No
 
 ### Extras for the user to decide
 - **Order ties of a sort by departure** (the duration sort lists every 7h 40m MAD → JFK flight in id order, so dates jump: Thu 26 Nov, Sun 6 Dec, Sat 12 Dec…). Value: a calmer list. Cost: a second key in the API's keyset order and indexes, the cursor and plan 5's tests. Left out unless you approve.
+
+## End-of-plan fix round
+
+The three end-of-plan reviews (functional, code, risk; each CHANGES REQUESTED, `.superpowers/sdd/2026-11-15-dashboard/end-review-*.md`) found three Important findings, and their Minors, new and deferred, were all due in this round (the user's rule of 2026-11-15). Worked in its own worktree from `main` at `d92d03c`, rebased onto `main` twice (after plan 5's closing round 2, `fe8f7d9`, and after the `AdminSession` test fix that followed `0f71173`). Frontend, the dashboard's nginx files, `dashboard.md` and this report only.
+
+**User decision (2026-11-16, about 08:10), risk I-1, the sign-in loop: option A, break the loop.** When the API refuses a freshly renewed token too, the admin client no longer sends the browser to Keycloak again; the 401 reaches the screen, which says "The API refused your session. Sign out and try again." with "Sign out" beside it. Only a renewal that itself fails leads to a new sign-in. (The copy is for the user's review, with M-2's texts; the controller updates the plan's Task 7 line.)
+
+### Every finding and where it went
+
+Commits on the branch `worktree-agent-a874083cf67ad6104`:
+
+| Commit | Area |
+|---|---|
+| `5916937` | card and re-price |
+| `a95e8e3` | auth client and session |
+| `985fcb8` | time helpers |
+| `1a31a04` | API client and errors |
+| `b985438` | results list and search page |
+| `03bbc7a` | nginx template, entrypoint, resolver and image |
+| `8bfddf2` | end-to-end specs and the run on demand |
+| `ebbbcaf` | styles and tokens |
+| `11784be` | tooling |
+| this commit | docs (`dashboard.md`, this report) |
+
+| Finding | Outcome |
+|---|---|
+| Functional I-1 = D3 (code and risk graded it Minor): the stub's freshness after a re-price | Fixed, `5916937` |
+| Code I-1 = risk M-1: a failed `/config.json` re-read on focus signed the admin out | Fixed, `a95e8e3` (`staleTime: Infinity`; the optional `stopSilentRenew` is moot, since the screen no longer unmounts) |
+| Risk I-1: the sign-in loop on a token the API refuses | Fixed by the user's decision above, `a95e8e3` |
+| Functional M-1: no test of `createAuthClient`'s settings | Fixed, `a95e8e3` |
+| Functional M-2: copy never put to the user | **Left for the user**, the texts unchanged: "Price confirmed: €…", "Price changed: now €…" (no `previousPrice`), "Never", "Provider status could not be loaded. Retrying every 10 seconds.", "The ingestion could not be started. Try again in a moment.", the list names "Legs" and "Alternative legs"; and, new in this round by the user's decision, "The API refused your session. Sign out and try again." |
+| Functional M-3: Task 11's extra missing from the backlog | Done before this round (`d92d03c`) |
+| Functional M-4 = code M1: `useAdminToken` has no caller | Fixed, `a95e8e3` (deleted with its context, provider and two tests; a plan amendment for the controller under Tasks 7 and 8) |
+| Functional M-5: stale comment in `client.test.ts` | Fixed, `a95e8e3` (the tests call `/api/admin/status`) |
+| Functional M-6: a reopened changed-price card showed the old price | Fixed, `5916937` |
+| Functional M-7 = D1: the admin screen wider than 390 px | Fixed, `ebbbcaf` (with an end-to-end test) |
+| Functional M-8 = D2: "Sign out" in the browser's default style | Fixed, `ebbbcaf` |
+| Functional M-9 (known): a missing setting not named | Fixed, `a95e8e3` (logged to the console; the screen's copy unchanged) |
+| Code M2: three untested "2xx without a body" guards | Fixed, `1a31a04` (`bodyOf`) |
+| Code M3: time helpers in the card's module | Fixed, `985fcb8` (`src/time/`) |
+| Code M4: a failed sign-out fails silently | **Left for the user**: showing it needs a new sentence (M-2's rule), or the user accepts it as recorded in Task 7's E4 |
+| Code M5: production lines written before their tests in Tasks 6 to 8 | **Left for the user** to accept as a recorded lesson; the lines never shown red by a unit test now are: `createAuthClient` (`a95e8e3`) and the body guards (`1a31a04`) |
+| Risk M-2: a Keycloak outage sends the tab to a browser error page | **Left for the user**: telling a network failure of the renewal from a refused grant, and keeping the page with a message, is a design change beyond the I-1 decision and needs new copy |
+| Risk M-3: `API_UPSTREAM` with a path passed the check | Fixed, `03bbc7a` |
+| Risk M-4: resolver hard-coded to Docker's DNS | Fixed, `03bbc7a` |
+| Risk M-5: a hung API kept "Loading flights…" for minutes; no `signal` | Fixed: `proxy_read_timeout 15s`, `03bbc7a`; the search passes TanStack's `signal`, `b985438` (the status query's key never changes, so it was left as is) |
+| Risk M-6: client `X-Forwarded-Proto/Host/Port` reached the app | Fixed, `03bbc7a` |
+| Risk M-7: the X-Forwarded-For caveat behind a load balancer | Fixed, this commit (`dashboard.md`, "nginx") |
+| Risk M-8: the realm's `/admin*` wildcard redirect | **Left for the user**: the plan's decisions-table value, and the realm file is outside this round's files |
+| T1 F4: Node 26.13.1 is a security release | Fixed, this commit (Task 1's version row) |
+| T1 F6: why plan 6 has its own progress file | Fixed, this commit (the line at the top) |
+| T1 F7: MSW evidence quoted the message, not the cause | Fixed, this commit (the cause, re-established by a probe) |
+| T1 C2: deprecated `tseslint.config()` | Fixed, `11784be` |
+| T1 C3: `eslint.config.js` in `tsconfig.node.json`; Node globals for `src/` | Fixed, `11784be` |
+| T2 F-1: the "Contract drift" CI step runs after `verify` | **Left, with why**: `ci.yml` is outside this round's files (other plans' agents edit it); moving the step before `npm run verify` in job `frontend` is one line for the controller |
+| T2 C-1 = T5 F-3: an HTTP-date `Retry-After` gave NaN | Fixed, `1a31a04` |
+| T2 C-2: a bad problem body rejected with `SyntaxError`; case-sensitive media type | Fixed, `1a31a04` |
+| T2 C-3: the drift test's Prettier resolution and `.pathname` | Fixed, `11784be` |
+| T3 F-3: the filters stacked at exactly 640 px | Fixed, `ebbbcaf` |
+| T3 F-4: input border below 3:1; tokens not in Q6 | Fixed, `ebbbcaf` (tarmac border; the two tokens commented as implied) |
+| T3 F-5: the h1 in Barlow Condensed | Fixed, `ebbbcaf` |
+| T3 C-2: `search()` built the URL twice | Fixed, `b985438` |
+| T3 C-3: the same search pushed a history entry; the draft kept "mad" | Fixed, `b985438` |
+| T3 C-4: the field list stated twice | Fixed, `b985438` |
+| T3 C-5: the hidden radio had no positioned ancestor | Fixed, `ebbbcaf` |
+| T4 F-1: the zone stub not asserted | Fixed, `5916937` |
+| T4 F-2: "no float" not pinned | Fixed, `5916937` |
+| T4 F-3: the freshness wrapped at 960 px; the notch comment | Fixed, `ebbbcaf` |
+| T4 C-1: a malformed date throws, a malformed amount shows `€NaN` | **Left, with why**: choosing one policy for contract violations is a design change (throwing everywhere needs an error boundary with new copy; a placeholder everywhere is new display copy). Unreachable through the contract |
+| T4 C-2: formatting rules in the component | Fixed, `5916937` (`stopsSummary` in `format.ts`; `flight()` was moved in Task 6) |
+| T4 C-3: the visually hidden class in the card's module | Fixed, `ebbbcaf` |
+| T5 F-2: a failed "Load more" left it enabled | Fixed, `b985438` |
+| T5 F-4: an errored search refetched on focus | Fixed, `b985438` (focus and reconnect) |
+| T5 C-1: "Reload" matched keys partially | Fixed, `b985438` |
+| T5 C-2: "Try again" enabled while its retry ran | Fixed, `b985438` |
+| T5 C-3: a next-page failure shown at the top | Fixed, `b985438` |
+| T5 C-4: the untested empty-2xx guard | Fixed, `1a31a04` |
+| T5 C-5: fixed 50 ms negative waits | Fixed, `b985438` |
+| T5 C-6: the cache key and resets in two components | Fixed, `b985438` |
+| T6 integration points | Judged acceptable by the code review; the reopened card's price is M-6 |
+| T7 integration points | Acceptable (code review); `createAuthClient` tested (`a95e8e3`); the failed sign-out is code M4; one shared renewal stays in the backlog |
+| T8 integration: polling after a 403 | Not built: an extra in `extras-backlog.md` |
+| T9 F-1: `Host $host` not recorded as implied | Recorded here: implied by a same-origin proxy (the app sees the host the browser asked for, as with no proxy; nginx's default would be `app:8080`). No change |
+| T9 C-2: no `Cache-Control` on `index.html`; a missing asset answered 200 HTML | The 404 fixed, `03bbc7a`. **`Cache-Control` left, with why**: a caching header, part of E5, which the user rejected |
+| T9 C-3: `globalSetup` fetch without a timeout | Fixed, `8bfddf2` |
+| T9 C-4: nginx's `user` directive warning | Fixed, `03bbc7a` |
+| T9 C-5: the Dockerfile's explicit `COPY` list | Kept on purpose and said so in the Dockerfile, `03bbc7a`: it keeps `public/config.json` out of the bundle |
+| T10 F-M1: `npm run e2e` stops at Firefox on macOS | No longer applies (documented) |
+| T10 F-M2 / C-M1: the 409 in the scheduled lock's minute; the admin test's 70 s retry | Fixed, `8bfddf2`, now that plan 5 releases the lock when a run ends (`8401bc9`): the test presses once; `RunIngestionButton`'s comment and `dashboard.md` say so |
+| T10 F-M3: the plan's "Chromium only" decision line | **Left, with why**: the plan file is the controller's; its line 113 predates E6 |
+| T10 F-M4: the duration half of the sort test never red alone | Fixed, this commit (evidence below) |
+| T10 C-M2: the 16-project chain skips everything after one failure | Kept by design (the order spaces the rate limits; Playwright has no order-only dependency); said in `playwright.config.ts`, `8bfddf2` |
+| T10 C-M3: the keyboard test's exact 40 after a stale-route refresh | Fixed, `8bfddf2` (asks for more than 20 cards) |
+| T10 C-M4: card readers in two files | Fixed, `8bfddf2` (`cards.ts`) |
+| Plan 5 closing round 2, code review m7: the admin password hard-coded in `admin.spec.ts` | Fixed, `8bfddf2` (`ADMIN_USER_PASSWORD` first) |
+
+Counts: fixed 54 (functional M-3, done before this round, and the 404 half of T9 C-2 among them); left for the user 5 (functional M-2, code M4, code M5, risk M-2, risk M-8); left with why 4 (T2 F-1, T4 C-1, T9 C-2's `Cache-Control`, T10 F-M3); kept by design and documented 2 (T9 C-5, T10 C-M2); not built as a backlog extra 1 (polling after a 403).
+
+### Red → green evidence
+
+#### Card and re-price (functional I-1 = D3, M-6; T4 F-1, F-2, C-2)
+- `'shows how fresh a changed price is'` (PRICE_CHANGED quoted at `now`): red `Unable to find an element with the text: Updated just now` (stub read `itinerary.quotedAt`). Green: the stub reads one `quote` (price and quotedAt together).
+- `'shows how fresh a confirmed price is'` (CONFIRMED quoted at `now`): red, same message (only PRICE_CHANGED replaced the quote). Green: any answer but ALTERNATIVE replaces the quote. The ALTERNATIVE exclusion is pinned by the existing `'shows the alternative inside the card with its notice'`: mutation (exclusion removed) red `Unable to find an element with the text: €412.60`; restored.
+- `'keeps a changed price on the card while it is checked again'` (M-6; the second check never answers): red `Unable to find an element with the text: €431.00` (TanStack clears the mutation's data when it runs again, so the stub fell back to €412.60). Green: the card keeps the last confirming answer in its own state (`requote`, set in `mutate`'s `onSuccess`).
+- `'shows a newer search quote than the last re-price'` (a Reload brings the same id quoted after the re-price; `renderWithClient` now passes the provider as `wrapper` so `rerender` keeps it): red `Unable to find an element with the text: €440.00`. Green: the requote wins unless the search's `quotedAt` is newer (`>=`, so an answer quoted at the same instant still wins; two existing tests whose fixture re-price has the search's `quotedAt` went red with `>` and green with `>=`).
+- T4 F-1: the zone stub is asserted in `beforeEach`. Under `--pool=threads` with `TZ=America/New_York` every test of the file now fails instead of passing vacuously.
+- T4 F-2: `price('12345678901234567.89')` → `€12,345,678,901,234,567.89`. Mutation `EUROS.format(Number(amount))`: red `expected '€12,345,678,901,234,568.00' to be '€12,345,678,901,234,567.89'`; restored.
+- T4 C-2: `stopsSummary` moved to `format.ts` (refactor; the card tests cover it).
+
+#### Auth client and session (code I-1 = risk M-1; risk I-1 by the user's decision; functional M-1, M-4 = code M1, M-5, M-9)
+- `'keeps the admin screen when the window regains focus'` (the second `/config.json` read is a network error; `focusManager` off and on): red `AssertionError: expected 2 to be 1` (the settings were read again on focus). Green: `staleTime: Infinity` on the config query.
+- Risk I-1, the user's decision of 2026-11-16 (option A, break the loop):
+  - `client.test.ts` `'answers 401 without signing in again when the renewed token is refused too'` (replaces `'signs in again when the renewed token is refused too, without a loop'`): red `AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times` (`signinRedirect`). Green: `bearerToken` redirects only when the renewal itself fails, and otherwise returns the repeat's answer, so `apiErrors` throws its 401.
+  - `AdminPage.test.tsx` `'says when the API refuses the session, without signing in again'` (whole screen: status always 401, renewal succeeds): red `Expected element to have text content: The API refused your session. Sign out and try again. Received: Provider status could not be loaded. Retrying every 10 seconds.` Green: `adminFailure` maps a 401 to that sentence (shared by the status and "Run ingestion now"); "Sign out" stays on the screen.
+  - The other path, `'signs in again when the renewal fails'`, was green already: mutation (the `signinRedirect()` of the failed-renewal branch removed) red `AssertionError: expected "vi.fn()" to be called once, but got 0 times`; restored.
+- Functional M-1, `authClient.test.ts` (tests over existing code, both green at once): `'signs in with Authorization Code back to /admin, and signs out back there'`; mutation (`post_logout_redirect_uri` removed) red `- "post_logout_redirect_uri": "http://localhost:3000/admin", + "post_logout_redirect_uri": undefined`. `'keeps the tokens in memory only'` (`storeUser`, then both web storages empty); mutation (`userStore` removed, the library's sessionStorage default) red `AssertionError: expected 1 to be +0`. Both restored.
+- Functional M-4 = code M1: `adminToken.ts` (`useAdminToken`, `AdminTokenContext`), its provider in `AdminSession` and its two tests deleted; `useAdminClient` is the one context (a plan amendment for the controller to record under Task 7/8).
+- Functional M-5: `client.test.ts` calls `/api/admin/status` (the stale comment and the search path are gone).
+- Functional M-9 (known): `'logs which setting is missing'`: red `expected "error" to be called with arguments: [ ObjectContaining{…} ] Number of calls: 0`. Green: `AdminPage` logs the config error with `console.error` in an effect.
+
+#### Time helpers (code M3)
+- `minutesBetween`, `timeAgo`, a new `minutesUntil` (the status page's own arithmetic) and `useNow` with its test moved to `src/time/`; refactor, the existing format, status and clock tests stay green (118).
+
+#### API client and errors (T2 C-1 = T5 F-3, T2 C-2, T5 C-4 = code M2)
+- `'reads a Retry-After given as a date'` (fake clock 10:00:00, header 10:00:30 GMT): red `AssertionError: expected NaN to be 30`. Green: `retryAfterSeconds` reads whole seconds or an HTTP date (ceil, never below 0).
+- `'ignores a Retry-After it cannot read'` (`soon`): red `AssertionError: expected NaN to be undefined`. Green: an unparsable date gives `undefined`, so the screens show their sentence without a wait.
+- `'leaves the detail empty for a problem body it cannot read'` (a cut-off JSON problem, 429): red `SyntaxError: Unterminated string in JSON at position 19`. Green: `problemOf` catches the parse error; the `ApiError` keeps its status and `Retry-After`, so a query does not retry it as a network failure.
+- `'reads a problem whatever the case of its media type'` (`Application/Problem+JSON; charset=utf-8`): red `AssertionError: expected undefined to be 'origin is not valid'`. Green: the media type is lower-cased before the check.
+- `client.test.ts` `'rejects a 2xx answer without a body'`: red `TypeError: bodyOf is not a function`. Green: `bodyOf(call)` in `client.ts`; the three hooks (`useItinerarySearch`, `useReprice`, `useInventoryStatus`) use it instead of three untested copies. Mutation (its `throw` removed) red `AssertionError: promise resolved "undefined" instead of rejecting`; restored.
+
+#### Results list and search page (T5 F-2, F-4, C-1, C-2, C-3, C-5, C-6; T3 C-2, C-3, C-4; risk M-5's signal)
+- T5 F-4, `'does not search again when the window regains focus after a failure'` (a 429; focus off and on inside an async `act`, since TanStack's focus listener refetches a few microtasks later): red `AssertionError: expected 2 to be 1`. Green: `refetchOnWindowFocus: false` on the search; the hook's comment now says why (a query without data is stale whatever its staleTime).
+- Same, `'does not search again when the connection comes back after a failure'` (`onlineManager` off and on), written with `refetchOnReconnect: false` taken out first: red `AssertionError: expected 2 to be 1`. Green with it back.
+- T5 C-5: the three fixed 50 ms waits are gone. `renderAt` returns its `queryClient`; the negative tests assert `queryClient.isFetching()` is 0 and the request count, after an async `act` where focus is involved. Each shown red by a labelled mutation, restored: `enabled: true` → `'does not search while a filter is invalid'` red `expected 1 to be +0`; the error-only predicate made `() => true` → `'keeps the shown results when the same filters are searched again'` red `expected 2 to be 1`; `refetchOnWindowFocus: 'always'` → `'does not reload the results by itself when the window regains focus'` red `expected 2 to be 1`.
+- T5 F-2, `'does not offer Load more again after a rate-limited next page'`: red `expected document not to contain element, found <button` ("Load more"). Green: "Load more" is not rendered while the next page is in error.
+- T5 C-3, `'shows a next-page failure where Load more was'` (a 502 on page 2; the alert must follow the list in document order, with one "Try again"): red `AssertionError: expected +0 to be truthy`. Green: one `failureNotice` element, rendered above the list for a first-page failure and in place of "Load more" for a next-page one.
+- T5 C-2, `'cannot try again while a failed next page is being tried again'` (the repeat never answers): red `Received element is not disabled`. Green: "Try again" is `disabled` while the search fetches. (A first version on a first-page failure could not go red for this reason: without data TanStack goes back to `pending`, so the button disappears; recorded and rewritten on the next page, where the error stays during the repeat.)
+- T5 C-1, `'reloads only the search shown'` (MAD → JFK cached, then MAD, a flagged page, "Reload", Back): red `AssertionError: expected [ …(2) ] to have a length of 1 but got 2` (the partial key match had reset MAD → JFK too). Green: `exact: true`.
+- T5 C-6 (refactor in the same step): the key is private to `useItinerarySearch.ts`, which exports `useSearchResets()` with `reload(criteria)` and `retryIfFailed(criteria)`; neither component holds a `QueryClient` or the key any more.
+- Risk M-5 (client side), `'stops loading a search the customer has left'` (the first request hangs; the customer picks "Duration"): red `AssertionError: expected false to be true` (the abandoned request's signal). Green: the query function passes TanStack's `signal` to `api.GET`.
+- T3 C-3, `'adds no history entry for the search already shown'` (MAD, then "mad" again, then Back): red `expect(element).toBeEmptyDOMElement()` (Back stayed on `?origin=MAD`). Green: `search()` returns after `retryIfFailed` without `setParams`.
+- T3 C-3, `'shows the normalised value when the search is already shown'` (" mad " over `?origin=MAD`): red `Expected the element to have value: MAD Received: " mad "`. Green: `FilterBar` resets its draft to the URL's values after a submit (when the URL changes, the render-time sync replaces them in the same render).
+- T3 C-2 (refactor): `toSearchParams` normalises each value as `parseSearch` reads it, so `search()` builds the URL once. Mutation (the normalisation removed) red in three tests (`'restores the previous search on back'`, `'adds no history entry…'`, `'keeps the focus in the form…'`); restored.
+- T3 C-4 (refactor): `FilterBar` maps the exported `FILTER_FIELDS` through `CONTROLS: Record<FilterField, …>`, so a new field cannot compile without its control; the airport rule is one `AIRPORT` object used twice.
+
+#### nginx template, entrypoint, resolver and image (risk M-3, M-4, M-5 server side, M-6; T9 C-2, C-4, C-5)
+Each case was added to `frontend/nginx/test-config-validation.sh` and run against the image built from the code before its fix (`docker build -t p6close-frontend:wip frontend`), then rebuilt with the fix.
+- Risk M-3, `API_UPSTREAM='http://app:8080/'`: red `FAIL: expected a refusal naming API_UPSTREAM (exit 0)`. Green: the upstream pattern is a scheme, a host and an optional port only (`^https?://[A-Za-z0-9.-]+(:[0-9]+)?$`), which also drops `?`, `&`, `@` and `%`.
+- Risk M-4 (the container on Docker's default bridge, where 127.0.0.11 does not exist): red `FAIL: resolver '127.0.0.11', nameserver '192.168.65.7'`. Green: `resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;` with `ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1`, the image's own `15-local-resolvers.envsh` (in compose it still renders 127.0.0.11).
+- Risk M-6 (a client sends `X-Forwarded-Proto: https`, `X-Forwarded-Host: evil.example`, `X-Forwarded-Port: 444`; the upstream is the same image running an nginx that echoes what reaches it): red `FAIL: the app received: uri=/api/itineraries?origin=MAD proto=https host=evil.example port=444`. Green: the three headers are set empty, so nginx does not send them.
+- T9 C-2 (`/assets/missing.js`): red `FAIL: a missing asset answered 'HTTP/1.1 200'`. Green: `location /assets/ { try_files $uri =404; }`. `Cache-Control` on `index.html` was not added (E5, caching headers, rejected by the user).
+- T9 C-4: red `FAIL: nginx warned at start: … the "user" directive makes sense only if the master process runs with super-user privileges`. Green: the Dockerfile's `sed` also deletes the `user` line.
+- Risk M-5, server side (an upstream that accepts the connection and never answers: the image's busybox `nc -l` with its standard input kept open; a first try without `-i` closed at once and gave a 502, a harness fault): red `FAIL: a hung app answered '' after 41 s` (wget gave up at 40 s; nginx's default is 60 s). Green: `proxy_read_timeout 15s` → `ok: a hung app answers 504 after 16 s`.
+- T9 C-5: no change of mechanism; the Dockerfile says why its `COPY` list is explicit (it keeps `public/config.json` out of the bundle).
+- All twelve cases `ok` on the final image.
+
+#### Styles and tokens (functional M-7 = D1, M-8 = D2; T3 F-3, F-4, F-5, C-5; T4 F-3, C-3)
+- D1, a new end-to-end test `admin.spec.ts` `'fits the provider status on a phone'` (390 × 844, signed in; the providers table's right edge), run against the stack `p6close` built before the fix: red `Error: the table ends within the phone … Expected: <= 390 Received: 416.1875`. Green after `docker compose -p p6close up --build -d --wait frontend` with the fix: under 640 px the table's cells take `--space-1` padding, 0.875 rem text (0.75 rem headers) and `overflow-wrap: anywhere`.
+- D2 (style only): "Sign out" takes the screen's bordered button style and sits `--space-4` below the table.
+- T3 F-3: both media queries are `max-width: 639.98px`, so a 640 px window keeps one row (checked with a screenshot at 640 px: the filters wrap, they do not stack).
+- T3 F-4: the inputs' border is tarmac (about 5.4:1 on white, WCAG 1.4.11's 3:1); `--color-surface` and `--color-border` are commented as implied by Q6's flat cards, decorative only.
+- T3 F-5: the h1 is in Barlow (Q6 keeps Barlow Condensed for codes and times).
+- T3 C-5: `.option` is `position: relative`, the hidden radio's positioned ancestor.
+- T4 F-3: the freshness is `white-space: nowrap` (one line at 960 px, screenshot); the notch comment now says what the CSS draws (half circles over the card's edge, the border line running under them).
+- T4 C-3: the visually hidden utility is the global `.visually-hidden` in `global.css`.
+
+#### Tooling (T1 C2, C3; T2 C-3)
+- T1 C2: `eslint.config.js` uses ESLint's own `defineConfig` (from `eslint/config`) instead of the deprecated `tseslint.config()`.
+- T1 C3: `eslint.config.js` left `tsconfig.node.json`'s `include` (a `.js` file there type-checks nothing without `allowJs`); Node globals apply only to the tool configs, `e2e/` and the drift test, `src/` gets the browser's alone. `npx eslint .` and `tsc -b` clean.
+- T2 C-3: the drift test resolves Prettier with `editorconfig: true`, as the CLI does, and builds the path with `fileURLToPath`. Green (1 test); no test of its own (the repository has no `.editorconfig` today, so the output is the same).
+
+#### T10 F-M4, the duration half of the sort test
+- Mutation (labelled `MUTATION F-M4`): the search sends `departure` when the criteria say `duration`; the compose `frontend` stopped and the mutated source served by `npx vite --port 3000 --strictPort`; `search-chromium --no-deps -g 'sorts by departure and by duration'` red at the duration poll, after the departure half passed: `Error: a first page in duration order … Expected: true Received: false`. Restored (`git status` clean of `src/`), the compose `frontend` started again: 1 passed.
+
+#### Gates
+- `npm run verify` in `frontend/` before every commit, the last after the second rebase: typecheck, ESLint, Prettier, 132 tests in 20 files, exit 0. Frontend-only round: no `./gradlew build` (the controller runs it before integrating).
+- Image test `frontend/nginx/test-config-validation.sh` on the final image: 12 of 12 `ok`.
+- End to end, on a stack just started (`docker compose -p p6close down -v`, then `up --build -d --wait`: 07:44:24 → 07:45:01 UTC), in `mcr.microsoft.com/playwright:v1.64.1-noble` (`--network host --ipc=host`, a copy of `frontend/` without `node_modules`): exit 0, **34 passed in 3.1 min** (Chromium 11, Firefox 11, WebKit 11, the rate-limit test 1). `runs an ingestion on demand` pressed once in each browser and took 50.4 s, 51.9 s and 50.9 s (waiting for the run to publish). The stack was taken down with `-v`.
+- Thermo-nuclear self-review of each area's diff, before its commit: the existing mechanisms are used (TanStack's `signal`, `exact`, `refetchOn*`, `staleTime`; the nginx image's `15-local-resolvers.envsh`; `openapi-fetch` middleware; ESLint's `defineConfig`); one place each for the body guard (`bodyOf`), the search's key and its resets (`useSearchResets`), the failure notice (`failureNotice`), the time helpers (`src/time/`) and the visually hidden class. Nothing new fails silently: the config error is logged, a refused session says so, a hung app answers 504. Known limit, recorded: on a refused session the status keeps its 10 s refresh, each one renewing once more against Keycloak (stopping the poll is the backlog's "stop polling after a 403" kind of extra).
