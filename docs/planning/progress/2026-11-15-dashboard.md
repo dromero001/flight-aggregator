@@ -1022,10 +1022,10 @@ The user's decisions of 2026-11-16, built in one worktree from `main` `5aedc19`:
 
 | Change | Commit |
 |---|---|
-| `AIRPORT_CITIES`, the README table, the drift test `airports.test.ts` (the list, `V2__airport_catalogue.sql` and the README hold the same 32 codes) | `873fc74` |
-| The shared `<datalist>` on From and To; a city's name searched by its code (`airportCodeOf`) | `07512e0` |
-| One comma in Max price reads as a dot (`55,5` → `55.5`); more than one comma is left for the usual error | `5a9a70a` |
-| Self-review: one control flag, `airport`, gives the list and selects the fields converted | `e94c3db` |
+| `AIRPORT_CITIES`, the README table, the drift test `airports.test.ts` (the list, `V2__airport_catalogue.sql` and the README hold the same 32 codes) | `48a066b` |
+| The shared `<datalist>` on From and To; a city's name searched by its code (`airportCodeOf`) | `141b7cc` |
+| One comma in Max price reads as a dot (`55,5` → `55.5`); more than one comma is left for the usual error | `e759970` |
+| Self-review: one control flag, `airport`, gives the list and selects the fields converted | `7223931` |
 
 ### Red → green evidence
 
@@ -1043,7 +1043,7 @@ The user's decisions of 2026-11-16, built in one worktree from `main` `5aedc19`:
 - `npm run verify` in `frontend/` before each commit; the last: typecheck, ESLint, Prettier, 151 tests in 21 files, exit 0.
 - `./gradlew build`: exit 0 (`BUILD SUCCESSFUL`).
 - End to end not run: no spec changed, and they find From and To by label, which the `combobox` role leaves as it was. No end-to-end test picks a suggestion: a native `<datalist>` popup is drawn by the browser, so Playwright could only fill the code, which the search specs already do.
-- Thermo-nuclear self-review: one finding fixed (`e94c3db`, above). `airports.ts` follows `CARRIER_NAMES`; the drift test follows `schema.test.ts`; the comma lives in `normalise`, which already owns each field's normalisation for the URL and the request. No file passes 1,000 lines (`SearchPage.test.tsx` 827). Nothing fails silently: other text goes on to today's validation. The city conversion is on submit only, as decided, so a shared URL `?origin=madrid` still shows the field error.
+- Thermo-nuclear self-review: one finding fixed (`7223931`, above). `airports.ts` follows `CARRIER_NAMES`; the drift test follows `schema.test.ts`; the comma lives in `normalise`, which already owns each field's normalisation for the URL and the request. No file passes 1,000 lines (`SearchPage.test.tsx` 827). Nothing fails silently: other text goes on to today's validation. The city conversion is on submit only, as decided, so a shared URL `?origin=madrid` still shows the field error.
 
 ## WebKit and Enter in a field with suggestions (2026-11-16)
 
