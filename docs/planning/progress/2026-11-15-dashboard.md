@@ -1015,3 +1015,32 @@ The last round's review (functional and code, on `c9e5b68..ff5fff9`) asked for c
 ### Gates
 - `npm run verify` in `frontend/` before each commit: exit 0, 140 tests in 20 files. Frontend and docs only: no `./gradlew build` (the controller runs it before integrating). The nginx change is a comment, so the image test was not re-run.
 - Thermo-nuclear self-review: the fix removes the counter rather than adding a mechanism; `unknown` is the hook's honest contract (any identity names a wait); the 429 check now lives once, in `apiError.ts`. No file passes 1,000 lines (`SearchPage.test.tsx` about 800).
+
+## Airport autocomplete (2026-11-16)
+
+The user's decisions of 2026-11-16, built in one worktree from `main` `5aedc19`: a native `<datalist>` of the dataset's 32 airports on "From" and "To" (one list, `frontend/src/search/airports.ts`, code → city, the approved names without accents), each option the code and reading "MAD — Madrid"; on search, a From or To text that is exactly a city's name (trimmed, any case) is sent as its code, anything else as today; a README section "Airports in the dataset" (code, city, country, role in the mock network, from `StandardCatalogue`); and one drift test. Added the same day, the user's item from trying the dashboard: "Max price" accepts a decimal comma. No other new copy.
+
+| Change | Commit |
+|---|---|
+| `AIRPORT_CITIES`, the README table, the drift test `airports.test.ts` (the list, `V2__airport_catalogue.sql` and the README hold the same 32 codes) | `873fc74` |
+| The shared `<datalist>` on From and To; a city's name searched by its code (`airportCodeOf`) | `07512e0` |
+| One comma in Max price reads as a dot (`55,5` → `55.5`); more than one comma is left for the usual error | `5a9a70a` |
+| Self-review: one control flag, `airport`, gives the list and selects the fields converted | `e94c3db` |
+
+### Red → green evidence
+
+- **Drift test, frontend list**, `airports.test.ts` (Node environment, reads the migration with `fs`): red `Cannot find module './airports.js'`, then, with an empty map, `expected [] to deeply equal [ 'AMS', 'BCN', 'BER', 'BOD', …(28) ]`. Green: the 32 approved pairs.
+- **Drift test, README**, the same test extended to the README table's first column: red `README.md's "Airports in the dataset" table: expected [] to deeply equal [ 'AMS', …(28) ]`. Green: the README section. Mutation: the GVA row removed → `expected [ 'AMS', …(27) ] to deeply equal [ 'AMS', …(28) ]`; restored.
+- **From suggests the airports**, `FilterBar.test.tsx` `"suggests the dataset's airports in From, by code and city"` (32 options, `['MAD', 'MAD — Madrid']`, `['JFK', 'JFK — New York']`): red `expected [] to have a length of 32 but got +0`. Green: the `<datalist>` (id from `useId`) and From's `list`. Expected side effect: `'labels every control'` failed with `Unable to find an accessible element with the role "textbox" and name "From"`, since a text input with a `list` has the role `combobox`; the label is unchanged and the test now finds From and To as comboboxes.
+- **To shares the list**, `"suggests the dataset's airports in To, the same list as From"`: red `toHaveAttribute("list", "_r_2_")`. Green: To's `list`.
+- **City in From**, `"sends a city typed in From as its airport's code"` (`madrid`): red `- "origin": "MAD"` / `+ "origin": "madrid"`. Green: `airportCodeOf` (a lower-cased city → code map) applied on submit; the inputs show what was sent, normalised.
+- **City in To**, `"sends a city typed in To as its airport's code"` (`New York`): red `+ "destination": "New York"`. Green: To converted too.
+- **Trimmed**, `'sends a city typed with spaces around it as its airport code'` (` Mexico City `): red `+ "origin": " Mexico City "`. Green: `airportCodeOf` trims.
+- **Page level**, `SearchPage.test.tsx` `'searches the airports of the cities typed in From and To by their codes'` (URL `?origin=MAD&destination=JFK`, inputs `MAD` and `JFK`): written after the code, shown red by mutation (`airportCodeOf` returning its input: `expect(element).toHaveTextContent()`); restored.
+- **Decimal comma**, `searchParams.test.ts` `'reads the decimal comma of %j as a dot'` (`55,5`, `149,99`): red `expected '55,5' to be '55.5'`, `expected '149,99' to be '149.99'`. Green: `normalise` replaces the comma of `maxPrice`. Then `'keeps an amount with more than one comma as typed, and rejects it'` (`1,2,3`): red `expected '1.2,3' to be '1,2,3'`; green: only text with exactly one comma is converted. `55,555` and `1,2,3` added to the rejected amounts (green: today's message). Page level, `'searches a maximum price typed with a decimal comma with a dot'` (URL `?maxPrice=55.5`, the field `55.5`), written after the code, shown red by mutation (no conversion); restored.
+
+### Gates
+- `npm run verify` in `frontend/` before each commit; the last: typecheck, ESLint, Prettier, 151 tests in 21 files, exit 0.
+- `./gradlew build`: exit 0 (`BUILD SUCCESSFUL`).
+- End to end not run: no spec changed, and they find From and To by label, which the `combobox` role leaves as it was. No end-to-end test picks a suggestion: a native `<datalist>` popup is drawn by the browser, so Playwright could only fill the code, which the search specs already do.
+- Thermo-nuclear self-review: one finding fixed (`e94c3db`, above). `airports.ts` follows `CARRIER_NAMES`; the drift test follows `schema.test.ts`; the comma lives in `normalise`, which already owns each field's normalisation for the URL and the request. No file passes 1,000 lines (`SearchPage.test.tsx` 827). Nothing fails silently: other text goes on to today's validation. The city conversion is on submit only, as decided, so a shared URL `?origin=madrid` still shows the field error.
