@@ -24,4 +24,6 @@ dependencies {
     testImplementation(libs.lettuce.core)
     // The Valkey failures' log lines, read as Logback events.
     testImplementation(libs.logback.classic)
+    // The ingestion's lock taken and released as the job does, through ShedLock's own provider.
+    testImplementation(libs.shedlock.provider.jdbc.template)
 }
