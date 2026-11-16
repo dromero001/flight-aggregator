@@ -1,5 +1,6 @@
 package com.flightaggregator.adapter.persistence;
 
+import static com.flightaggregator.adapter.persistence.support.LockWaits.awaitAStatementBlockedBy;
 import static com.flightaggregator.domain.Provider.ALPHA;
 import static com.flightaggregator.domain.Provider.BETA;
 import static com.flightaggregator.domain.Provider.GAMMA;
@@ -16,6 +17,9 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.AbstractList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
@@ -98,6 +102,101 @@ class JdbcOfferStoreTest {
 
     assertThat(store.offers(ALPHA)).containsExactly(barcelona, madridNow, anotherMadrid);
     assertThat(store.offers(BETA)).containsExactly(betaMadrid);
+  }
+
+  /**
+   * A refresh that swaps Alpha's Madrid offers while a run replaces all of Alpha's waits for the
+   * run, then swaps the run's Madrid offers, not the ones the run deleted: Alpha ends with the
+   * run's other offers and the refresh's Madrid ones, never the run's Madrid ones beside them. The
+   * run is a second transaction that replaces Alpha's offers and commits once the refresh waits for
+   * it.
+   */
+  @Test
+  void swapsTheOffersOfARunThatReplacedThemMeanwhile() throws Exception {
+    store.replace(ALPHA, List.of(leg(ALPHA, 1, "2026-11-20T07:00:00Z", "50.00")));
+    Leg runMadrid = leg(ALPHA, 1, "2026-11-20T07:00:00Z", "55.00");
+    Leg runBarcelona = from("BCN", leg(ALPHA, 2, "2026-11-20T08:00:00Z", "60.00"));
+    Leg refreshMadrid = leg(ALPHA, 1, "2026-11-20T07:00:00Z", "80.00");
+    DataSourceTransactionManager runTransactions = new DataSourceTransactionManager(dataSource);
+    CompletableFuture<Integer> runBackend = new CompletableFuture<>();
+    CountDownLatch refreshWaits = new CountDownLatch(1);
+    CompletableFuture<Void> runCommitted =
+        CompletableFuture.runAsync(
+            () ->
+                new TransactionTemplate(runTransactions)
+                    .executeWithoutResult(
+                        status -> {
+                          new JdbcOfferStore(runTransactions)
+                              .replace(ALPHA, List.of(runMadrid, runBarcelona));
+                          runBackend.complete(
+                              JdbcClient.create(dataSource)
+                                  .sql("SELECT pg_backend_pid()")
+                                  .query(Integer.class)
+                                  .single());
+                          try {
+                            refreshWaits.await(10, TimeUnit.SECONDS);
+                          } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(e);
+                          }
+                        }));
+    int backend = runBackend.get(10, TimeUnit.SECONDS);
+    CompletableFuture<Void> refresh =
+        CompletableFuture.runAsync(
+            () -> store.replaceFrom(ALPHA, new Airport("MAD"), List.of(refreshMadrid)));
+
+    awaitAStatementBlockedBy(JdbcClient.create(dataSource), backend);
+    refreshWaits.countDown();
+    runCommitted.get(10, TimeUnit.SECONDS);
+    refresh.get(10, TimeUnit.SECONDS);
+
+    assertThat(store.offers(ALPHA)).containsExactly(runBarcelona, refreshMadrid);
+  }
+
+  /**
+   * A run that replaces Alpha's offers while a refresh's transaction, which swapped Alpha's Madrid
+   * ones, is still open waits for the refresh, then replaces the refresh's offers too: Alpha ends
+   * with the run's offers alone, and the run's positions do not collide with the refresh's.
+   */
+  @Test
+  void letsARunReplaceTheOffersOfARefreshThatSwappedThemMeanwhile() throws Exception {
+    store.replace(ALPHA, List.of(leg(ALPHA, 1, "2026-11-20T07:00:00Z", "50.00")));
+    Leg refreshMadrid = leg(ALPHA, 1, "2026-11-20T07:00:00Z", "80.00");
+    Leg runMadrid = leg(ALPHA, 1, "2026-11-20T07:00:00Z", "55.00");
+    Leg runBarcelona = from("BCN", leg(ALPHA, 2, "2026-11-20T08:00:00Z", "60.00"));
+    DataSourceTransactionManager refreshTransactions = new DataSourceTransactionManager(dataSource);
+    CompletableFuture<Integer> refreshBackend = new CompletableFuture<>();
+    CountDownLatch runWaits = new CountDownLatch(1);
+    CompletableFuture<Void> refreshCommitted =
+        CompletableFuture.runAsync(
+            () ->
+                new TransactionTemplate(refreshTransactions)
+                    .executeWithoutResult(
+                        status -> {
+                          new JdbcOfferStore(refreshTransactions)
+                              .replaceFrom(ALPHA, new Airport("MAD"), List.of(refreshMadrid));
+                          refreshBackend.complete(
+                              JdbcClient.create(dataSource)
+                                  .sql("SELECT pg_backend_pid()")
+                                  .query(Integer.class)
+                                  .single());
+                          try {
+                            runWaits.await(10, TimeUnit.SECONDS);
+                          } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(e);
+                          }
+                        }));
+    int backend = refreshBackend.get(10, TimeUnit.SECONDS);
+    CompletableFuture<Void> run =
+        CompletableFuture.runAsync(() -> store.replace(ALPHA, List.of(runMadrid, runBarcelona)));
+
+    awaitAStatementBlockedBy(JdbcClient.create(dataSource), backend);
+    runWaits.countDown();
+    refreshCommitted.get(10, TimeUnit.SECONDS);
+    run.get(10, TimeUnit.SECONDS);
+
+    assertThat(store.offers(ALPHA)).containsExactly(runMadrid, runBarcelona);
   }
 
   /**
