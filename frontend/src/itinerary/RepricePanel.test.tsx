@@ -44,12 +44,10 @@ function alternative() {
   });
 }
 
-/** Opens the connecting itinerary's card, the re-price answered by `answer`; returns its panel. */
-async function openCard(answer: HttpResponseResolver) {
+/** Opens the card of `itinerary`, the re-price answered by `answer`; returns its panel. */
+async function openCard(answer: HttpResponseResolver, itinerary = connecting()) {
   server.use(http.post(REPRICE, answer));
-  renderWithClient(
-    <ItineraryCard itinerary={connecting()} now={new Date('2026-11-15T09:05:00Z')} />,
-  );
+  renderWithClient(<ItineraryCard itinerary={itinerary} now={new Date('2026-11-15T09:05:00Z')} />);
   await userEvent.click(screen.getByRole('button', { expanded: false }));
   return screen.getByRole('status');
 }
@@ -120,6 +118,23 @@ test('shows a changed price and updates the card', async () => {
   const summary = within(screen.getByRole('button', { expanded: true }));
   expect(summary.getByText('€431.00')).toBeInTheDocument();
   expect(summary.queryByText('€412.60')).not.toBeInTheDocument();
+});
+
+test('says a changed price was the one the card showed, not the stored one', async () => {
+  // A cached search page still shows €500.00; the API compares with the €520.00 it stored since.
+  const panel = await openCard(
+    () =>
+      HttpResponse.json({
+        outcome: 'PRICE_CHANGED',
+        itinerary: connecting({ price: { amount: '540.00', currency: 'EUR' } }),
+        previousPrice: { amount: '520.00', currency: 'EUR' },
+      }),
+    connecting({ price: { amount: '500.00', currency: 'EUR' } }),
+  );
+
+  expect(
+    await within(panel).findByText('Price changed: was €500.00, now €540.00'),
+  ).toBeInTheDocument();
 });
 
 test('shows how fresh a changed price is', async () => {
@@ -217,18 +232,6 @@ test('shows a newer search quote than the last re-price', async () => {
   );
 
   expect(within(screen.getByRole('button', { expanded: true })).getByText('€440.00')).toBeVisible();
-});
-
-test('shows a changed price without the one shown before', async () => {
-  // The contract marks `previousPrice` optional.
-  const panel = await openCard(() =>
-    HttpResponse.json({
-      outcome: 'PRICE_CHANGED',
-      itinerary: connecting({ price: { amount: '431.00', currency: 'EUR' } }),
-    }),
-  );
-
-  expect(await within(panel).findByText('Price changed: now €431.00')).toBeInTheDocument();
 });
 
 test('shows the alternative inside the card with its notice', async () => {

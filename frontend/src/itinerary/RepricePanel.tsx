@@ -34,11 +34,8 @@ function confirmation(response: RepriceResponse, shown: Itinerary['price']): str
   const now = price(response.itinerary.price.amount);
   const changed = (before: string) => `Price changed: was ${before}, now ${now}`;
   switch (response.outcome) {
-    case 'PRICE_CHANGED': {
-      // The contract sends the price shown before with this outcome only, and marks it optional.
-      const before = response.previousPrice;
-      return before ? changed(price(before.amount)) : `Price changed: now ${now}`;
-    }
+    case 'PRICE_CHANGED':
+      return changed(price(shown.amount));
     case 'CONFIRMED': {
       // The API confirms against its stored price, which a cached page may not show yet (final
       // review, code I2): for the customer, a price other than the card's has changed.
