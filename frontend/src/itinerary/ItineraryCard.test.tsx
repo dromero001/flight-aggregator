@@ -174,3 +174,40 @@ test('marks an arrival on the next local day', () => {
 
   expect(within(screen.getByRole('article')).getByText('+1')).toBeInTheDocument();
 });
+
+test('marks each leg that lands on the next local day', async () => {
+  const user = userEvent.setup();
+  // 22:40 in Madrid, 06:15 the next morning in London, then on to New York the same day.
+  const overnight = connecting({
+    departure: '2026-11-20T22:40:00+01:00',
+    legs: [
+      {
+        carrier: 'IB',
+        flightNumber: 3166,
+        origin: 'MAD',
+        destination: 'LHR',
+        departure: '2026-11-20T22:40:00+01:00',
+        arrival: '2026-11-21T06:15:00Z',
+      },
+      {
+        carrier: 'BA',
+        flightNumber: 117,
+        origin: 'LHR',
+        destination: 'JFK',
+        departure: '2026-11-21T10:50:00Z',
+        arrival: '2026-11-21T13:40:00-05:00',
+      },
+    ],
+    arrival: '2026-11-21T13:40:00-05:00',
+  });
+  renderWithClient(<ItineraryCard itinerary={overnight} now={new Date('2026-11-15T09:05:00Z')} />);
+
+  await user.click(screen.getByRole('button', { expanded: false }));
+
+  const [first, second] = within(screen.getByRole('list', { name: 'Legs' })).getAllByRole(
+    'listitem',
+  );
+  expect(first).toHaveTextContent('Iberia IB 3166 MAD 22:40 to LHR 06:15 +1');
+  expect(second).toHaveTextContent('British Airways BA 117 LHR 10:50 to JFK 13:40');
+  expect(second).not.toHaveTextContent('+1');
+});

@@ -46,6 +46,12 @@ export function daysLater(departure: string, arrival: string): number {
   return Math.round((day(arrival) - day(departure)) / MILLIS_PER_DAY);
 }
 
+/** "+1" after an arrival on a later local date than its departure (plan 6 E1); none otherwise. */
+export function laterDayMark(departure: string, arrival: string): string | undefined {
+  const days = daysLater(departure, arrival);
+  return days > 0 ? `+${String(days)}` : undefined;
+}
+
 /** "7h 25m", "45m", "2h". */
 export function duration(minutes: number): string {
   const hours = Math.floor(minutes / 60);
