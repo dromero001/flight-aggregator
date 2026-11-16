@@ -6,9 +6,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -170,28 +172,110 @@ class OpenApiContractTest {
         .contains("type", "title", "status", "detail", "instance");
   }
 
-  /**
-   * Q4-A, Q9 and §6.6: each problem a search or a re-price may answer is documented on its own
-   * operation as an RFC 9457 problem, so the dashboard's types know every failure it must show.
-   */
-  @ParameterizedTest(name = "{1} {0} answers {2}")
-  @CsvSource({
-    "/api/itineraries, get, 429",
-    "/api/itineraries, get, 503",
-    "/api/itineraries/{id}/reprice, post, 400",
-    "/api/itineraries/{id}/reprice, post, 404",
-    "/api/itineraries/{id}/reprice, post, 429",
-    "/api/itineraries/{id}/reprice, post, 503",
-    "/api/admin/status, get, 503",
-    "/api/admin/ingestions, post, 409"
-  })
-  void documentsEachProblemOnItsOperation(String path, String method, String status)
-      throws Exception {
-    JsonNode content =
-        contract().path("paths").path(path).path(method).path("responses").path(status);
+  /** A problem body, RFC 9457, in {@link Response#body}. */
+  private static final String PROBLEM = "problem";
 
-    assertThat(content.at("/content/application~1problem+json/schema/$ref").asString())
-        .isEqualTo("#/components/schemas/ProblemDetail");
+  /** No body, in {@link Response#body}. */
+  private static final String NONE = "";
+
+  /**
+   * One documented response of one operation: its body, a schema of {@code application/json}, an
+   * RFC 9457 {@link #PROBLEM} or {@link #NONE}, and whether it says when to ask again ({@code
+   * Retry-After}).
+   */
+  record Response(String path, String method, String status, String body, boolean retryAfter) {
+
+    @Override
+    public String toString() {
+      return method + " " + path + " " + status;
+    }
+  }
+
+  /**
+   * Every response of every operation, in one table (plan 5 Task 13's review, C2): the bodies the
+   * dashboard's types render (§6.8); each problem a search or a re-price may answer (Q4-A, Q9,
+   * §6.6); the admin side's 401 without a token and 403 without the ADMIN role, Spring Security's
+   * challenge with no body; and a {@code Retry-After} on each problem to retry (§6.5, §6.6, Q9).
+   */
+  static final List<Response> RESPONSES =
+      List.of(
+          new Response("/api/itineraries", "get", "200", "SearchResponse", false),
+          new Response("/api/itineraries", "get", "400", PROBLEM, false),
+          new Response("/api/itineraries", "get", "429", PROBLEM, true),
+          new Response("/api/itineraries", "get", "503", PROBLEM, true),
+          new Response("/api/itineraries/{id}/reprice", "post", "200", "RepriceResponse", false),
+          new Response("/api/itineraries/{id}/reprice", "post", "400", PROBLEM, false),
+          new Response("/api/itineraries/{id}/reprice", "post", "404", PROBLEM, false),
+          new Response("/api/itineraries/{id}/reprice", "post", "429", PROBLEM, true),
+          new Response("/api/itineraries/{id}/reprice", "post", "503", PROBLEM, true),
+          new Response("/api/admin/status", "get", "200", "StatusResponse", false),
+          new Response("/api/admin/status", "get", "401", NONE, false),
+          new Response("/api/admin/status", "get", "403", NONE, false),
+          new Response("/api/admin/status", "get", "503", PROBLEM, true),
+          new Response("/api/admin/ingestions", "post", "202", NONE, false),
+          new Response("/api/admin/ingestions", "post", "401", NONE, false),
+          new Response("/api/admin/ingestions", "post", "403", NONE, false),
+          new Response("/api/admin/ingestions", "post", "409", PROBLEM, false));
+
+  /** Each operation documents exactly the statuses {@link #RESPONSES} lists for it. */
+  @Test
+  void documentsEveryStatusOfEachOperationAndNoOther() throws Exception {
+    JsonNode contract = contract();
+    Map<String, List<String>> documented = new TreeMap<>();
+    Map<String, List<String>> expected = new TreeMap<>();
+    for (Response response : RESPONSES) {
+      String operation = response.method() + " " + response.path();
+      expected.computeIfAbsent(operation, key -> new ArrayList<>()).add(response.status());
+      documented.computeIfAbsent(
+          operation,
+          key ->
+              contract
+                  .path("paths")
+                  .path(response.path())
+                  .path(response.method())
+                  .path("responses")
+                  .propertyNames()
+                  .stream()
+                  .sorted()
+                  .toList());
+    }
+
+    assertThat(documented).isEqualTo(expected);
+  }
+
+  /** Each response as {@link #RESPONSES} states it: its description, its body, its wait. */
+  @ParameterizedTest(name = "{0}")
+  @FieldSource("RESPONSES")
+  void documentsEachResponse(Response expected) throws Exception {
+    JsonNode response =
+        contract()
+            .path("paths")
+            .path(expected.path())
+            .path(expected.method())
+            .path("responses")
+            .path(expected.status());
+
+    assertThat(response.path("description").asString()).isNotEmpty();
+    switch (expected.body()) {
+      case NONE -> assertThat(response.has("content")).isFalse();
+      case PROBLEM -> {
+        assertThat(response.path("content").propertyNames())
+            .containsExactly("application/problem+json");
+        assertThat(response.at("/content/application~1problem+json/schema/$ref").asString())
+            .isEqualTo("#/components/schemas/ProblemDetail");
+      }
+      default -> {
+        assertThat(response.path("content").propertyNames()).containsExactly("application/json");
+        assertThat(response.at("/content/application~1json/schema/$ref").asString())
+            .isEqualTo("#/components/schemas/" + expected.body());
+      }
+    }
+    JsonNode retryAfter = response.at("/headers/Retry-After");
+    assertThat(retryAfter.isMissingNode()).isEqualTo(!expected.retryAfter());
+    if (expected.retryAfter()) {
+      assertThat(retryAfter.path("required").asBoolean()).isTrue();
+      assertThat(retryAfter.at("/schema/type").asString()).isEqualTo("integer");
+    }
   }
 
   /** Every endpoint of the API (plan 5 Tasks 9, 10 and 12) is in the contract, and no other. */
@@ -203,28 +287,6 @@ class OpenApiContractTest {
             "/api/itineraries/{id}/reprice",
             "/api/admin/status",
             "/api/admin/ingestions");
-  }
-
-  /**
-   * Each endpoint documents the body it answers and every status it may answer, the admin side's
-   * 401 without a token and 403 without the ADMIN role included (§6.6), so the dashboard's types
-   * know each answer it must handle.
-   */
-  @ParameterizedTest(name = "{1} {0}")
-  @CsvSource({
-    "/api/itineraries, get, SearchResponse, 200 400 429 503",
-    "/api/itineraries/{id}/reprice, post, RepriceResponse, 200 400 404 429 503",
-    "/api/admin/status, get, StatusResponse, 200 401 403 503",
-    "/api/admin/ingestions, post, , 202 401 403 409"
-  })
-  void documentsEachEndpointsBodyAndEveryStatus(
-      String path, String method, String body, String statuses) throws Exception {
-    JsonNode responses = contract().path("paths").path(path).path(method).path("responses");
-    String success = statuses.substring(0, 3);
-
-    assertThat(responses.propertyNames()).containsExactlyInAnyOrder(statuses.split(" "));
-    assertThat(responses.path(success).at("/content/application~1json/schema/$ref").asString())
-        .isEqualTo(body == null ? "" : "#/components/schemas/" + body);
   }
 
   /** §6.6: the admin side takes a JWT, issued by Keycloak, as a bearer token. */
@@ -252,51 +314,6 @@ class OpenApiContractTest {
 
     assertThat(security.valueStream().flatMap(requirement -> requirement.propertyNames().stream()))
         .containsExactlyElementsOf(admin ? List.of("bearer") : List.of());
-  }
-
-  /**
-   * Spring Security answers a missing token or role with a {@code WWW-Authenticate} challenge and
-   * no body, so the contract promises none: not the operation's own answer, as springdoc would
-   * write by default.
-   */
-  @ParameterizedTest(name = "{1} {0} answers {2} with no body")
-  @CsvSource({
-    "/api/admin/status, get, 401",
-    "/api/admin/status, get, 403",
-    "/api/admin/ingestions, post, 401",
-    "/api/admin/ingestions, post, 403"
-  })
-  void documentsTheAdminChallengesWithoutABody(String path, String method, String status)
-      throws Exception {
-    JsonNode response =
-        contract().path("paths").path(path).path(method).path("responses").path(status);
-
-    assertThat(response.path("description").asString()).isNotEmpty();
-    assertThat(response.has("content")).isFalse();
-  }
-
-  /** §6.5, §6.6 and Q9: a problem to retry says when, in whole seconds. */
-  @ParameterizedTest(name = "{1} {0} answers {2}")
-  @CsvSource({
-    "/api/itineraries, get, 429",
-    "/api/itineraries, get, 503",
-    "/api/itineraries/{id}/reprice, post, 429",
-    "/api/itineraries/{id}/reprice, post, 503",
-    "/api/admin/status, get, 503"
-  })
-  void documentsRetryAfterOnEachProblemToRetry(String path, String method, String status)
-      throws Exception {
-    JsonNode retryAfter =
-        contract()
-            .path("paths")
-            .path(path)
-            .path(method)
-            .path("responses")
-            .path(status)
-            .at("/headers/Retry-After");
-
-    assertThat(retryAfter.path("required").asBoolean()).isTrue();
-    assertThat(retryAfter.at("/schema/type").asString()).isEqualTo("integer");
   }
 
   /**

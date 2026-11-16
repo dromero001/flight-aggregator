@@ -66,19 +66,6 @@ public final class RepriceController {
               mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
               schema = @Schema(implementation = ProblemDetail.class)))
   @ApiResponse(
-      responseCode = "429",
-      description = "Too many re-prices from this address; try again after Retry-After",
-      headers =
-          @Header(
-              name = HttpHeaders.RETRY_AFTER,
-              required = true,
-              description = "How many seconds to wait before asking again",
-              schema = @Schema(type = "integer", minimum = "0")),
-      content =
-          @Content(
-              mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
-              schema = @Schema(implementation = ProblemDetail.class)))
-  @ApiResponse(
       responseCode = "503",
       description =
           "Nothing could be confirmed, or the flights could not be read in time; try again"
