@@ -1,11 +1,12 @@
 import js from '@eslint/js';
+import { defineConfig } from 'eslint/config';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
-export default tseslint.config(
+export default defineConfig(
   // schema.d.ts is generated (`npm run api:generate`); its drift test guards it instead.
   { ignores: ['dist', 'test-results', 'playwright-report', 'src/api/schema.d.ts'] },
   {
@@ -20,12 +21,18 @@ export default tseslint.config(
     ],
     languageOptions: {
       ecmaVersion: 2023,
-      globals: { ...globals.browser, ...globals.node },
+      globals: globals.browser,
       parserOptions: {
         projectService: true,
         tsconfigRootDir: import.meta.dirname,
       },
     },
+  },
+  // What runs in Node rather than in the browser: the tool configs, the end-to-end specs and the
+  // contract drift test.
+  {
+    files: ['*.{js,ts}', 'e2e/**/*.ts', 'src/api/schema.test.ts'],
+    languageOptions: { globals: globals.node },
   },
   // Plain JavaScript (this file) has no type information.
   { files: ['**/*.js'], extends: [tseslint.configs.disableTypeChecked] },
