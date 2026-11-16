@@ -6,6 +6,7 @@ import static com.flightaggregator.domain.Provider.ALPHA;
 import static com.flightaggregator.domain.Provider.BETA;
 import static com.flightaggregator.domain.Provider.GAMMA;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.flightaggregator.application.port.in.RepriceResult;
 import com.flightaggregator.application.port.in.RepriceSettings;
@@ -29,11 +30,13 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CyclicBarrier;
@@ -80,6 +83,9 @@ class RepriceItineraryServiceTest {
   /** The thread each quote ran on. */
   private final Queue<Thread> quotedOn = new ConcurrentLinkedQueue<>();
 
+  /** The providers the service is not given an adapter for. */
+  private final Set<Provider> unwired = EnumSet.noneOf(Provider.class);
+
   private Clock clock = () -> NOW;
   private RepriceSettings settings = SETTINGS;
 
@@ -97,6 +103,7 @@ class RepriceItineraryServiceTest {
   private RepriceItineraryService service() {
     List<FlightProvider> providers =
         Stream.of(Provider.values())
+            .filter(provider -> !unwired.contains(provider))
             .<FlightProvider>map(
                 provider -> FakeFlightProvider.quoting(provider, flight -> quote(provider, flight)))
             .toList();
@@ -397,6 +404,19 @@ class RepriceItineraryServiceTest {
             route.subList(0, 4).stream()
                 .map(trip -> trip.legs().getFirst().key())
                 .toArray(LegKey[]::new));
+  }
+
+  /** A provider with no adapter is a wiring error: it surfaces, it is not a provider failing. */
+  @Test
+  void failsLoudlyForAnOfferOfAProviderWithNoAdapter() {
+    Itinerary choice = toBarcelona(BETA, 50, "100.00");
+    reader.with(choice);
+    unwired.add(BETA);
+
+    assertThatThrownBy(() -> service().reprice(choice.id()))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("BETA");
+    assertThat(asked).isEmpty();
   }
 
   /** Madrid to Barcelona through London on {@code IB<number>} and the next number, both Alpha's. */

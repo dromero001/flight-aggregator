@@ -191,13 +191,19 @@ public final class RepriceItineraryService implements RepriceItinerary {
    * call, or when the re-price's budget has run out, so that no quote starts after it. A failure of
    * a kind the port does not name is that provider failing too, as in a run ({@code UNEXPECTED},
    * §6.5: always try): the provider adapter's decorator counts it and logs it with its stack trace.
+   * A provider with no adapter is a wiring error, not a provider failing: it is looked up outside
+   * the {@code try} and throws {@link IllegalStateException}.
    */
   private Optional<Leg> quote(Provider provider, LegKey flight, Instant startedAt) {
     if (!clock.now().isBefore(startedAt.plus(settings.budget()))) {
       return Optional.empty();
     }
+    FlightProvider adapter = providers.get(provider);
+    if (adapter == null) {
+      throw new IllegalStateException("No adapter is wired for provider " + provider);
+    }
     try {
-      return providers.get(provider).quote(flight);
+      return adapter.quote(flight);
     } catch (RuntimeException unconfirmed) {
       return Optional.empty();
     }
