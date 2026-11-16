@@ -735,6 +735,17 @@ test('searches the airports of the cities typed in From and To by their codes', 
   expect(screen.getByLabelText('To')).toHaveValue('JFK');
 });
 
+test('searches the airline whose name is typed in Airline by its code', async () => {
+  const user = userEvent.setup();
+  renderAt('/');
+  await user.type(screen.getByLabelText('Airline'), 'iberia');
+
+  await user.click(screen.getByRole('button', { name: 'Search' }));
+
+  expect(screen.getByLabelText('location')).toHaveTextContent(/^\?carrier=IB$/);
+  expect(screen.getByLabelText('Airline')).toHaveValue('IB');
+});
+
 test('searches a maximum price typed with a decimal comma with a dot', async () => {
   const user = userEvent.setup();
   renderAt('/');

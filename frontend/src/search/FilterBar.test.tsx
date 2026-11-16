@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+import { CARRIER_NAMES } from '../itinerary/carriers';
 import { axe } from '../test/axe';
 import { AIRPORT_CITIES } from './airports';
 import { FilterBar } from './FilterBar';
@@ -21,11 +22,8 @@ test('labels every control', () => {
   render(<FilterBar criteria={{ sort: 'price' }} errors={{}} onSubmit={vi.fn()} />);
 
   // A text field with suggestions (a `list`) is a combobox.
-  for (const name of ['From', 'To']) {
+  for (const name of ['From', 'To', 'Airline']) {
     expect(screen.getByRole('combobox', { name })).toBeInTheDocument();
-  }
-  for (const name of ['Airline', 'Max price']) {
-    expect(screen.getByRole('textbox', { name })).toBeInTheDocument();
   }
   expect(screen.getByRole('textbox', { name: 'Max price' })).toHaveAttribute(
     'inputmode',
@@ -60,6 +58,16 @@ test("suggests the dataset's airports in To, the same list as From", () => {
     'list',
     screen.getByLabelText('From').getAttribute('list'),
   );
+});
+
+test("suggests the dataset's airlines in Airline, by code and name", () => {
+  render(<FilterBar criteria={{ sort: 'price' }} errors={{}} onSubmit={vi.fn()} />);
+
+  const suggestions = suggestionsOf(screen.getByLabelText('Airline'));
+
+  expect(suggestions).toHaveLength(CARRIER_NAMES.size);
+  expect(suggestions).toContainEqual(['IB', 'IB — Iberia']);
+  expect(suggestions).toContainEqual(['U2', 'U2 — easyJet']);
 });
 
 test('submits the four filters', async () => {
@@ -112,4 +120,15 @@ test('sends a city typed with spaces around it as its airport code', async () =>
   await user.click(screen.getByRole('button', { name: 'Search' }));
 
   expect(onSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ origin: 'MEX' }));
+});
+
+test("sends an airline's name typed in Airline, in any case and with spaces, as its code", async () => {
+  const onSubmit = vi.fn();
+  const user = userEvent.setup();
+  render(<FilterBar criteria={{ sort: 'price' }} errors={{}} onSubmit={onSubmit} />);
+
+  await user.type(screen.getByLabelText('Airline'), ' air europa ');
+  await user.click(screen.getByRole('button', { name: 'Search' }));
+
+  expect(onSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ carrier: 'UX' }));
 });
