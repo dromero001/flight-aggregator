@@ -6,8 +6,9 @@ import { useAdminClient } from './adminClientContext';
 import { inventoryStatusKey } from './useInventoryStatus';
 
 /**
- * Why no run started. The API answers 409 only while a run is really going on (plan 5 Task 12),
- * and its detail says so.
+ * Why no run started. The API answers 409 only while a run is really going on, scheduled or on
+ * demand: the ingestion's lock is released when the run ends (plan 5 Task 12 and its closing
+ * round 2), and the detail says so.
  */
 function failure(error: Error): string {
   if (error instanceof ApiError && error.status === 409 && error.detail) {

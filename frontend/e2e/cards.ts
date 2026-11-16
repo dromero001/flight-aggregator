@@ -34,3 +34,25 @@ export async function expectEveryCardFrom(page: Page, airport: string): Promise<
     })
     .toEqual([airport]);
 }
+
+/** The cards' prices, in the order shown ("€1,234.50" read as 1234.5, for comparison only). */
+export async function shownPrices(page: Page): Promise<number[]> {
+  const texts = await page.getByRole('article').allInnerTexts();
+  return texts.map((text) => {
+    const amount = /€([\d,]+\.\d{2})/.exec(text);
+    if (!amount) throw new Error(`No price on the card: ${text}`);
+    return Number(amount[1].replaceAll(',', ''));
+  });
+}
+
+/** Each card's departure and arrival instants, read from its first two `<time dateTime>`. */
+export async function shownTimes(page: Page): Promise<{ departure: number; arrival: number }[]> {
+  const cards = await page.getByRole('article').all();
+  return Promise.all(
+    cards.map(async (card) => {
+      const instant = async (index: number) =>
+        Date.parse((await card.locator('time').nth(index).getAttribute('datetime')) ?? '');
+      return { departure: await instant(0), arrival: await instant(1) };
+    }),
+  );
+}
