@@ -3,6 +3,7 @@ package com.flightaggregator.bootstrap;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.flightaggregator.adapter.persistence.support.PostgresImage;
+import com.flightaggregator.adapter.persistence.support.ValkeyImage;
 import com.flightaggregator.bootstrap.deploy.ObservabilityImages;
 import com.flightaggregator.bootstrap.security.KeycloakImage;
 import java.io.IOException;
@@ -41,6 +42,38 @@ class ComposeFileTest {
   @Test
   void runsThePostgresImageTheTestsRun() throws IOException {
     assertThat(ComposeFile.services().get("postgres").get("image")).isEqualTo(PostgresImage.NAME);
+  }
+
+  @Test
+  void runsTheValkeyImageTheTestsRun() throws IOException {
+    assertThat(ComposeFile.services().get("valkey").get("image")).isEqualTo(ValkeyImage.NAME);
+  }
+
+  /**
+   * Valkey is a cache (spec 6.2): its memory is bounded, and the least recently used key, of any
+   * kind, makes room for a new one, as plan 5 Task 13 sets it.
+   */
+  @Test
+  void boundsValkeysMemoryAndEvictsTheLeastRecentlyUsedKey() throws IOException {
+    assertThat(ComposeFile.services().get("valkey").get("command"))
+        .isEqualTo(
+            List.of("valkey-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"));
+  }
+
+  /**
+   * The app reaches Valkey by its service name, and starts once the stores and the token issuer it
+   * calls answer (plan 5 Task 13).
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void startsTheAppOnValkeyOnceValkeyAndKeycloakAreHealthy() throws IOException {
+    Map<String, Object> app = ComposeFile.services().get("app");
+
+    assertThat((Map<String, Object>) app.get("environment"))
+        .containsEntry("SPRING_DATA_REDIS_HOST", "valkey");
+    assertThat((Map<String, Object>) app.get("depends_on"))
+        .containsEntry("valkey", Map.of("condition", "service_healthy"))
+        .containsEntry("keycloak", Map.of("condition", "service_healthy"));
   }
 
   @Test

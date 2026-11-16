@@ -3,7 +3,8 @@ package com.flightaggregator.adapter.persistence.support;
 /**
  * The Valkey image every Testcontainers test runs: an exact tag, the newest Valkey 9 GA at least 14
  * days old when chosen, pinned by the digest of its multi-arch index (spec 6.1), so that the store
- * and the application tests run the same server.
+ * and the application tests run the same server; compose runs it too, and {@code ComposeFileTest}
+ * keeps the two the same.
  */
 public final class ValkeyImage {
 
