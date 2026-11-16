@@ -8,6 +8,7 @@ import {
   lokiExploreUrl,
   lokiLabels,
   lokiLines,
+  tempoExploreUrl,
   tempoTrace,
 } from './telemetry.js';
 
@@ -74,6 +75,17 @@ test('jumps from a log line to its trace in Grafana', async ({ page }) => {
   // The line's details link its trace_id to Tempo (the Loki datasource's derived field).
   await page.getByRole('link', { name: 'View trace' }).first().click();
   await expect(page.getByText('ingestion.run').first()).toBeVisible({ timeout: 15_000 });
+});
+
+test('jumps from a trace to its log lines in Grafana', async ({ page }) => {
+  // A run's trace, named by its report line in Loki.
+  const [ended] = await lokiLines(`${APP_LOGS} |= "Ingestion run ended"`);
+
+  // No sign-in: Explore on Tempo shows the trace, whose header links its lines in Loki (the Tempo
+  // datasource's trace to logs); each span's details hold the same link.
+  await page.goto(tempoExploreUrl(ended.fields.trace_id));
+  await page.getByRole('button', { name: 'Related logs' }).first().click();
+  await expect(page.getByText('Ingestion run ended').first()).toBeVisible({ timeout: 15_000 });
 });
 
 test("keeps ids out of Loki's labels", async () => {

@@ -136,10 +136,20 @@ export async function lokiLabels(): Promise<string[]> {
 
 /** Grafana's Explore on Loki, over the last hour, with one LogQL query. */
 export function lokiExploreUrl(query: string): string {
+  return exploreUrl('loki', { expr: query });
+}
+
+/** Grafana's Explore on Tempo, over the last hour, showing one trace. */
+export function tempoExploreUrl(traceId: string): string {
+  return exploreUrl('tempo', { queryType: 'traceql', query: traceId });
+}
+
+/** Explore with one query; each provisioned datasource's uid is its type's name. */
+function exploreUrl(datasource: 'loki' | 'tempo', query: Record<string, string>): string {
   const panes = {
-    logs: {
-      datasource: 'loki',
-      queries: [{ refId: 'A', expr: query, datasource: { type: 'loki', uid: 'loki' } }],
+    pane: {
+      datasource,
+      queries: [{ refId: 'A', ...query, datasource: { type: datasource, uid: datasource } }],
       range: { from: 'now-1h', to: 'now' },
     },
   };
