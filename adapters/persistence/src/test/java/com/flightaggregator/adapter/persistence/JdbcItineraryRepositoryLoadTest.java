@@ -102,17 +102,24 @@ class JdbcItineraryRepositoryLoadTest {
     assertThat(estimatedRows).isEqualTo(2f);
   }
 
-  /** The key columns of every index of a table but its primary key, e.g. {@code price, id}. */
+  /**
+   * The key columns of every index of a table but its primary key, e.g. {@code price, id}, in no
+   * particular order.
+   */
   private List<String> sortIndexes(String table) {
     return jdbc.sql(
             "SELECT substring(indexdef FROM 'USING btree \\((.*)\\)') FROM pg_indexes"
-                + " WHERE tablename = ? AND indexname NOT LIKE '%pkey' ORDER BY 1")
+                + " WHERE tablename = ? AND indexname NOT LIKE '%pkey'")
         .param(table)
         .query(String.class)
         .list();
   }
 
-  /** Q6: each sort order, keyed by id, alone and behind an origin and destination prefix. */
+  /**
+   * Q6: each sort order, keyed by id, alone and behind an origin and destination prefix, on both
+   * slots and on each kind of partition: a day partition created by a load inherits them, and the
+   * DEFAULT partitions, which existed when the indexes were created, received them then.
+   */
   @Test
   void indexesEverySortOrderOnBothSlots() {
     publish(NOW, List.of(direct(1, "2026-11-25T07:15:00Z")));
@@ -125,9 +132,11 @@ class JdbcItineraryRepositoryLoadTest {
             "origin, destination, duration_seconds, id",
             "origin, destination, price, id",
             "price, id");
-    assertThat(sortIndexes("itinerary_a")).isEqualTo(expected);
-    assertThat(sortIndexes("itinerary_b")).isEqualTo(expected);
-    assertThat(sortIndexes("itinerary_b_20261125")).isEqualTo(expected);
+    assertThat(sortIndexes("itinerary_a")).containsExactlyInAnyOrderElementsOf(expected);
+    assertThat(sortIndexes("itinerary_b")).containsExactlyInAnyOrderElementsOf(expected);
+    assertThat(sortIndexes("itinerary_b_20261125")).containsExactlyInAnyOrderElementsOf(expected);
+    assertThat(sortIndexes("itinerary_a_default")).containsExactlyInAnyOrderElementsOf(expected);
+    assertThat(sortIndexes("itinerary_b_default")).containsExactlyInAnyOrderElementsOf(expected);
   }
 
   /**
