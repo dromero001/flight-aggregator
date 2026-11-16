@@ -271,6 +271,9 @@ services:
       # Explore's query history is off: it was the one thing a Viewer could save, and every
       # anonymous visitor shared it (the user's decision of 2026-11-15).
       GF_QUERY_HISTORY_ENABLED: "false"
+      # Refuses a cross-origin "simple" POST, which a page on another site could otherwise send
+      # through the datasource proxy to Tempo as the anonymous Viewer (the final risk review's N1).
+      GF_SECURITY_CSRF_ALWAYS_CHECK: "true"
       # No Grafana account is committed (spec 6.6): the built-in administrator cannot sign in.
       GF_AUTH_BASIC_ENABLED: "false"
       GF_AUTH_DISABLE_LOGIN_FORM: "true"

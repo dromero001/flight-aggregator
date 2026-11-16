@@ -392,6 +392,24 @@ class GrafanaProvisioningTest {
   }
 
   /**
+   * A page on another site cannot make a visitor's browser post through Grafana's datasource proxy
+   * as the anonymous Viewer: a "simple" cross-origin POST, which a browser sends without asking
+   * first, is refused before it reaches Tempo ({@code [security] csrf_always_check}, the final risk
+   * review's N1). Without it Grafana proxied such a POST to Tempo's API.
+   */
+  @Test
+  void refusesACrossOriginPostThroughTheDatasourceProxy() throws IOException, InterruptedException {
+    HttpResponse<String> response =
+        send(
+            HttpRequest.newBuilder(uri("/api/datasources/proxy/uid/tempo/api/echo"))
+                .header("Origin", "http://evil.example")
+                .header("Content-Type", "text/plain")
+                .POST(HttpRequest.BodyPublishers.ofString("")));
+
+    assertThat(response.statusCode()).as(response.body()).isEqualTo(403);
+  }
+
+  /**
    * Grafana sends anonymous usage statistics to {@code stats.grafana.org} unless {@code [analytics]
    * reporting_enabled} is false (Grafana 13.3's "Configure Grafana", section {@code analytics});
    * the user's decision of 2026-11-15. Grafana shows the setting only to an administrator, and
