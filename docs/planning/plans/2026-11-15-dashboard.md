@@ -299,6 +299,8 @@ Booking (§6.8: "Select" goes no further); `SOLUTION.md`, Grafana and the final 
 
 ### Task 8: The provider-status screen and "Run ingestion now"
 
+**Amended after Task 7 (2026-11-16, the controller under the night rules; for the user to see):** `AdminSession`'s context also provides the admin client, `useAdminClient()`, built once from its `AuthClient` with Task 7's `adminClient(auth)`; `useInventoryStatus()` and `RunIngestionButton` use it (Task 7's `useAdminToken` alone cannot build it). Starts after plan 5 Task 12 is on `main`, so `schema.d.ts` has the admin paths; `types.ts` then gains `StatusReport` and `ProviderStatus`. The 409 is answered only while a run is really running (plan 5 Task 12, the user's decision of 2026-11-16).
+
 **Files:**
 - Create: `frontend/src/admin/useInventoryStatus.ts`, `StatusPage.tsx`, `ProviderTable.tsx`, `RunIngestionButton.tsx`, `StatusPage.module.css`, `src/admin/labels.ts`
 - Modify: `src/admin/AdminPage.tsx`
