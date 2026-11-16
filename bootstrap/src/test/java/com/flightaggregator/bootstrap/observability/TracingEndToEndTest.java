@@ -101,6 +101,7 @@ class TracingEndToEndTest {
   @Autowired private InMemorySpanExporter spans;
   @Autowired private SdkTracerProvider tracer;
   @Autowired private ApplicationContext context;
+  @Autowired private MeterRegistry meters;
   @LocalServerPort private int port;
 
   @BeforeEach
@@ -221,6 +222,20 @@ class TracingEndToEndTest {
         .extracting(registry -> registry.getClass().getName())
         .isNotEmpty()
         .doesNotContain("io.micrometer.registry.otlp.OtlpMeterRegistry");
+  }
+
+  /**
+   * The run's observation makes its span and no meter of its own: {@code ingestion.duration}
+   * already times every run (§6.4), and {@code ingestion.runs} counts them.
+   */
+  @Test
+  void timesARunOnlyAsIngestionDuration() {
+    job.run();
+
+    assertThat(meters.getMeters())
+        .extracting(meter -> meter.getId().getName())
+        .contains("ingestion.duration", "ingestion.runs")
+        .doesNotContain("ingestion.run", "ingestion.run.active");
   }
 
   /** Every attribute value of the span and of its events, as text. */
