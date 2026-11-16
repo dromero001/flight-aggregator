@@ -5,7 +5,7 @@ This manual shows how to use the Flight Aggregator: how a customer searches flig
 - **Version:** manual `v1.2.0`, for the application as released in `v1.1.0` (the manual changes no code).
 - **Readers:** the reviewers of this take-home, and anyone who runs the stack on their own machine.
 - **Why it works the way it does:** the [architecture documents](../architecture/README.md) and [SOLUTION.md](../../SOLUTION.md). This manual links to them and does not repeat them.
-- **PDF:** [`user-manual.pdf`](user-manual.pdf) is generated from this file, which is the source of truth.
+- **PDF:** [`user-manual.pdf`](user-manual.pdf) is generated from this file, which is the source of truth. To rebuild it after a change, run `node docs/user-manual/tools/build-pdf.cjs` from the repository's root; [tools](tools/README.md) lists what it needs.
 
 ## Contents
 
@@ -23,14 +23,14 @@ This manual shows how to use the Flight Aggregator: how a customer searches flig
 2. Wait for the first ingestion. The aggregator downloads the three providers when it starts and publishes about a million itineraries, which takes about a minute on a recent machine. Until then a search finds no flights.
 3. Open the address you need. Every service listens on your own machine only:
 
-| What | Address | Who uses it |
+| Service | Address | What it is |
 |---|---|---|
-| Dashboard: the flight search | `http://localhost:3000` | Customers |
-| Dashboard: the provider status | `http://localhost:3000/admin` | Admins (sign-in) |
-| API and Swagger UI | `http://localhost:8080/swagger-ui.html` | Developers |
-| Grafana | `http://localhost:3001` | The team (no sign-in) |
-| Prometheus | `http://localhost:9090` | The team (its alerts page and queries) |
-| Keycloak | `http://localhost:8180` | Issues the admin's sign-in and tokens |
+| Dashboard | `http://localhost:3000` | The search, and the provider status on `/admin` |
+| API | `http://localhost:8080` | The search API, `/health` and Swagger UI on `/swagger-ui.html` |
+| Keycloak | `http://localhost:8180` | The token issuer of the admin side, realm `flight-aggregator` |
+| Grafana | `http://localhost:3001` | Metrics, traces and logs, with no login |
+| Prometheus | `http://localhost:9090` | Its alerts page and query screen |
+| Mock providers | `http://localhost:8081` | Alpha, Beta and Gamma |
 
 The screenshots in this manual come from a stack running `v1.1.0`. The flights, prices and times in them change with every ingestion, so yours will differ.
 
@@ -78,7 +78,7 @@ Under **Sort by**, choose:
 - **Departure:** the earliest departure first.
 - **Duration:** the shortest trip first, stops included.
 
-To find the cheapest direct flight, search your route sorted by **Price** and read the details line of the first cards: "Direct" marks the flights with no stop.
+To find the cheapest direct flight, search your route sorted by **Price** and look for the first card whose details line says "Direct"; if none is on the page, press **Load more**.
 
 ![The same search sorted by Departure: the earliest Iberia flights from Madrid to New York first](images/search-sorted-by-departure.png)
 
@@ -133,6 +133,10 @@ While the price is checked, the card says "Checking the price…". Then it shows
 
 *A changed price: the card's price shows the new amount.*
 
+![An opened card from Madrid to New York with two stops whose price could not be confirmed: the notice "We couldn't confirm this flight. This is the best alternative we found.", the alternative's leg under "Alternative legs" with its date, Wed 2 Dec, and "Price confirmed: €456.58" with a Select button](images/reprice-alternative.png)
+
+*An alternative: one provider was made to fail on purpose. The alternative leaves on another day, so its leg shows the date; the card's own price stays as it was.*
+
 ![An opened card with the message "We can't confirm the price right now. Please try again in a few minutes."](images/reprice-unavailable.png)
 
 *No provider answered: here the three providers were stopped on purpose.*
@@ -143,7 +147,7 @@ A confirmed, changed or alternative price comes with a **Select** button. Bookin
 
 *Select ends the demo's flow.*
 
-Each opening checks the price again: close the card and open it later to see the price at that moment. This manual has no screenshot of the alternative: it needs one provider to fail a flight that no other provider sells while the others answer, which the demo stack does not do on its own.
+Each opening checks the price again: close the card and open it later to see the price at that moment.
 
 ### When the results change while you browse
 
@@ -205,7 +209,7 @@ While your Keycloak session lasts, reloading the page or opening it again does n
 The line under the button describes the published inventory:
 
 - **Generation N:** the number of the published inventory. Each publication adds one: an ingestion, or a search's background refresh of one airport's flights (see [When the results change while you browse](#when-the-results-change-while-you-browse)).
-- **Published 4 min ago:** when that generation was published.
+- **Published 4 min ago:** when the last ingestion published the inventory. A background refresh moves the generation on but not this time.
 - **Next ingestion in 26 min:** when the next scheduled run is due ("Next ingestion due" once its time has come). The aggregator runs one every 30 minutes.
 
 Before the first run ends, the screen says "No ingestion has run yet.", or "First ingestion in progress." while it runs.
@@ -216,7 +220,7 @@ The **Providers** table has one row per provider, Alpha, Beta and Gamma:
 |---|---|
 | Provider | The provider's name. |
 | Health | "Up", "Degraded" or "Down" (below). |
-| Circuit breaker | "Closed": calls go through. "Open": recent calls failed, so calls are refused for 60 seconds. "Half-open": after those 60 seconds, a few trial calls test the provider again. |
+| Circuit breaker | "Closed": calls go through. "Open": recent calls failed, so calls are refused for 60 seconds. "Half-open": a few trial calls test the provider again; the breaker turns half-open at the first call to the provider after those 60 seconds, not by itself. |
 | Last successful ingestion | How long ago its newest stored price was quoted, or "Never". |
 | Legs | How many of its flight legs the inventory uses. "Kept from the last good ingestion" means its last download failed, so the inventory keeps its legs from an earlier run. |
 | Discarded records | How many of its records the last run rejected, then each reason with its count ("Unknown airport: 5"). |
@@ -248,7 +252,7 @@ The screen reads the status again every 10 seconds while its tab is visible, so 
 
 Only one run goes on at a time. If you press the button while a run is going on, scheduled or on demand, the screen says "An ingestion is already running." Wait for that run to end.
 
-![The status screen with "An ingestion is already running." under the button](images/admin-ingestion-already-running.png)
+![The status screen with "An ingestion is already running." beside the button](images/admin-ingestion-already-running.png)
 
 *A second press while a run is going on.*
 
@@ -261,14 +265,14 @@ Customers keep searching the previous inventory until the run publishes, and a r
 | "Provider status could not be loaded. Retrying every 10 seconds." | Nothing: the screen tries again by itself. If it persists, check that the aggregator is running (`docker compose ps`). |
 | "This account does not have the admin role." | Sign out and sign in with an account that has it. In the demo, `admin` has it. |
 | "The API refused your session. Sign out and try again." | Press **Sign out** and sign in again. |
-| "Sign-in failed. Reload the page to try again." | Reload the page. The browser's console says why the sign-in failed. |
+| "Sign-in failed. Reload the page to try again." | Reload the page. If the dashboard's sign-in settings (`/config.json`) could not be read, the browser's console says so. |
 | "The ingestion could not be started. Try again in a moment." | Press **Run ingestion now** again a little later. |
 
 To call the admin endpoints from a script instead, with a token, follow the README's [Admin access](../../README.md#admin-access).
 
 ## 3. Monitoring with Grafana
 
-Grafana shows the aggregator's metrics, traces and logs to the whole team. Open `http://localhost:3001`: there is no sign-in, and everyone is a viewer who can look and explore but not save changes. Its parts are described in [Observability](../architecture/observability.md).
+Grafana shows the aggregator's metrics, traces and logs to the whole team. Open `http://localhost:3001`: no sign-in is needed, and everyone is a viewer who can look and explore but not save changes. Grafana still shows a **Sign in** link at the top right; ignore it. Its parts are described in [Observability](../architecture/observability.md).
 
 ### Read the dashboard
 
@@ -301,10 +305,11 @@ The time picker at the top right sets the period every panel shows. The alert ru
 
 ### Follow an ingestion run from its log line to its trace
 
-1. Open **Explore** (`http://localhost:3001/explore`) and choose the **Loki** data source.
-2. Run the query `{service_name="flight-aggregator"} |= "Ingestion run ended"`.
-3. Click a line to open its details.
-4. Under **Links**, click **View trace** beside **TraceID**. The run's trace opens beside the logs: the run (`ingestion.run`) and one request per provider page to Alpha, Beta and Gamma.
+1. Start a run: the one at startup, "Run ingestion now" on the dashboard's admin screen, or `POST /api/admin/ingestions` with a token. A run takes about a minute, more on a loaded host.
+2. Open Grafana's Explore (`http://localhost:3001/explore`), choose the **Loki** data source, and run `{service_name="flight-aggregator"} |= "Ingestion run ended"`.
+3. Click the run's line to open its details, then **View trace**, under **Links** beside **TraceID**: the trace opens beside the logs, with the run (`ingestion.run`) and one request per provider page to Alpha, Beta and Gamma.
+
+The way back works too: **Related logs** on a trace, or on any of its spans, opens that trace's log lines.
 
 ![Grafana Explore on Loki: an "Ingestion run ended" line with each provider's figures, opened to show its Links section with TraceID and View trace](images/grafana-log-line.png)
 
@@ -314,7 +319,7 @@ The time picker at the top right sets the period every panel shows. The alert ru
 
 *The run's trace beside its logs.*
 
-The way back works too: in a trace, **Related logs** (in its header or in any span's details) opens that trace's log lines. More LogQL examples are in [Observability, logs](../architecture/observability.md#logs).
+More LogQL examples are in [Observability, logs](../architecture/observability.md#logs).
 
 ## 4. The API in Swagger UI
 
@@ -341,8 +346,8 @@ To read the next page, copy `nextCursor` from the response into `cursor` and pre
 The admin endpoints answer `401` without a token.
 
 1. Get a token as in step 2 of the README's [Admin access](../../README.md#admin-access). It lasts 5 minutes.
-2. Press **Authorize**, paste the token alone (without `Bearer`) into the **Value** field, press **Authorize** in the dialog, then **Close**.
-3. Try **GET /api/admin/status** or **POST /api/admin/ingestions**. Swagger UI sends the token with them until you reload the page.
+2. Press **Authorize**, paste the token alone (without `Bearer`) into the `bearer` scheme's **Value** field, press **Authorize** in the dialog and close it: Swagger UI then sends it with the admin operations until the page is reloaded.
+3. Try **GET /api/admin/status** or **POST /api/admin/ingestions**.
 
 ![Swagger UI's Available authorizations dialog with an empty Value field for the bearer scheme](images/swagger-authorize.png)
 
@@ -352,7 +357,7 @@ The admin endpoints answer `401` without a token.
 
 ### The search shows no flights right after the start
 
-The first ingestion has not published yet. It runs when the aggregator starts and takes about a minute, more on a slower machine. Wait, then search again. If the admin screen still says "No ingestion has run yet." a few minutes after the start, the first run may have failed: follow step 3 of [On an older or slower machine](../../README.md#on-an-older-or-slower-machine).
+The first ingestion has not published yet. It runs when the aggregator starts and takes about a minute, more on a slower machine. Wait, then search again. If the admin screen still says "No ingestion has run yet." a few minutes after the start, the first run may have failed: follow step 3 of [On an older or slower machine](../../README.md#on-an-older-or-slower-machine). If it shows every provider Down instead, the first run reached no provider and published nothing: check that `mock-gds` is running (`docker compose ps`), then press **Run ingestion now**.
 
 ### "Results updated." appears
 
@@ -371,7 +376,7 @@ A search answers `503` with `Retry-After` too when the database cannot read the 
 ### A provider shows Degraded or Down
 
 - **Degraded** (circuit breaker "Half-open"): the provider failed recently and is being tested again. It returns to "Up" when the trial calls succeed.
-- **Down** with the breaker "Open": recent calls failed. The breaker refuses calls for 60 seconds, then tests the provider again.
+- **Down** with the breaker "Open": recent calls failed. The breaker refuses calls for 60 seconds; the screen shows "Open" until the next call to the provider (a run or a price check) after that, which tests it again.
 
   ![The Providers table with all three providers Down and their circuit breakers Open, their legs not marked as kept](images/admin-breakers-open.png)
 

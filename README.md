@@ -51,12 +51,12 @@ One command starts the whole stack. These services are published, each on the lo
 
 | Service | Address | What it is |
 |---|---|---|
-| Dashboard | `http://localhost:3000` | The search, and the provider status on `/admin` ([Use the dashboard](#use-the-dashboard)) |
+| Dashboard | `http://localhost:3000` | The search, and the provider status on `/admin` |
 | API | `http://localhost:8080` | The search API, `/health` and Swagger UI on `/swagger-ui.html` |
-| Keycloak | `http://localhost:8180` | The token issuer of the [admin side](#admin-access), realm `flight-aggregator` |
-| Grafana | `http://localhost:3001` | Metrics, traces and logs, with no login ([Observability](#observability)) |
+| Keycloak | `http://localhost:8180` | The token issuer of the admin side, realm `flight-aggregator` |
+| Grafana | `http://localhost:3001` | Metrics, traces and logs, with no login |
 | Prometheus | `http://localhost:9090` | Its alerts page and query screen |
-| Mock providers | `http://localhost:8081` | Alpha, Beta and Gamma ([Run the mock providers](#run-the-mock-providers)) |
+| Mock providers | `http://localhost:8081` | Alpha, Beta and Gamma |
 
 PostgreSQL, Valkey (the search's result cache, refresh claims and rate-limit counters), the OpenTelemetry Collector, Tempo, Loki and the aggregator's management port are reachable only inside compose's network. The aggregator (`bootstrap/Dockerfile`, `-Xmx512m`) ingests the providers at startup, then every 30 minutes, and publishes about one million itineraries into PostgreSQL. A run took 23.8 to 27.5 s with six sort indexes per slot ([plan 5 Task 13](docs/planning/progress/2026-11-15-search-api.md#task-13--evidence)), and 34.9 to 41.6 s with today's twelve, on a host shared with another stack ([plan 5's re-review fixes](docs/planning/progress/2026-11-15-search-api.md#end-of-plan-fix-round-1--re-review-fixes)). Its health is on `http://localhost:8080/health` and the search on `http://localhost:8080/api/itineraries`. Each client address may make 60 searches and 10 re-prices a minute; one more answers `429` with `Retry-After`, and the limits are the `rate-limit.actions.*` settings in `bootstrap/src/main/resources/application.yaml`. How a run works, and what each failure does: [Ingestion](docs/architecture/ingestion.md); the API: [Search API](docs/architecture/search-api.md).
 
@@ -187,7 +187,7 @@ Search and re-price are public. The admin side is OAuth2: the aggregator is a re
 
 The metrics are not on the API port: Actuator serves them on its management port, 8079, which only compose's network reaches and compose does not publish. Prometheus scrapes them there, and the team reads them in Grafana on `http://localhost:3001`, with no login.
 
-Swagger UI is on `http://localhost:8080/swagger-ui.html`, to browse the API and try it; its admin operations answer `401` there without a token, as anywhere else. To try them there, get a token as in step 2 below, press **Authorize**, paste the token alone (without `Bearer`) into the `bearer` scheme's **Value** field, press **Authorize** in the dialog and close it: Swagger UI then sends it with the admin operations until the page is reloaded.
+Swagger UI is on `http://localhost:8080/swagger-ui.html`, to browse the API and try it; its admin operations answer `401` there without a token, as anywhere else. To try them there, get a token as in step 2 below. Press **Authorize**, paste the token alone (without `Bearer`) into the `bearer` scheme's **Value** field, press **Authorize** in the dialog and close it: Swagger UI then sends it with the admin operations until the page is reloaded.
 
 The admin endpoints are `GET /api/admin/status` (the inventory's generation, when it was published, when the next run is due and whether one is going on, and each provider's health, circuit breaker, newest quote, legs and discarded records) and `POST /api/admin/ingestions` (start a run now: `202 Accepted`, or `409 Conflict` while a run holds the ingestion's lock).
 
@@ -240,11 +240,13 @@ The same `docker compose up --build` starts the telemetry services, provisioned 
 
 **See an ingestion run as a trace,** in three steps:
 
-1. Start a run: the one at startup, "Run ingestion now" on the dashboard's admin screen, or `POST /api/admin/ingestions` with a token ([Admin access](#admin-access)). A run takes about a minute, more on a loaded host: on CI, 86 s for the startup run and 78 s for a manual one ([progress](docs/planning/progress/2026-11-15-observability-and-delivery.md#final-review--fix-round-frontend-and-docs)).
-2. Open Grafana's Explore (`http://localhost:3001/explore`), choose the **Loki** datasource, and run `{service_name="flight-aggregator"} |= "Ingestion run ended"`.
-3. Click the run's line to open its details, then **View trace**: the trace opens beside the logs, with the run (`ingestion.run`) and one request per provider page to Alpha, Beta and Gamma.
+1. Start a run: the one at startup, "Run ingestion now" on the dashboard's admin screen, or `POST /api/admin/ingestions` with a token. A run takes about a minute, more on a loaded host.
+2. Open Grafana's Explore (`http://localhost:3001/explore`), choose the **Loki** data source, and run `{service_name="flight-aggregator"} |= "Ingestion run ended"`.
+3. Click the run's line to open its details, then **View trace**, under **Links** beside **TraceID**: the trace opens beside the logs, with the run (`ingestion.run`) and one request per provider page to Alpha, Beta and Gamma.
 
 The way back works too: **Related logs** on a trace, or on any of its spans, opens that trace's log lines.
+
+The token for the admin call is in [Admin access](#admin-access). On CI, the startup run took 86 s and a manual one 78 s ([progress](docs/planning/progress/2026-11-15-observability-and-delivery.md#final-review--fix-round-frontend-and-docs)).
 
 **The "Flight aggregator" dashboard** has ten panels. Seven show the metrics the spec promises: provider calls, circuit breakers, data freshness, ingestion, cache hit ratio, discarded records and partitions. Three more show the search's and re-price's HTTP requests, the alert rules in every state, and the application's log lines, where a line's details hold **View trace**. What each panel shows: [Observability, the dashboard](docs/architecture/observability.md#the-dashboard).
 
