@@ -1,4 +1,5 @@
 import createClient, { type Client, type Middleware } from 'openapi-fetch';
+import type { User } from 'oidc-client-ts';
 import type { AuthClient } from '../admin/authClient';
 import { toApiError } from './apiError';
 import type { paths } from './schema';
@@ -49,9 +50,26 @@ function withToken(request: Request, accessToken: string): Request {
 
 /**
  * Sends the signed-in admin's access token. A 401 means it expired (Keycloak's lasts 5 minutes):
- * the session is renewed once and the call repeated once with the new token.
+ * the session is renewed once and the call repeated once with the new token. Calls that answer 401
+ * while a renewal runs share it, and its outcome, rather than each asking Keycloak for its own.
  */
 function bearerToken(auth: AuthClient): Middleware {
+  let renewal: Promise<User | null> | undefined;
+
+  /** The renewed admin, or null when the session could not be renewed. */
+  async function renewOrSignIn(): Promise<User | null> {
+    // Read before the renewal replaces it.
+    const refused = await auth.getUser();
+    const renewed = await auth.signinSilent().catch(() => null);
+    // An expired token that cannot be renewed: Keycloak's own session ended, so one more sign-in,
+    // and the page leaves for Keycloak. A token still valid refused would be refused again after a
+    // new sign-in, which would loop: the 401 goes to the screen instead.
+    if (!renewed && refused?.expired) {
+      await auth.signinRedirect();
+    }
+    return renewed;
+  }
+
   return {
     async onRequest({ request }) {
       const user = await auth.getUser();
@@ -61,16 +79,11 @@ function bearerToken(auth: AuthClient): Middleware {
       if (response.status !== 401) {
         return undefined;
       }
-      // Read before the renewal replaces it.
-      const refused = await auth.getUser();
-      const renewed = await auth.signinSilent().catch(() => null);
+      renewal ??= renewOrSignIn().finally(() => {
+        renewal = undefined;
+      });
+      const renewed = await renewal;
       if (!renewed) {
-        // An expired token that cannot be renewed: Keycloak's own session ended, so one more
-        // sign-in, and the page leaves for Keycloak. A token still valid refused would be refused
-        // again after a new sign-in, which would loop: the 401 goes to the screen instead.
-        if (refused?.expired) {
-          await auth.signinRedirect();
-        }
         return undefined;
       }
       // A renewed token refused too means the API does not accept this issuer's tokens: a new

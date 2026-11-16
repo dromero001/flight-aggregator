@@ -71,9 +71,9 @@ The frontend is an npm project in `frontend/` (Node from `frontend/.nvmrc`), out
 | Command | What it does |
 |---|---|
 | `npm run dev` | Vite's dev server on `http://localhost:5173`, proxying `/api` to the aggregator on `http://localhost:8080` (the admin sign-in needs port 3000: [Dashboard](docs/architecture/dashboard.md#run-it)) |
-| `npm run verify` | Type check, lint, format check and the component tests: the gate before every commit |
+| `npm run verify` | Contract drift check, type check, lint, format check and the component tests: the gate before every commit |
 | `npm run api:generate` | Regenerates `src/api/schema.d.ts` from `docs/architecture/openapi.json`; `npm run api:check` fails when it is stale |
-| `npm run e2e` | Playwright with axe in Chromium, Firefox and WebKit against the running stack (`npx playwright install --with-deps chromium firefox webkit` first). Firefox does not start on macOS 27: run it in Playwright's Linux image, as [Dashboard](docs/architecture/dashboard.md#how-each-layer-is-tested) shows |
+| `npm run e2e` | Playwright with axe in Chromium, Firefox and WebKit against the running stack (`npx playwright install --with-deps chromium firefox webkit` first). `E2E_BROWSERS=chromium,webkit` runs only those browsers: Firefox does not start on macOS 27 (or run it in Playwright's Linux image, as [Dashboard](docs/architecture/dashboard.md#how-each-layer-is-tested) shows). `E2E_BASE_URL` points it at a dashboard on another address (default `http://localhost:3000`) |
 
 ## Airports in the dataset
 

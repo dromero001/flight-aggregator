@@ -7,7 +7,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig(
-  // schema.d.ts is generated (`npm run api:generate`); its drift test guards it instead.
+  // schema.d.ts is generated (`npm run api:generate`); `npm run api:check` guards it instead.
   { ignores: ['dist', 'test-results', 'playwright-report', 'src/api/schema.d.ts'] },
   {
     files: ['**/*.{ts,tsx,js}'],
@@ -29,9 +29,9 @@ export default defineConfig(
     },
   },
   // What runs in Node rather than in the browser: the tool configs, the end-to-end specs and the
-  // drift tests.
+  // drift test.
   {
-    files: ['*.{js,ts}', 'e2e/**/*.ts', 'src/api/schema.test.ts', 'src/search/suggestions.test.ts'],
+    files: ['*.{js,ts}', 'e2e/**/*.ts', 'src/search/suggestions.test.ts'],
     languageOptions: { globals: globals.node },
   },
   // Plain JavaScript (this file) has no type information.
