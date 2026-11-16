@@ -64,10 +64,10 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       # Spec 6.11 step 3, the types' half: src/api/schema.d.ts must be what openapi-typescript
-      # generates from the committed contract; the backend job's OpenApiContractTest is the other
-      # half (the committed contract is the one the app serves). Before verify, whose Vitest run
-      # includes the same test: on drift this step fails by name, and verify does not run.
-      - name: Contract drift
+      # generates from the committed contract (`openapi-typescript --check`); the backend job's
+      # OpenApiContractTest is the other half (the committed contract is the one the app serves).
+      # Before verify: on drift this step fails by name, and verify does not run.
+      - name: Contract drift (fix with npm run api:generate)
         run: npm run api:check
       # Typecheck (strict), ESLint, Prettier and Vitest, in that order (spec 6.11).
       - run: npm run verify
