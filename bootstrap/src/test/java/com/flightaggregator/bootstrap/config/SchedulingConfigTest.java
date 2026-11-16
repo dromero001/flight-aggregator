@@ -6,6 +6,7 @@ import com.flightaggregator.application.port.in.IngestionReport;
 import com.flightaggregator.bootstrap.ingestion.IngestionJob;
 import com.flightaggregator.bootstrap.ingestion.IngestionMetrics;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -30,7 +31,8 @@ class SchedulingConfigTest {
                       SchedulingConfigTest::nothingToPublish,
                       new IngestionMetrics(new SimpleMeterRegistry(), Instant::now),
                       new DefaultLockingTaskExecutor(configuration -> Optional.of(() -> {})),
-                      Instant::now))
+                      Instant::now,
+                      ObservationRegistry.NOOP))
           .withPropertyValues("ingestion.interval=PT30M");
 
   @Test

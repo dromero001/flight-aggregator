@@ -53,6 +53,7 @@ import org.springframework.boot.test.context.ConfigDataApplicationContextInitial
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.ApplicationContext;
 import org.springframework.resilience.InvocationRejectedException;
+import org.springframework.web.client.RestClient;
 
 class ProvidersConfigTest {
 
@@ -78,7 +79,8 @@ class ProvidersConfigTest {
   private final ApplicationContextRunner withoutLimit =
       new ApplicationContextRunner()
           .withConfiguration(AutoConfigurations.of(AopAutoConfiguration.class))
-          .withUserConfiguration(ProvidersConfig.class, SystemClock.class)
+          .withUserConfiguration(ProvidersConfig.class, SystemClock.class, TracingConfig.class)
+          .withBean(RestClient.Builder.class, RestClient::builder)
           .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
           .withPropertyValues(
               "providers.alpha.base-url=http://alpha.test/",

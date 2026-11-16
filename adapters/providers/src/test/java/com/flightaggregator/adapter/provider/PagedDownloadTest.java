@@ -11,10 +11,41 @@ import com.flightaggregator.domain.Provider;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class PagedDownloadTest {
+
+  /** So that the caller's threads carry its trace onto the page loop (§6.10). */
+  @Test
+  void fetchesPagesOnAThreadOfItsFactory() {
+    ThreadFactory virtual = Thread.ofVirtual().factory();
+    List<Thread> created = new CopyOnWriteArrayList<>();
+    ThreadFactory pages =
+        task -> {
+          Thread thread = virtual.newThread(task);
+          created.add(thread);
+          return thread;
+        };
+    PagedDownload download =
+        new PagedDownload(Provider.ALPHA, settings(Duration.ofSeconds(5), 10), pages);
+    List<Thread> fetchedOn = new CopyOnWriteArrayList<>();
+    AtomicInteger requested = new AtomicInteger();
+
+    download.download(
+        position -> {
+          fetchedOn.add(Thread.currentThread());
+          return new ParsedPage(
+              List.of(),
+              List.of(),
+              requested.incrementAndGet() < 2 ? Optional.of("page2") : Optional.empty());
+        });
+
+    assertThat(created).hasSize(1);
+    assertThat(fetchedOn).containsExactly(created.getFirst(), created.getFirst());
+  }
 
   @Test
   void failsADownloadThatRepeatsAPosition() {
@@ -243,7 +274,7 @@ class PagedDownloadTest {
 
   private static PagedDownload downloadOf(int maxPages, Duration budget) {
     ResilienceSettings settings = settings(budget, maxPages);
-    return new PagedDownload(Provider.ALPHA, settings);
+    return new PagedDownload(Provider.ALPHA, settings, Thread.ofVirtual().factory());
   }
 
   private static ResilienceSettings settings(Duration budget, int maxPages) {
