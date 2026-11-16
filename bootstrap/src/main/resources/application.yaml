@@ -104,6 +104,11 @@ management:
         # The OpenTelemetry starter brings an OTLP meter registry; metrics take one path, Prometheus's
         # scrape of the management port (spec 6.6), so nothing pushes them.
         enabled: false
+  metrics:
+    enable:
+      # A run's observation (IngestionJob) is for its trace: ingestion.duration already times every
+      # run (spec 6.4). Boot's filter matches whole name segments, so ingestion.runs stays.
+      ingestion.run: false
   health:
     redis:
       # Valkey down makes search slower, not broken (spec 6.2), so Boot's indicator, which would
