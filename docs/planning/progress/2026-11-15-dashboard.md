@@ -947,3 +947,16 @@ Each case was added to `frontend/nginx/test-config-validation.sh` and run agains
 - Image test `frontend/nginx/test-config-validation.sh` on the final image: 12 of 12 `ok`.
 - End to end, on a stack just started (`docker compose -p p6close down -v`, then `up --build -d --wait`: 07:44:24 → 07:45:01 UTC), in `mcr.microsoft.com/playwright:v1.64.1-noble` (`--network host --ipc=host`, a copy of `frontend/` without `node_modules`): exit 0, **34 passed in 3.1 min** (Chromium 11, Firefox 11, WebKit 11, the rate-limit test 1). `runs an ingestion on demand` pressed once in each browser and took 50.4 s, 51.9 s and 50.9 s (waiting for the run to publish). The stack was taken down with `-v`.
 - Thermo-nuclear self-review of each area's diff, before its commit: the existing mechanisms are used (TanStack's `signal`, `exact`, `refetchOn*`, `staleTime`; the nginx image's `15-local-resolvers.envsh`; `openapi-fetch` middleware; ESLint's `defineConfig`); one place each for the body guard (`bodyOf`), the search's key and its resets (`useSearchResets`), the failure notice (`failureNotice`), the time helpers (`src/time/`) and the visually hidden class. Nothing new fails silently: the config error is logged, a refused session says so, a hung app answers 504. Known limit, recorded: on a refused session the status keeps its 10 s refresh, each one renewing once more against Keycloak (stopping the poll is the backlog's "stop polling after a 403" kind of extra).
+
+## End-of-plan fix round — re-review verdicts
+
+Triple re-review on `5229c2f..b6fd160`, 2026-11-16 (`.superpowers/sdd/2026-11-15-dashboard/close-rereview-{functional,code,risk}.md`): **functional APPROVED, code APPROVED, risk APPROVED**; plan 6 closes. I-1 (D3), code I-1 (config read once) and risk I-1 (the sign-in loop, the user's option A; probe: 60 s of refused sessions, 14 requests, 7 renewals, 0 redirects) are fixed. New Minors, for a short last round:
+
+| Id | Where | Finding |
+|---|---|---|
+| F m-1 | `ResultsList.tsx:78,104-117` | After a next-page 429, only "Search" continues, and it reloads from page 1; show "Load more" again once `Retry-After` has passed |
+| C N1 | `FilterBar.tsx:47-53` | After a new search the inputs flash their old values for one render; set the draft to the normalised submitted values |
+| C N2 | `default.conf.template:28-30` | `proxy_read_timeout 15s` is below the slowest re-price (10 s plus a quote in flight, 2.5 s × 3); about 20 s, or correct the comment |
+| C N3 | `apiError.ts:30-36` | An empty or negative `Retry-After` gives "0 seconds" or "-5 seconds"; accept only `^\d+$` |
+| R m-1 | `client.ts:65-68` | Redirect only when the refused token has expired (`user.expired`), closing the last double-fault loop (fresh tokens refused and renewal impossible) |
+| R m-2 | `dashboard.md:120` | nginx's resolver ignores `resolv.conf`'s search domains: outside Docker `API_UPSTREAM` must be a fully qualified name; say so |
