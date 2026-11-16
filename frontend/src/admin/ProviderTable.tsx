@@ -1,5 +1,5 @@
 import type { ProviderStatus } from '../api/types';
-import { timeAgo } from '../itinerary/format';
+import { timeAgo } from '../time/relative';
 import { label } from './labels';
 import styles from './StatusPage.module.css';
 

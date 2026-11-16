@@ -1,4 +1,5 @@
 import type { Leg } from '../api/types';
+import { minutesBetween, timeAgo } from '../time/relative';
 import { CARRIER_NAMES } from './carriers';
 
 // Display formats for the itinerary card (plan 6, Q7: en-GB, EUR, the 24-hour clock).
@@ -63,25 +64,6 @@ const EUROS = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'EUR
  */
 export function price(amount: string): string {
   return EUROS.format(amount as Intl.StringNumericLiteral);
-}
-
-const MILLIS_PER_MINUTE = 60_000;
-
-/** Whole minutes between two instants: the offsets take part, the wall clocks do not. */
-function minutesBetween(from: string | Date, to: string | Date): number {
-  return Math.floor((new Date(to).getTime() - new Date(from).getTime()) / MILLIS_PER_MINUTE);
-}
-
-/** "just now", "4 min ago", "1 h ago": how long before `now` an instant was (plan 6, Q7). */
-export function timeAgo(instant: string, now: Date): string {
-  const minutes = minutesBetween(instant, now);
-  if (minutes < 1) {
-    return 'just now';
-  }
-  if (minutes < 60) {
-    return `${String(minutes)} min ago`;
-  }
-  return `${String(Math.floor(minutes / 60))} h ago`;
 }
 
 /** "Updated just now", "Updated 4 min ago", "Updated 1 h ago" (plan 6, Q7). */
