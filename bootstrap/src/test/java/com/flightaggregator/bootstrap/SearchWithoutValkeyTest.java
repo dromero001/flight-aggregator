@@ -26,7 +26,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.testcontainers.DockerClientFactory;
@@ -38,18 +37,9 @@ import org.testcontainers.utility.DockerImageName;
  * answers from PostgreSQL, a client past its rate limit is admitted because nothing can count it,
  * re-price answers, and health is DEGRADED with 200, so the orchestrator leaves the API running.
  */
-@SpringBootTest(
+@AggregatorTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {
-      "providers.alpha.base-url=http://localhost:1/",
-      "providers.alpha.api-key=alpha-key",
-      "providers.beta.base-url=http://localhost:1/",
-      "providers.beta.api-key=beta-key",
-      "providers.gamma.base-url=http://localhost:1/",
-      "providers.gamma.api-key=gamma-key",
-      "ingestion.schedule.enabled=false"
-    })
-@ImportTestcontainers({PostgresContainers.class, SearchWithoutValkeyTest.Valkey.class})
+    containers = {PostgresContainers.class, SearchWithoutValkeyTest.Valkey.class})
 class SearchWithoutValkeyTest {
 
   /** One more than the 60 searches a minute an address may make (Q9). */

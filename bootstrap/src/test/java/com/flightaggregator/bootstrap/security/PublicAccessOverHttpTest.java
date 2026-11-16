@@ -2,7 +2,7 @@ package com.flightaggregator.bootstrap.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.flightaggregator.bootstrap.PostgresContainers;
+import com.flightaggregator.bootstrap.AggregatorTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -10,9 +10,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.TestPropertySource;
 
 /**
  * The public paths on a real server, where an error goes through the servlet container's error
@@ -20,19 +20,9 @@ import org.springframework.http.ResponseEntity;
  * from springdoc): MockMvc makes neither round trip, so {@code SecurityTest} cannot see them. The
  * key endpoint names a port where nothing listens, so the application runs as with Keycloak down.
  */
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {
-      "providers.alpha.base-url=http://localhost:1/",
-      "providers.alpha.api-key=alpha-key",
-      "providers.beta.base-url=http://localhost:1/",
-      "providers.beta.api-key=beta-key",
-      "providers.gamma.base-url=http://localhost:1/",
-      "providers.gamma.api-key=gamma-key",
-      "ingestion.schedule.enabled=false",
-      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/certs"
-    })
-@ImportTestcontainers(PostgresContainers.class)
+@AggregatorTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@TestPropertySource(
+    properties = "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/certs")
 @AutoConfigureTestRestTemplate
 class PublicAccessOverHttpTest {
 

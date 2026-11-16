@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.flightaggregator.bootstrap.PostgresContainers;
+import com.flightaggregator.bootstrap.AggregatorTest;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.nimbusds.jose.JOSEException;
@@ -34,8 +34,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -47,17 +45,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Spec §6.6: search and re-price are public; the admin side needs a token with the ADMIN role. */
-@SpringBootTest(
-    properties = {
-      "providers.alpha.base-url=http://localhost:1/",
-      "providers.alpha.api-key=alpha-key",
-      "providers.beta.base-url=http://localhost:1/",
-      "providers.beta.api-key=beta-key",
-      "providers.gamma.base-url=http://localhost:1/",
-      "providers.gamma.api-key=gamma-key",
-      "ingestion.schedule.enabled=false"
-    })
-@ImportTestcontainers(PostgresContainers.class)
+@AggregatorTest
 @AutoConfigureMockMvc
 class SecurityTest {
 

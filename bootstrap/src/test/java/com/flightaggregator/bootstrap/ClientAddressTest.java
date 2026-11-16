@@ -14,7 +14,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.TestPropertySource;
@@ -26,18 +25,9 @@ import org.testcontainers.utility.DockerImageName;
  * connection from an internal proxy may say whom it forwards. The test connects from loopback, and
  * reads which counter Valkey holds after one search.
  */
-@SpringBootTest(
+@AggregatorTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {
-      "providers.alpha.base-url=http://localhost:1/",
-      "providers.alpha.api-key=alpha-key",
-      "providers.beta.base-url=http://localhost:1/",
-      "providers.beta.api-key=beta-key",
-      "providers.gamma.base-url=http://localhost:1/",
-      "providers.gamma.api-key=gamma-key",
-      "ingestion.schedule.enabled=false"
-    })
-@ImportTestcontainers({PostgresContainers.class, ClientAddressTest.Valkey.class})
+    containers = {PostgresContainers.class, ClientAddressTest.Valkey.class})
 class ClientAddressTest {
 
   /** The address a client forwards, as a forging client or a proxy would. */
