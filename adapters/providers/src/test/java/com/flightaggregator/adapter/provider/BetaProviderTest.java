@@ -156,13 +156,7 @@ class BetaProviderTest {
   private PagedProvider provider() {
     ResilienceSettings settings =
         new ResilienceSettings(
-            Duration.ofMillis(500),
-            Duration.ofSeconds(30),
-            3,
-            Duration.ofMillis(10),
-            100,
-            10,
-            4096);
+            Duration.ofSeconds(5), Duration.ofSeconds(30), 3, Duration.ofMillis(10), 100, 10, 4096);
     AtomicInteger arrivals = new AtomicInteger();
     Clock clock = () -> FIRST_ARRIVAL.plusSeconds(arrivals.getAndIncrement());
     return new PagedProvider(

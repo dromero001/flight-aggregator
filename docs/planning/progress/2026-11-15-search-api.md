@@ -1416,3 +1416,7 @@ The double review (`.superpowers/sdd/2026-11-15-search-api/task-12-review.md`) a
 - C-m4: every public `/actuator/health` probe runs the whole status use case.
 - C-m5: a weakened assertion in `SecurityTest`.
 - C-m6: the Valkey `PING` lives in `AdminConfig`.
+
+## A flaky provider test on CI (controller, 2026-11-16)
+
+CI failed on `dcf88a2` in `AlphaProviderTest.failsAQuoteWithAMalformedRecord`: `expected: MALFORMED_PAGE but was: TIMEOUT` (read from the run's `backend-reports` artifact). The test gives each request 500 ms, and a cold CI runner took longer to answer the first request; the same test passed three times in a row locally, and Task 12 does not touch the providers. Fix, test code only: the Alpha, Beta and Gamma provider tests give each request 5 s; the one test of the download's own budget (`endsTheDownloadWithinItsBudgetEvenWhenEveryRequestIsWithinItsOwn`) keeps 500 ms for both limits, so it still proves the budget. No production code changed; `:adapters:providers:test --rerun` and `./gradlew build` green.

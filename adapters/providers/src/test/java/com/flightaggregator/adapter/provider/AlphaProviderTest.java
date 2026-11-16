@@ -166,7 +166,7 @@ class AlphaProviderTest {
     server.stubFor(
         get(urlEqualTo("/alpha/legs?limit=100&cursor=c2"))
             .willReturn(aResponse().withBody(page(3172, "null")).withChunkedDribbleDelay(3, 300)));
-    PagedProvider provider = provider(Duration.ofMillis(500));
+    PagedProvider provider = provider(Duration.ofMillis(500), Duration.ofMillis(500));
 
     long started = System.nanoTime();
     Throwable failure = catchThrowable(provider::download);
@@ -179,14 +179,18 @@ class AlphaProviderTest {
     assertThat(elapsed).isLessThan(Duration.ofMillis(800));
   }
 
+  /**
+   * Each request may take up to 5 s, so a cold CI runner never turns a slow first answer into a
+   * timeout; only the test of the download's own budget uses short limits.
+   */
   private PagedProvider provider() {
-    return provider(Duration.ofSeconds(30));
+    return provider(Duration.ofSeconds(5), Duration.ofSeconds(30));
   }
 
-  private PagedProvider provider(Duration downloadTimeout) {
+  private PagedProvider provider(Duration requestTimeout, Duration downloadTimeout) {
     ResilienceSettings settings =
         new ResilienceSettings(
-            Duration.ofMillis(500), downloadTimeout, 3, Duration.ofMillis(10), 100, 10, 4096);
+            requestTimeout, downloadTimeout, 3, Duration.ofMillis(10), 100, 10, 4096);
     AtomicInteger arrivals = new AtomicInteger();
     Clock clock = () -> FIRST_ARRIVAL.plusSeconds(arrivals.getAndIncrement());
     return new PagedProvider(
