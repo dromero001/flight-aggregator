@@ -7,8 +7,10 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import com.flightaggregator.domain.Provider;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
+import com.github.tomakehurst.wiremock.stubbing.ServeEvent;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Locale;
 import org.springframework.test.context.DynamicPropertyRegistry;
 
@@ -50,6 +52,15 @@ final class OneFlightProviders {
     server.stubFor(
         get(urlPathMatching("/gamma/.*"))
             .willReturn(ok("airline,flight_number,from,to,departs_at,arrives_at,price_eur\r\n")));
+  }
+
+  /** The trace id of every request the server received, read from its {@code traceparent}. */
+  static List<String> traceIds(WireMockExtension server) {
+    return server.getAllServeEvents().stream()
+        .map(ServeEvent::getRequest)
+        .map(request -> request.getHeader("traceparent"))
+        .map(header -> header == null ? null : header.split("-")[1])
+        .toList();
   }
 
   /** IB3170 Madrid-London, the one record of a listing and of a quote. */

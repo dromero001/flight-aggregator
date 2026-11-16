@@ -224,7 +224,12 @@ class BackgroundRefreshTest {
               return Optional.of(() -> {});
             });
 
-    new BackgroundRefresh(BackgroundRefreshTest::refreshed, recording, claims, () -> NOW)
+    new BackgroundRefresh(
+            BackgroundRefreshTest::refreshed,
+            recording,
+            claims,
+            () -> NOW,
+            Thread.ofVirtual().factory())
         .request(MADRID);
 
     awaitLines(1);
@@ -285,7 +290,8 @@ class BackgroundRefreshTest {
                 held.compareAndSet(false, true)
                     ? Optional.of(() -> held.set(false))
                     : Optional.empty());
-    return new BackgroundRefresh(refreshes, oneAtATime, claims, () -> NOW);
+    return new BackgroundRefresh(
+        refreshes, oneAtATime, claims, () -> NOW, Thread.ofVirtual().factory());
   }
 
   /** The claims given back; search, not the scheduler, claims and marks origins. */

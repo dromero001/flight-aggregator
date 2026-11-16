@@ -656,3 +656,24 @@ Every mutation was restored with `git checkout` and the test was green again.
   - The application layer stays free of Micrometer: it takes a JDK `ThreadFactory`; each fan-out changed by one constructor parameter and one executor line.
   - Silent failure: an export that cannot reach the Collector is dropped and logged by OpenTelemetry's exporter (`Failed to export spans`), never blocking or failing a request or a run (Step 4).
   - Test fixtures shared rather than copied (`OneFlightProviders`); `TracingEndToEndTest` has 268 lines.
+
+## Task 4 — fix round 1
+
+The double review (functional and code) asked for one Important change, F-I1/C-I1: a refresh that a search asks for started on a plain `Thread.ofVirtual()` in `BackgroundRefresh`, so it carried no trace context. Each of its provider requests, and its Valkey `set`, became a root trace of its own. The Minors (F-M1, C-M1–C-M4) wait for plan 7's closing round.
+
+### Rebase on plan 5 closing round 1
+
+The branch was rebased onto round 1's branch (`231e451`, on `main` `2fd74a7`), which rewrites `BackgroundRefresh` (one refresh at a time, ShedLock's `refresh` row), `RefreshConfig`, `PagedProvider` and `application.yaml`. One textual conflict: `RefreshConfig`'s imports, where both were kept. The other files the review listed merged on their own. The module tests (application, providers, bootstrap, with `spotlessCheck`) were green after it: exit 0, bootstrap 223 tests.
+
+### Red → green
+
+`RefreshTraceTest.aRefreshContinuesTheTraceOfTheSearchThatAskedForIt`. It runs PostgreSQL and Valkey containers with tracing on and `search.freshness-threshold=PT0.001S`. After a run, it sends `GET /api/itineraries?origin=MAD` with `traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01`, then waits until the refresh gives ShedLock's `refresh` row back. It asserts that the refresh's three provider requests carry the caller's trace id, and that so does every `set` span (the origin's claim and its refreshed mark).
+- Red: `Expecting ArrayList: ["80ef71d6c697b53e858717ddc54c366e", "2e898a14af2cb0ef6fa351302ca01420", "b757128a61dabcc620de2e35dab48ab5"] to contain only: ["4bf92f3577b34da6a3ce929d0e0e4736"]`. Each provider request was a root trace, as the reviewer's probe showed.
+- Green: `BackgroundRefresh` takes the `contextThreads` `ThreadFactory` from `RefreshConfig`. It starts each refresh on a thread of that factory, created on the search's thread, and keeps the thread's name `refresh-<origin>`. Round 1's lock logic is unchanged. `BackgroundRefreshTest` passes `Thread.ofVirtual().factory()`.
+- As C-I1 suggested, a comment at `IngestionJob.launch` says why the manual run's thread stays plain: a run is a trace of its own.
+- No refresh observation was added: the refresh's spans hang under the search's server span, which is the smallest change that closes F-I1.
+
+### Gates
+
+- `./gradlew build` on the final state: `BUILD SUCCESSFUL`, exit 0; bootstrap 224 tests, none failed or skipped. The first build of this round failed two `ValkeySearchCacheTest` cases in `adapters/persistence` (`QueryTimeoutException: Redis command timed out`). This round does not touch that module. The host was running several builds at once, and the module passed whole (126 tests) on the next build.
+- Self-review (thermo-nuclear): the refresh now uses the canonical `contextThreads` factory, the one other spawn (`IngestionJob.launch`) says why it stays plain, and the WireMock `traceparent` reader moved into `OneFlightProviders`, so the two tracing tests do not copy it.

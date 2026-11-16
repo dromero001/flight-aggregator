@@ -94,6 +94,8 @@ public final class IngestionJob implements IngestionLauncher {
   @Override
   public boolean launch() {
     CompletableFuture<Boolean> locked = new CompletableFuture<>();
+    // A plain thread on purpose, unlike a refresh's: a run is a trace of its own (ingestion.run),
+    // not part of the admin call that started it and answers before it ends.
     Thread.ofVirtual()
         .name("ingestion-on-demand")
         .start(

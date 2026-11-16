@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ThreadFactory;
 import net.javacrumbs.shedlock.core.LockConfiguration;
 import net.javacrumbs.shedlock.core.LockingTaskExecutor;
 import net.javacrumbs.shedlock.core.LockingTaskExecutor.TaskResult;
@@ -20,8 +21,9 @@ import org.slf4j.MDC;
 import org.slf4j.spi.LoggingEventBuilder;
 
 /**
- * Starts each stale origin's refresh (§4.1, §6.4) on a virtual thread of its own and returns at
- * once, so the search that asked neither waits for it nor fails with it.
+ * Starts each stale origin's refresh (§4.1, §6.4) on a thread of its own and returns at once, so
+ * the search that asked neither waits for it nor fails with it. The thread comes from {@code
+ * threads}, created on the search's thread, so the refresh continues the search's trace (§6.10).
  *
  * <p>One refresh at a time runs in the whole application (plan 5's end-of-plan review, I2): each
  * holds ShedLock's {@code refresh} row until it ends, as a run holds {@code ingestion}. A refresh
@@ -51,21 +53,26 @@ public final class BackgroundRefresh implements RefreshScheduler {
   private final LockingTaskExecutor locks;
   private final RefreshCoordination coordination;
   private final Clock clock;
+  private final ThreadFactory threads;
 
   public BackgroundRefresh(
       RefreshStaleRoute refreshes,
       LockingTaskExecutor locks,
       RefreshCoordination coordination,
-      Clock clock) {
+      Clock clock,
+      ThreadFactory threads) {
     this.refreshes = refreshes;
     this.locks = locks;
     this.coordination = coordination;
     this.clock = clock;
+    this.threads = threads;
   }
 
   @Override
   public void request(Airport origin) {
-    Thread.ofVirtual().name("refresh-" + origin.code()).start(() -> refresh(origin));
+    Thread thread = threads.newThread(() -> refresh(origin));
+    thread.setName("refresh-" + origin.code());
+    thread.start();
   }
 
   private void refresh(Airport origin) {
