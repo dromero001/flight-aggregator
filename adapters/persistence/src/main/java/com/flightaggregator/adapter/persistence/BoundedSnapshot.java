@@ -3,12 +3,14 @@ package com.flightaggregator.adapter.persistence;
 import static java.util.Objects.requireNonNull;
 
 import com.flightaggregator.application.port.in.InventoryUnavailableException;
+import java.sql.SQLTransientConnectionException;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -18,9 +20,12 @@ import org.springframework.transaction.support.TransactionTemplate;
  * the snapshot taken at its first one, each bounded by {@link StatementTimeout#SEARCH_READ}. A read
  * that takes longer is cancelled and rolls back, so it never holds its connection, or its locks,
  * past the bound, and fails with the port's {@link InventoryUnavailableException}, logged at WARN,
- * which the API answers with 503 and {@code Retry-After} (plan 5's end-of-plan review, I1). A read
- * must not run inside another transaction: it would join it, lose its own snapshot, and bound the
- * rest of that transaction's statements at 2 s.
+ * which the API answers with 503 and {@code Retry-After} (plan 5's end-of-plan review, I1). So does
+ * a read that gets no pooled connection within the pool's wait ({@code
+ * spring.datasource.hikari.connection-timeout}), as Hikari reports it, whether every connection is
+ * in use or PostgreSQL is out of reach: the request is as sound, and may succeed later (G1, the
+ * user's decision of 2026-11-16). A read must not run inside another transaction: it would join it,
+ * lose its own snapshot, and bound the rest of that transaction's statements at 2 s.
  */
 final class BoundedSnapshot {
 
@@ -48,6 +53,12 @@ final class BoundedSnapshot {
     } catch (QueryTimeoutException e) {
       LOG.warn("A read of the inventory outran its bound and was cancelled", e);
       throw new InventoryUnavailableException("A read of the inventory outran its bound", e);
+    } catch (CannotCreateTransactionException e) {
+      if (!(e.getCause() instanceof SQLTransientConnectionException)) {
+        throw e;
+      }
+      LOG.warn("A read of the inventory got no pooled connection within the pool's wait", e);
+      throw new InventoryUnavailableException("A read of the inventory got no connection", e);
     }
   }
 }

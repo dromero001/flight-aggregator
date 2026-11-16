@@ -9,7 +9,8 @@ import java.util.Optional;
 
 /**
  * Reads the itineraries of the active generation, the ones search serves. A read that outruns its
- * bound throws {@link com.flightaggregator.application.port.in.InventoryUnavailableException}.
+ * bound, or gets no connection in time, throws {@link
+ * com.flightaggregator.application.port.in.InventoryUnavailableException}.
  */
 public interface ItineraryReader {
 
