@@ -1939,3 +1939,120 @@ V9 adds about 3 to 8 s of `COPY`; a run still fits the 30 min cadence many times
 - Functional re-review of round 1 (`close-1-rereview-functional.md`): F-I1, I1, I2 fixed; N1 (Important, destination-only search over the bound), N2 and N3 (Minor). The user chose A for N1 and N3 (2026-11-16, about 08:07).
 - Risk re-review at `231e451` (`close-1-rereview-risk.md`): **APPROVED**; I1, I2, F-I1 fixed, measured under bursts of up to 416 searches. Minors for closing round 3: M1 (a skipped refresh logs INFO on every stale search), M2 (the refresh lock's 2 min bound is shorter than a refresh's worst case).
 - Functional second re-review of the fixes (`close-1-rereview-2-functional.md`): **APPROVED**; N1, N2, N3 fixed, the rebase on round 2 changed nothing of substance. Not a finding: `/health` answers DOWN in about 4 s against compose's 5 s timeout (two 2 s waits); the reviewer would leave Boot's `db` out of the API port's `/health` group, a decision for the user.
+
+## End-of-plan fix round 3
+
+The last closing round of plan 5: the user's three decisions on closing round 2's open points (the plan's "Decided by the user on closing round 2's open points"), the user's decision on the health probe's time (2026-11-16, about 08:58, sent to this round by the controller at about 09:00), every Minor round 2 left for this round (round 1's files are free now), round 2's review Minors m1 to m6 and m8 outside `frontend/`, and the risk re-review's M1 and M2 of round 1. Built in one worktree from `main` at `fc8c992`, rebased on `main` at `436ef65` (plan 6's documents and frontend only, no conflict). One commit per area; each behaviour change test first, one test at a time, each red for the expected reason; a test green at once shown red by a labelled mutation, then restored. Module tests between commits; `./gradlew build` green, exit status checked, before the last commit; the thermo-nuclear self-review before each commit.
+
+### Every item, and where it went
+
+The user's decisions:
+
+| Id | Commit | What |
+|---|---|---|
+| T7-F3 (a refresh gets the run's ceiling, R7) | `55b40db` | The run's check is now `IngestionCeiling.writeAtMost`, the one copy the run's writer and the refresh's both call; past it the refresh's rewrite rolls back, the origin is not marked, and the refresh ends `CEILING_EXCEEDED`. `RefreshConfig` passes `ingestion.max-itineraries` |
+| T8-F3 (a provider failure of an unnamed kind in a re-price) | `7a3cc48` | The quote treats any `RuntimeException` as that provider failing, so the re-price tries the next offer or the alternative (§6.5); `CountedFlightProvider` counts it `UNEXPECTED`, as before, and logs an unexpected quote as one `ERROR` line with its provider and stack trace. A download's unexpected failure is not logged there: its run reports and logs it |
+| M3 (Valkey's one `allkeys-lru` budget) | `89433de` | `search-api.md`, next to the cache: what a filled cache evicts, and that production would give the coordination its own instance or memory budget |
+| `db` out of `/health` (the user's decision of 2026-11-16, about 08:58) | `c7bda56` | `management.endpoint.health.group.api.exclude: db`: with PostgreSQL out of reach the API port's `/health` waits for one pooled connection and answers `503 DOWN` in about 2 s, not 4 s; the management port's `/actuator/health` keeps `db`. `search-api.md` and `application.yaml`'s comments say so |
+
+Round 2's rows left for round 3, round 2's review and round 1's risk re-review:
+
+| Id | Commit | What |
+|---|---|---|
+| M1 (risk re-review: a skipped refresh at INFO on every stale search) | `55b40db` | `DEBUG`; the skipped-refresh counter stays an extra in the backlog |
+| M2 (risk re-review: the refresh lock's 2 min below a refresh's worst case) | `55b40db` | 7 minutes, above a 60 s download plus a rewrite under the store's 5 min statement bound; the Javadoc gives the measured times (37 s for Barcelona, 63 to 85 s for Madrid) and states what happens past it |
+| T7-F4 (refresh lines and the correlation id) | `55b40db` | `BackgroundRefresh`'s Javadoc and `ingestion.md`: the breakers' lines carry none |
+| T7-C4 (a refresh's freshness read twice) | `55b40db` | read from the `fresh` map only |
+| M2 (end review: a rejected call reported `UNEXPECTED`) | `cf73958` | `FailureReason.REJECTED`, caught in `ProviderDownloads`; `CountedFlightProvider` uses the enum's spelling |
+| T2-C2 (proxy mode unpinned; the counter asks the proxied `provider()`) | `cf73958` | `CountedFlightProvider` names its provider once, at construction; `FlightAggregatorApplicationTest.proxiesWithClassProxies` pins the application's class proxies |
+| T2-F4 (interface-proxy case) | `cf73958` | `ConcurrencyLimitScopeTest.losesAMethodsExemptionUnderAnInterfaceProxy` |
+| m4 (`skippedForTheLock` runs the ingestion) | `54c1b42` | `runUnderTheLock`, which answers whether the run was skipped |
+| m1, Java half (stale lock comments and `UPDATE shedlock` workarounds) | `54c1b42` | gone from `FlightAggregatorApplicationTest` and `IngestionEndToEndTest`; the e2e half is plan 6's |
+| m5 (`ClientAddressTest`'s load flake) | `f2ad900` | the class gives Valkey's commands 2 s |
+| m6 (the loopback rule pinned for four services) | `f2ad900` | asserted over every service's published ports |
+| m8 (two inaccuracies) | `f2ad900` | `AlphaProviderTest` cites the quote's own rule; `JdbcItineraryReaderTest` uses `LockWaits.backendPid`. Commit `989240d`'s message is left in the pushed history, as the reviewer advised |
+| T3-C-M3 (`ingestion.md`'s `COPY` time), T4-F1 (future tense), T11-F6 and T13-C3 (Running it), the lock's "at least 1 minute" lines | `55b40db`, `89433de` | `ingestion.md` |
+| F-m1, F-m2 (public paths in `search-api.md`) | `89433de` | Swagger UI and the RFC 9728 metadata path in the endpoints table; every other path needs `ADMIN` |
+| T10-C-m3 (two null conventions) | `89433de` | the rule recorded in `search-api.md`: present and `null`, except the re-price's two outcome fields, left out because springdoc cannot write a nullable `Price` reference |
+| m2 (the status snapshot without a statement bound) | `140a96e` | `BoundedSnapshot`, the reader's read-only `REPEATABLE READ` template with its 2 s bound and its 503 translation, now shared by `JdbcItineraryReader` and `JdbcIngestionStatusStore` |
+| T4-C3 rest (the publication row read in two classes) | `140a96e` | `PublicationRow` owns `inventory_publication`'s SQL; `ProviderTime.readInstant` replaces two nullable `timestamptz` reads |
+| m3 (Jackson 2 on bootstrap's compile classpath) | `36a445e` | an ArchUnit rule: no class of the application uses `com.fasterxml.jackson.databind..` or `core..` |
+| T9-C2 (`maxPrice` above 0 outside the contract's pattern) | `d204cdf` | one pattern, `^(?!0+(\.0{1,2})?$)[0-9]{1,9}(\.[0-9]{1,2})?$`, in the contract and the parser; the branch after the match goes. `openapi.json` regenerated (one line); `schema.d.ts` unchanged |
+| T10-C-m1 (the 429 block copied) | `ba31bbd` | `RateLimitResponses`, a springdoc `OperationCustomizer`, documents the 429 of every `@RateLimited` endpoint; the two copies go and the served contract is byte-identical |
+| T13-C2 (parallel status tables) | `ba31bbd` | `OpenApiContractTest`'s four tables become one `RESPONSES` table: every status of each operation, and each response's description, body and `Retry-After` |
+
+Closed without a change:
+
+| Id | Why |
+|---|---|
+| M5 (search read failures as unstructured `ERROR`) | Folded into I1 by the reviewer, and fixed by round 1 (`b74127b`): a cut read is one `WARN` line and a `503` problem |
+| N1 (a refresh drops each provider's reason; INFO for everything) | Both halves are in `docs/planning/extras-backlog.md` ("`NOTHING_FRESH` at WARN", "each kept provider's failure reason"), out of the delivery by the user's decision of 05:45 |
+
+Left for the user, each with the reason:
+
+| Id | Why |
+|---|---|
+| N2 = T12-C-m1 (`port.in` and `port.out` depend on each other) | A design change: eight value types into a new package and two ArchUnit rules; the reviewer's minimum is not enough on its own (round 2's reason holds) |
+| N5 (`Retry-After: 60` and the breaker's open time, two owners) | The reviewer offers two shapes (the controller's constructor, or `RepriceResult.Unconfirmable`), so the fix is not unambiguous; Task 10's review called tying them an extra |
+| N6 = T12-C-m6, T12-C-m4 (the health ping around Valkey's breaker; every probe runs the status use case) | A design change with two fixes offered. Partly eased by this round: the status read is now bounded at 2 s (m2), and `/health` no longer reads `db` |
+| M1 = T10-C-m4 (`X-Forwarded-For` from any private address) | Needs the proxy's address, which compose does not fix, or no published app port, which changes the README's admin calls |
+| M4 (no audience check on admin tokens) | An audience mapper on both realm clients, plan 6's dashboard client included, and the audience's name is not decided |
+| T4-C1 (REPEATABLE READ round trips for single statements) | Since round 1 each read also carries the 2 s bound (I1), which needs a transaction; a plain statement would lose it, and the cheaper forms (a `READ COMMITTED` transaction, or JDBC's query timeout) are a trade between round trips and the bound's mechanism |
+| T7-C2 (a refresh behind a run writes pre-run offers) | The reviewer's guard changes the port (`replaceThrough` gets the `published_at` read before the offers, and a "superseded" answer) and needs a new refresh outcome; plan 7 Task 4 is changing `RefreshStaleRouteService`. The window is narrow and the next refresh or run corrects it |
+| T8-C2 (the virtual-thread fan-out twice) | A design change across `ProviderDownloads` and `RepriceItineraryService`, whose fan-outs plan 7 Task 4 replaces with a `ThreadFactory` |
+| T8-C3 (a spent budget read as "not sold") | Half is the `takeWhile` extra (the user's call); the other half, a `Deadline` value, is in the fan-out plan 7 Task 4 changes |
+| T12-F-m2 (shutdown does not wait for a manual run) | Neither review proposes a fix; awaiting the run is a design choice |
+
+Not this round's: m1's e2e retry and m7 (plan 6's closing round, `frontend/`).
+
+### Evidence
+
+**The refresh (`55b40db`).**
+- T7-F3 `RefreshStaleRouteServiceTest.writesNothingPastTheRunsCeiling` (a ceiling of one, two Madrid itineraries). The constructor's `maxItineraries` and `RefreshReport.Outcome.CEILING_EXCEEDED` were added first, unused, so the test compiles. Red: `expected: RefreshReport[origin=Airport[code=MAD], outcome=CEILING_EXCEEDED, generation=0, itineraries=0, providers={ALPHA=FRESH}] but was: RefreshReport[..., outcome=REFRESHED, generation=7, itineraries=2, ...]`. Green: the run's check moved into `IngestionCeiling.writeAtMost`, which the run's writer and the refresh's both call; the refresh catches it. Found in the self-review: a first version walked the stream with an iterator, which buffers each element's `flatMap` output; it consumes it with `forEach` again (R4, push mode).
+- The wiring: `RefreshConfigTest` now sets `ingestion.max-itineraries=1`, exactly what Madrid builds (its context failed without the property). Mutation "`RefreshConfig` passes `maxItineraries - 1`": `refreshesARequestedOriginInTheBackground` red, `TimeoutException` (nothing rewritten). Restored.
+- T7-C4, refactor under green: `offersWith` reads freshness from the `fresh` map only.
+- M1 `BackgroundRefreshTest.skipsARefreshAskedForWhileAnotherRuns` (the logger captured down to DEBUG, its level restored after each test). Red: `Expecting actual: [(INFO, "Skipped the refresh of a stale origin: another refresh is running", "origin=LHR")] to contain exactly (and in same order): [(DEBUG, ...)]`. Green: `LOG.atDebug()`.
+- M2 `holdsTheRefreshLockUntilTheRefreshEndsAndAtMostSevenMinutes`. Red: `expected: 7M but was: 2M`. Green: `LOCK_AT_MOST_FOR` 7 minutes, with the measured times and the overlap past it in its Javadoc.
+
+**The re-price (`7a3cc48`).**
+- T8-F3 `RepriceItineraryServiceTest.confirmsALegWithAnotherProvidersOfferOfTheSameFlight` gains the case `FAILED_UNEXPECTEDLY` (Beta throws an `IllegalStateException`); `propagatesAProviderFailureOfAnotherKind`, the behaviour the user reversed, is deleted. Red: `java.lang.IllegalStateException: a bug in Beta's adapter` out of the re-price. Green: the quote catches any `RuntimeException`.
+- `CountedFlightProviderTest.logsAQuoteThatFailsUnexpectedlyAtErrorWithItsStackTrace`. Red: `Expected size: 1 but was: 0 in: []`. Green: `counted(...)` takes a handler for an `UNEXPECTED` failure; the quote's logs one `ERROR`, `A provider's quote failed unexpectedly`, with `provider` and the cause; the downloads pass none.
+
+**`/health` without `db` (`c7bda56`).**
+- `HealthWithoutPostgresTest.answers503DownAfterOneConnectionWait`, bounded at 3 s instead of compose's 5 s. Red: `[probe 1] Expecting actual: 4.030617S to be less than: 3S`.
+- `ManagementPortTest.keepsTheDatabaseComponentOnTheManagementPortsHealthOnly` (with an ADMIN token: no `db` among the API port's components, `db` `UP` on the management port's). Red: `Expecting value to be false but was true`.
+- Green, both: `management.endpoint.health.group.api.exclude: db`. `keepsTheApiPortsHealthAsPlanFiveLeftIt` now checks the inventory's component instead of `db`.
+
+**The provider calls (`cf73958`).**
+- M2 `IngestInventoryServiceTest.reportsADownloadOverItsProvidersLimitAsRejected` (`FailureReason.REJECTED` added first). Red: `Expecting actual: Optional[UNEXPECTED] to contain: REJECTED`. Green: `ProviderDownloads` catches `RejectedExecutionException` as `REJECTED`.
+- T2-C2 `CountedFlightProviderTest.namesItsProviderWithoutAskingTheDelegateAgain` (a delegate that names itself once, then refuses `provider()` as an exhausted interface-proxied limit would). Red: `MeterNotFoundException: ... No meter with name 'provider.calls' was found` (the count's own `provider()` was refused). Green: the name is read once, in the constructor.
+- T2-C2 `FlightAggregatorApplicationTest.proxiesWithClassProxies`: green at once. Mutation "`application.yaml` sets `spring.aop.proxy-target-class: false`": red, `Expecting value to be true but was false`. Restored.
+- T2-F4 `ConcurrencyLimitScopeTest.losesAMethodsExemptionUnderAnInterfaceProxy`: green at once (a learning test). Mutation "class proxies" (the property and the JDK-proxy assertion removed): red, `Expecting code to raise a throwable.` Restored.
+
+**The ingestion job and the tests (`54c1b42`, `f2ad900`).**
+- m4, refactor under green: `runUnderTheLock`. m1: the `UPDATE shedlock` workarounds and their comments removed; `IngestionEndToEndTest` and `FlightAggregatorApplicationTest` green without them.
+- m6 `ComposeFileTest.publishesNeitherStoreAndTheRestOnTheLoopbackOnly` over every service: green. Mutation "Grafana published as `3001:3000`": red, `[grafana 3001:3000] Expecting actual: "3001:3000" to start with: "127.0.0.1:"`. Restored.
+- m5 and m8: test configuration, a Javadoc and a shared helper; their modules' tests green.
+
+**Persistence (`140a96e`).**
+- m2 `JdbcIngestionStatusStoreTest.cutsAReadThatTakesLongerThanItsBound` (a run holds `ingestion_status` in `ACCESS EXCLUSIVE` mode). Red: `AssertionFailedError: execution timed out after 10000 ms`. Green: `BoundedSnapshot`, extracted from `JdbcItineraryReader`, which both stores now use; the reader's own tests green, `cutsAReadThatTakesLongerThanItsBound` included.
+- T4-C3, refactor under green: `PublicationRow` and `ProviderTime.readInstant`; persistence suite green.
+
+**Architecture (`36a445e`).**
+- m3 `HexagonalRulesTest.usingJacksonTwoIsAViolation`, evaluated on swagger-core's `io.swagger.v3.core.util` from the runtime classpath (no fixture of this module can compile against Jackson 2). The rule was added first with no package. Red: `Expecting actual: "" to contain: "com.fasterxml.jackson.databind.ObjectMapper"`. Green: the rule names `com.fasterxml.jackson.databind..` and `com.fasterxml.jackson.core..` and joins `forRoot`, so it runs over the production classes. Mutation "a bootstrap class with a Jackson 2 `ObjectMapper` field": `HexagonalArchitectureTest` red, `Rule 'no class uses Jackson 2's databind or core' was violated (2 times)`. Deleted.
+
+**The contract (`d204cdf`, `ba31bbd`).**
+- T9-C2 `OpenApiContractTest.documentsAMaximumPriceAboveZero` (the published pattern refuses `0`, `0.0`, `0.00`, `000.00`, `000000000` and accepts `0.01` to `999999999.99`). Red: `Expecting no elements of: ["0", "0.0", "0.00", "000.00", "000000000"] to match given predicate but this element did: "0"`. Green: one pattern in `SearchParameters.AMOUNT`; `rejectsEachInvalidParameter` still refuses `0` and `0.00`, now by the pattern. `openapi.json` regenerated (`-Dopenapi.write=true`, one line); `npm ci`, `npm run api:generate` (`schema.d.ts` unchanged), `npm run verify` exit 0.
+- T10-C-m1 `RateLimitResponsesTest.documentsA429WithRetryAfterAndAProblemOnALimitedEndpoint` (a customizer that changed nothing added first). Red: `Expecting actual not to be null`. Green: `RateLimitResponses`. (The three tests were first written together; two were set aside before the first ran, so it was red alone.) Then `namesTheActionItCounts` and `leavesAnEndpointWithNoLimitAsItIs`, added back together and green at once; one labelled mutation "re-prices described as searches, and a 429 on every endpoint": red, `expected: "Too many re-prices ..." but was: "Too many searches ..."` and `Expecting empty but was: {"429"=...}`. Restored. With the two copied blocks deleted and the customizer registered in `WebConfig`, the served contract is byte-identical to the committed one. Mutation "the customizer's `@Bean` removed": 7 of `OpenApiContractTest` red (the drift test and the 429 rows). Restored.
+- T13-C2, test refactor under green: the one `RESPONSES` table. Mutation "the search's 503 without `Retry-After`, the re-price's 404 undocumented": 4 red, among them `documentsEveryStatusOfEachOperationAndNoOther` (`expected: {... "post /api/itineraries/{id}/reprice"=["200", "400", "404", "429", "503"] ...}`) and the two rows. Restored.
+
+### Gates and self-review
+
+- Module tests before each commit; on the rebased branch `./gradlew build` exit 0: 1,080 tests (domain 91, application 115, persistence 133, web 73, providers 198, bootstrap 227, architecture 42, mock-gds 201), none failed or skipped; the rebase on main brought documents and frontend files only, so the test tasks whose inputs it did not change were up to date; `npm run api:generate` left `schema.d.ts` unchanged and `npm run verify` exit 0 (20 files, 132 tests).
+- Thermo-nuclear self-review, per area. Each change reuses what the codebase has: the run's ceiling check, now one method; `CountedFlightProvider` for the quote's `ERROR` line, the decorator that already observes every provider call; the reader's bounded snapshot for the status store; `LockWaits.backendPid`; Boot's health group `exclude`; springdoc's `OperationCustomizer` instead of copied annotations. Fixed in review: the ceiling's iterator (above); the refresh's `try` now holds the rewrite, the mark and the report together; the reader's one-line `read` wrapper inlined. Considered and left: `IngestionCeiling.writeAtMost` is a static method on the exception it throws, so the check and its failure stay in one small class; `RateLimitResponses` names Spring's `MediaType` in full beside swagger's. No file nears 1,000 lines (`JdbcItineraryRepository` went from 319 to 244 lines).
+- Shared files touched: `application.yaml` (one health-group line and comments), `RefreshConfig` (one constructor argument) and `BackgroundRefresh` (the lock's bound, the skip's level, Javadoc), which plan 7 Task 4 rebases on; `RefreshStaleRouteService` and `RepriceItineraryService`, which it changes too; `openapi.json` (one line). No compose stack was started; `compose.yaml` was changed only for a labelled mutation, then restored.
+
+### Concerns
+
+- The `ERROR` line for an unexpected quote lives in `CountedFlightProvider`, the one bootstrap class that sees every provider call; a download's unexpected failure is still logged by its run only (a refresh drops it, N1 in the backlog).
+- T7-C2 is listed for the user although round 2's table did not mark it a design change: its guard needs a port change and a new refresh outcome, in a class plan 7 Task 4 is changing.
