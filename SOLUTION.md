@@ -153,5 +153,6 @@ Claude Code built the system, and how it was steered is part of the deliverable:
 - A git guard bypassed with `git -C` and an architecture rule passing vacuously behind a package typo, in plan 1 ([session 07](docs/ai/sessions/07-plans-review-protocol-and-foundations.md)).
 - A rounding test that half-even also passed, and a builder that restated two domain rules as silent filters, in plan 2 ([session 08](docs/ai/sessions/08-domain-plan-and-run.md)).
 - A download with no usable leg that wiped a provider's stored offers, found by all three reviewers of plan 4 ([progress](docs/planning/progress/2026-11-15.md#end-of-plan-review)), and three red CI runs on `main` that a code reviewer found by reading the runs ([session 09](docs/ai/sessions/09-lost-sessions-and-recovery.md)).
+- Two gaps that no test had asked about, found when the user tried the dashboard by hand: From and To suggested no airports, and Max price did not read a decimal comma ([session 09, Monday](docs/ai/sessions/09-lost-sessions-and-recovery.md#11-monday-2026-11-16-plans-5-and-6-closed-plan-7-built)).
 
-<!-- TODO(plan 7 Task 10): link the session record of the work since session 09, which Task 10 writes if none exists, and add any later finding worth naming here. -->
+Monday's work, from closing plans 5 and 6 to building plan 7, and the user's decisions on the way are in [session 09, sections 11 to 14](docs/ai/sessions/09-lost-sessions-and-recovery.md#11-monday-2026-11-16-plans-5-and-6-closed-plan-7-built).

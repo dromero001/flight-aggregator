@@ -1,8 +1,8 @@
-# Session 09 — Lost sessions, recovery, and the providers and ingestion plan
+# Session 09 — Lost sessions, recovery, and the plans to the delivery
 
-- **Date:** 2026-11-15
+- **Date:** 2026-11-15, and from Sunday night through Monday 2026-11-16 (sections 11 to 14)
 - **Tooling:** Claude Code (Claude Opus 5.5) as the controller, opened from the folder above the repository; reviewer and implementer subagents
-- **Goal:** pick up the work after a dropped session, close plan 3 (mock providers over HTTP), and write plan 4 (providers and ingestion).
+- **Goal:** pick up the work after a dropped session, close plan 3 (mock providers over HTTP), and write plan 4 (providers and ingestion); then, through Monday, close plans 5 and 6 and build plan 7 for the delivery.
 
 ## 1. The problem: sessions that drop
 
@@ -123,6 +123,31 @@ On Sunday at 12:30 the user asked how far behind the roadmap the work was. The h
 ## 10. Lesson
 
 The cut itself was not the risk. The risk was state that lived only in the conversation: a design change without a recorded decision, and commits without evidence or review. The reviews caught it because the recovery treated the plan as open until the record proved otherwise.
+
+## 11. Monday 2026-11-16: plans 5 and 6 closed, plan 7 built
+
+The agents worked through Sunday night under the night rules in section 14, and on through Monday, with plans 5, 6 and 7 moving at once.
+
+- **Plan 5 closed** after its end-of-plan triple review and three closing rounds. Task 13's measurements and the reviews found what the tests had missed: an origin searched without a destination walked a slot's whole price index, and two of three refreshes started together failed on the publication row's lock. The user chose the fixes (indexes per airport, one refresh at a time); the last double review approved, with 1,080 tests green ([progress, closing round 3](../../planning/progress/2026-11-15-search-api.md#end-of-plan-fix-round-3--review)).
+- **Plan 6 closed** when its triple re-review approved, after a fix round that ended a sign-in loop: the admin screen went round through Keycloak when the API refused a freshly issued token. A last round fixed the remaining Minors ([progress](../../planning/progress/2026-11-15-dashboard.md#end-of-plan-fix-round--re-review-verdicts)).
+- **Plan 7 built:** Tasks 1 to 7 (the telemetry services, metrics on a management port, four alert rules, traces, logs in Loki with the jump to the trace, the Grafana dashboard, the end-to-end tests), the extras E1, E4 and E5, and Task 9's `SOLUTION.md`, which the user approved at about 12:54. Review group 1 approved Tasks 5 and 7 together with plan 5's last fixes and the morning's dashboard changes: 1,104 Gradle tests, 155 frontend tests, and CI's end-to-end job, 40 tests in 10 min 8 s ([progress, review group 1](../../planning/progress/2026-11-15-observability-and-delivery.md#review-group-1)).
+- **Fewer reviews, the same gates.** Three times the user traded review time for speed: plan 6's leaf tasks went straight to the end-of-plan review (00:30), the full build ran only before a task's last commit (06:05), and the last tasks were reviewed by group instead of one by one (10:02). TDD one test at a time, the recorded evidence, both gates before every merge and a green CI run stayed.
+- **The hand run's gaps.** Trying the dashboard by hand, the user found what no test had asked for: From and To suggested no airports, and Max price did not read a decimal comma (`55,5`). Both were built that morning, airline suggestions after them. The suggestions then broke CI's WebKit keyboard test: in WebKit, Enter in a field with suggestions does not submit the form, now a known limitation ([Dashboard](../../architecture/dashboard.md)).
+
+## 12. Decisions on Monday
+
+Each is quoted with its prompt in section 14 and recorded where it applies:
+- **Process:** reviews by group; the full build only before a task's last commit; the controller's gates before every merge kept (`CLAUDE.md`).
+- **Plan 5:** origin and destination indexes and a 503 for a timed-out read; one refresh at a time, skipped before downloading; a manual or scheduled run takes its lock with no minimum, so a finished run frees "Run ingestion now" at once; `db` out of the API port's `/health` (plan 5's "Decided by the user" sections).
+- **Plan 7:** `/health` on the API port; the `-alpha` Logback appender as a recorded exception to the stable-GA rule; E1, E4 and E5 built, E2 and E7 to the [extras backlog](../../planning/extras-backlog.md); a "Requirements" section in the README, since the reviewers may use Windows, Linux or macOS (plan 7's Global Constraints, Tasks 9 and 10).
+- **`SOLUTION.md`:** the 30-minute cadence argued as a setting tuned on measurements; the cache hit ratio stated as unmeasured; "Built with Claude Code under my direction".
+- **Scope:** every unbuilt extra kept in the backlog rather than dropped; the search application first, monitoring after.
+
+## 13. Lesson of Monday
+
+The end-to-end suite runs in three browsers, and a person still found two gaps on a first try. The tests prove what was specified; only someone using the product finds what was never asked for. The hand run at the close of each plan, which the user asked for on Sunday, earned its time. The speed came from where the reviews ran, not from dropping them: every task kept its test-first evidence and its gates, every Critical and Important finding was fixed or decided by the user, and the Minors wait, recorded, for the final review.
+
+## 14. Prompts that added value, from Sunday night on
 
 - **Night rules (2026-11-15, about 21:50).** Asked to propose rules so the work continues overnight, the user chose: the plans as written, with every proposed extra recorded as pending to confirm in the morning; two implementers at once; build only the extras already approved; plan 6 Task 2 on the search contract confirmed; the controller runs the API's hands-on check itself. Also: "Make sure you continue working when it is reset." What it changed: a recurring session cron resumes subagents cut by the usage limit, and the rules live in `continuation.md` so any session can apply them.
 
