@@ -26,19 +26,28 @@ test('signs in through Keycloak and shows each provider', async ({ page }) => {
   await expectNoAxeViolations(page);
 });
 
+/**
+ * A scheduled run keeps the ingestion's lock for at least a minute from its start (plan 5,
+ * IngestionJob), so on a stack just started the app's first run may still refuse a run on demand.
+ */
+const LOCK_FREE_WITHIN_MS = 70_000;
+
 /** A run takes about half a minute (search-api.md); the screen reads the status every 10 s. */
 const RUN_PUBLISHED_WITHIN_MS = 90_000;
 
 test('runs an ingestion on demand', async ({ page }) => {
-  test.setTimeout(RUN_PUBLISHED_WITHIN_MS + 30_000);
+  test.setTimeout(LOCK_FREE_WITHIN_MS + RUN_PUBLISHED_WITHIN_MS + 30_000);
   await signIn(page);
   const generationLine = page.getByText(/^Generation \d+$/);
   const generation = async () => Number(/\d+/.exec(await generationLine.innerText())?.[0]);
   const before = await generation();
 
-  await page.getByRole('button', { name: 'Run ingestion now' }).click();
+  // Pressed again every 10 s while the answer is "An ingestion is already running."
+  await expect(async () => {
+    await page.getByRole('button', { name: 'Run ingestion now' }).click();
+    await expect(page.getByText('Ingestion started.')).toBeVisible({ timeout: 2_000 });
+  }).toPass({ intervals: [10_000], timeout: LOCK_FREE_WITHIN_MS });
 
-  await expect(page.getByText('Ingestion started.')).toBeVisible();
   await expect
     .poll(generation, {
       message: `a generation after ${String(before)}`,
