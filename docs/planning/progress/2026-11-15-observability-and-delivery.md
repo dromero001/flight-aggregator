@@ -1263,3 +1263,7 @@ The review approved G2 (functional and code). The user decided on 2026-11-16: "F
 No accessible label is attached to the mark: it is plain text, read as "+1 day". No end-to-end spec asserts the mark or the changed lines (grep of `frontend/e2e`); the README and `SOLUTION.md` do not quote them.
 
 Gates: `npm run verify` exit 0 (174 tests); `./gradlew build` BUILD SUCCESSFUL in 55 s (up-to-date modules not rerun), exit 0.
+
+## G2 — review
+
+One reviewer, functional then code, over `ecadaa4..c61a6a2`: **Functional APPROVED, Code APPROVED**; nothing Critical or Important. `./gradlew build` and `npm run verify` (169) green; twelve mutations red (the retry rule; the 403 polling stop; the focus; the leg's "+1"; the caption; the comma with a dot; "Loading…"; `JdbcIngestionLock` with `<`, `LOCALTIMESTAMP`, raw `CURRENT_TIMESTAMP`; the service ignoring the lock; the response dropping the field); one survived (the lock-name filter). Minors: `hoursAndMinutes` outside `time/relative.ts`; "Loading…" beside "Loading flights…"; the leg's day mark unstyled; no test that another lock's row is ignored; the first-new-card index left set after an empty page (harmless, traced). The user's copy decisions and the first three and the fourth Minors were built in "G2 — round 2" (`5da17d8..fabe25a` before the rebase); the fifth stays as traced.
