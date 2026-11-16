@@ -177,6 +177,25 @@ test('loads more until the last page', async () => {
   expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
 });
 
+test('moves the focus to the first new card after Load more', async () => {
+  const user = userEvent.setup();
+  server.use(
+    http.get(SEARCH, ({ request }) =>
+      new URL(request.url).searchParams.get('cursor') === 'page-2'
+        ? HttpResponse.json(page({ itineraries: flights(20, 20) }))
+        : HttpResponse.json(page({ itineraries: flights(20), nextCursor: 'page-2' })),
+    ),
+  );
+  renderAt('/');
+
+  await user.click(await screen.findByRole('button', { name: 'Load more' }));
+
+  // A keyboard user carries on where the new results start, not back at the top of the page.
+  await screen.findByText('Showing 40 flights');
+  const firstNew = screen.getAllByRole('article')[20];
+  expect(within(firstNew).getByRole('button', { expanded: false })).toHaveFocus();
+});
+
 test('searches again when the sort changes', async () => {
   const user = userEvent.setup();
   const searched: URLSearchParams[] = [];
