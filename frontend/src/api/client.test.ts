@@ -50,7 +50,7 @@ test('renews the session once when an admin call answers 401', async () => {
       : new HttpResponse(null, { status: 401 }),
   );
   const auth = fakeAuth();
-  auth.getUser.mockResolvedValue(adminUser('expired-token'));
+  auth.getUser.mockResolvedValue(adminUser('expired-token', { expired: true }));
   auth.signinSilent.mockResolvedValue(adminUser('renewed-token'));
 
   const { data } = await adminClient(auth).GET('/api/admin/status');
@@ -65,7 +65,7 @@ test('signs in again when the renewal fails', async () => {
   // Keycloak's session ended too, so the refresh token is refused.
   const seen = recordAuthorization(() => new HttpResponse(null, { status: 401 }));
   const auth = fakeAuth();
-  auth.getUser.mockResolvedValue(adminUser('expired-token'));
+  auth.getUser.mockResolvedValue(adminUser('expired-token', { expired: true }));
   auth.signinSilent.mockRejectedValue(new Error('invalid_grant'));
 
   await expect(adminClient(auth).GET('/api/admin/status')).rejects.toMatchObject({ status: 401 });
@@ -74,13 +74,27 @@ test('signs in again when the renewal fails', async () => {
   expect(seen).toEqual(['Bearer expired-token']);
 });
 
+test('answers 401 without signing in again when a token that has not expired is refused', async () => {
+  // A token just issued by a new sign-in, refused, and no renewal possible (a client with no
+  // refresh token): signing in again would get another such token, and loop.
+  const seen = recordAuthorization(() => new HttpResponse(null, { status: 401 }));
+  const auth = fakeAuth();
+  auth.getUser.mockResolvedValue(adminUser('fresh-token'));
+  auth.signinSilent.mockRejectedValue(new Error('No refresh token'));
+
+  await expect(adminClient(auth).GET('/api/admin/status')).rejects.toMatchObject({ status: 401 });
+
+  expect(seen).toEqual(['Bearer fresh-token']);
+  expect(auth.signinRedirect).not.toHaveBeenCalled();
+});
+
 test('answers 401 without signing in again when the renewed token is refused too', async () => {
   // The API does not accept this issuer's tokens (a wrong issuer or signing keys, a clock ahead):
   // a new sign-in would get the same kind of token, and Keycloak's session would complete it
   // without asking, so signing in again would loop (the user's decision of 2026-11-16).
   const seen = recordAuthorization(() => new HttpResponse(null, { status: 401 }));
   const auth = fakeAuth();
-  auth.getUser.mockResolvedValue(adminUser('expired-token'));
+  auth.getUser.mockResolvedValue(adminUser('expired-token', { expired: true }));
   auth.signinSilent.mockResolvedValue(adminUser('renewed-token'));
 
   await expect(adminClient(auth).GET('/api/admin/status')).rejects.toMatchObject({ status: 401 });
