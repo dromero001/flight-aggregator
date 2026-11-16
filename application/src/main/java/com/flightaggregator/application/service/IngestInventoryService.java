@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * One ingestion run (§5.1, §6.5): downloads every provider in parallel, stores each download that
@@ -152,16 +151,10 @@ public final class IngestInventoryService implements IngestInventory {
 
   private ItineraryWriter writerOf(Deduplication deduplication, Instant now) {
     return sink -> {
-      AtomicLong written = new AtomicLong();
-      ItineraryBuilder.build(deduplication, now)
-          .forEach(
-              itinerary -> {
-                if (written.incrementAndGet() > maxItineraries) {
-                  throw new IngestionCeiling(maxItineraries);
-                }
-                sink.accept(itinerary);
-              });
-      if (written.get() == 0) {
+      long written =
+          IngestionCeiling.writeAtMost(
+              maxItineraries, ItineraryBuilder.build(deduplication, now), sink);
+      if (written == 0) {
         throw new NoItineraryBuilt();
       }
     };

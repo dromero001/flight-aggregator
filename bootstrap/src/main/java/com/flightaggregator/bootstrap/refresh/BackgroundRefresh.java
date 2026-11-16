@@ -25,14 +25,16 @@ import org.slf4j.spi.LoggingEventBuilder;
  *
  * <p>One refresh at a time runs in the whole application (plan 5's end-of-plan review, I2): each
  * holds ShedLock's {@code refresh} row until it ends, as a run holds {@code ingestion}. A refresh
- * asked for while another runs is skipped before it downloads anything, with one {@code INFO} line,
- * and gives its origin's claim back, so the next search that finds the origin stale asks again;
- * nothing is queued. Search asks only after winning the origin's claim (§6.2), so the claim bounds
- * the refreshes of one origin, and the lock those of all origins.
+ * asked for while another runs is skipped before it downloads anything, with one {@code DEBUG} line
+ * (every search on a stale origin asks while a refresh runs), and gives its origin's claim back, so
+ * the next search that finds the origin stale asks again; nothing is queued. Search asks only after
+ * winning the origin's claim (§6.2), so the claim bounds the refreshes of one origin, and the lock
+ * those of all origins.
  *
  * <p>Every line of one refresh carries a correlation id of its own, as a run's lines carry the
- * run's. Its report is one {@code INFO} line; whatever it throws, taking the lock included, an
- * error too, is one {@code ERROR} line with its stack trace and goes no further.
+ * run's, except the circuit breakers' transition lines, logged on a download's thread. Its report
+ * is one {@code INFO} line; whatever it throws, taking the lock included, an error too, is one
+ * {@code ERROR} line with its stack trace and goes no further.
  */
 public final class BackgroundRefresh implements RefreshScheduler {
 
@@ -42,10 +44,14 @@ public final class BackgroundRefresh implements RefreshScheduler {
   private static final String LOCK = "refresh";
 
   /**
-   * Should an instance die holding the lock: longer than one refresh (15 to 19 s measured for a
-   * hub), as the refresh claim's 2 min (Q9).
+   * Should an instance die holding the lock: longer than a refresh's worst case, a download of up
+   * to 60 s ({@code providers.download-timeout}) then a rewrite whose statements the store bounds
+   * at 5 minutes each ({@code StatementTimeout.STORE}). Measured: 37 s for Barcelona and 63 to 85 s
+   * for Madrid under a burst of searches (plan 5's closing round 1). A refresh that still outlives
+   * it lets a second one start; the publication row keeps their rewrites apart, and the second
+   * waits 5 s for it, then fails with its {@code ERROR} line.
    */
-  private static final Duration LOCK_AT_MOST_FOR = Duration.ofMinutes(2);
+  private static final Duration LOCK_AT_MOST_FOR = Duration.ofMinutes(7);
 
   private final RefreshStaleRoute refreshes;
   private final LockingTaskExecutor locks;
@@ -80,7 +86,7 @@ public final class BackgroundRefresh implements RefreshScheduler {
         log(refresh.getResult());
       } else {
         coordination.release(origin);
-        LOG.atInfo()
+        LOG.atDebug()
             .addKeyValue("origin", origin.code())
             .log("Skipped the refresh of a stale origin: another refresh is running");
       }

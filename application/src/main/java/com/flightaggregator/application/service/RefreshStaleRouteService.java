@@ -33,8 +33,9 @@ import java.util.Map;
  * rewrites, in the published inventory, those with a leg departing from the origin, as the next
  * generation. The stored offers are not written. The origin is marked refreshed, at the refresh's
  * start, once the rewrite has returned. When no provider's download is fresh, nothing is written
- * and the origin is not marked, so a later search asks again once its claim expires; a write that
- * fails propagates, for the caller to report.
+ * and the origin is not marked, so a later search asks again once its claim expires. A refresh has
+ * the run's ceiling (R7): past it, the rewrite rolls back and the origin is not marked either. A
+ * write that fails propagates, for the caller to report.
  */
 public final class RefreshStaleRouteService implements RefreshStaleRoute {
 
@@ -43,6 +44,7 @@ public final class RefreshStaleRouteService implements RefreshStaleRoute {
   private final ItineraryRepository repository;
   private final RefreshCoordination coordination;
   private final Clock clock;
+  private final long maxItineraries;
 
   public RefreshStaleRouteService(
       List<FlightProvider> providers,
@@ -51,12 +53,14 @@ public final class RefreshStaleRouteService implements RefreshStaleRoute {
       DiscardedRecords discardedRecords,
       ItineraryRepository repository,
       RefreshCoordination coordination,
-      Clock clock) {
+      Clock clock,
+      long maxItineraries) {
     this.downloads = new ProviderDownloads(providers, catalogue, discardedRecords);
     this.store = store;
     this.repository = repository;
     this.coordination = coordination;
     this.clock = clock;
+    this.maxItineraries = maxItineraries;
   }
 
   @Override
@@ -77,20 +81,26 @@ public final class RefreshStaleRouteService implements RefreshStaleRoute {
             conflicting ->
                 fresh.containsKey(conflicting.provider()) && conflicting.origin().equals(origin))
         .forEach(downloads::discardConflicting);
-    Publication publication =
-        repository.replaceThrough(
-            origin,
-            sink ->
-                ItineraryBuilder.build(deduplication, now)
-                    .filter(itinerary -> hasALegFrom(itinerary, origin))
-                    .forEach(sink));
-    coordination.refreshed(origin, now);
-    return new RefreshReport(
-        origin,
-        RefreshReport.Outcome.REFRESHED,
-        publication.generation(),
-        publication.itineraries(),
-        statuses);
+    try {
+      Publication publication =
+          repository.replaceThrough(
+              origin,
+              sink ->
+                  IngestionCeiling.writeAtMost(
+                      maxItineraries,
+                      ItineraryBuilder.build(deduplication, now)
+                          .filter(itinerary -> hasALegFrom(itinerary, origin)),
+                      sink));
+      coordination.refreshed(origin, now);
+      return new RefreshReport(
+          origin,
+          RefreshReport.Outcome.REFRESHED,
+          publication.generation(),
+          publication.itineraries(),
+          statuses);
+    } catch (IngestionCeiling e) {
+      return new RefreshReport(origin, RefreshReport.Outcome.CEILING_EXCEEDED, 0, 0, statuses);
+    }
   }
 
   /**
@@ -101,12 +111,14 @@ public final class RefreshStaleRouteService implements RefreshStaleRoute {
       Map<Provider, List<Leg>> fresh, List<CheckedDownload> downloaded, Airport origin) {
     List<Leg> offers = new ArrayList<>();
     for (CheckedDownload download : downloaded) {
-      List<Leg> stored = store.offers(download.provider());
-      if (download.fresh()) {
-        stored.stream().filter(offer -> !offer.origin().equals(origin)).forEach(offers::add);
-        offers.addAll(fresh.get(download.provider()));
-      } else {
+      Provider provider = download.provider();
+      List<Leg> stored = store.offers(provider);
+      List<Leg> fromOrigin = fresh.get(provider);
+      if (fromOrigin == null) {
         offers.addAll(stored);
+      } else {
+        stored.stream().filter(offer -> !offer.origin().equals(origin)).forEach(offers::add);
+        offers.addAll(fromOrigin);
       }
     }
     return offers;

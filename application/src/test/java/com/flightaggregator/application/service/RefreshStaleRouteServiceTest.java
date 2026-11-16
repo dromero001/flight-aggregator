@@ -51,6 +51,7 @@ class RefreshStaleRouteServiceTest {
 
   private static final Instant NOW = Instant.parse("2026-11-20T09:00:00Z");
   private static final Airport MADRID = new Airport("MAD");
+  private static final long MAX_ITINERARIES = 1_000;
   private static final AirportCatalogue CATALOGUE =
       () ->
           Set.of(
@@ -71,8 +72,20 @@ class RefreshStaleRouteServiceTest {
 
   private RefreshStaleRouteService service(
       ItineraryRepository itineraries, FakeFlightProvider... providers) {
+    return serviceWithCeiling(MAX_ITINERARIES, itineraries, providers);
+  }
+
+  private RefreshStaleRouteService serviceWithCeiling(
+      long maxItineraries, ItineraryRepository itineraries, FakeFlightProvider... providers) {
     return new RefreshStaleRouteService(
-        List.of(providers), store, CATALOGUE, discarded, itineraries, coordination, () -> NOW);
+        List.of(providers),
+        store,
+        CATALOGUE,
+        discarded,
+        itineraries,
+        coordination,
+        () -> NOW,
+        maxItineraries);
   }
 
   /** A provider whose download of Madrid answers these legs, and of any other origin fails. */
@@ -167,6 +180,31 @@ class RefreshStaleRouteServiceTest {
                 0,
                 0,
                 Map.of(ALPHA, ProviderReport.Status.KEPT, BETA, ProviderReport.Status.KEPT)));
+    assertThat(repository.rewrittenThrough()).isEmpty();
+    assertThat(coordination.refreshedAt(MADRID)).isEmpty();
+  }
+
+  /**
+   * A refresh stops at the run's ceiling (R7), as a run does: past it nothing is written and the
+   * origin is not marked, so a provider that suddenly sells far more from one origin cannot swell
+   * the published inventory between two runs.
+   */
+  @Test
+  void writesNothingPastTheRunsCeiling() {
+    Leg madLhrNow = leg(ALPHA, 1, "MAD", "LHR", "2026-11-25T07:15:00Z", NOW);
+    Leg madBcnNow = leg(ALPHA, 2, "MAD", "BCN", "2026-11-25T08:15:00Z", NOW);
+
+    RefreshReport report =
+        serviceWithCeiling(1, repository, fromMadrid(ALPHA, madLhrNow, madBcnNow)).refresh(MADRID);
+
+    assertThat(report)
+        .isEqualTo(
+            new RefreshReport(
+                MADRID,
+                RefreshReport.Outcome.CEILING_EXCEEDED,
+                0,
+                0,
+                Map.of(ALPHA, ProviderReport.Status.FRESH)));
     assertThat(repository.rewrittenThrough()).isEmpty();
     assertThat(coordination.refreshedAt(MADRID)).isEmpty();
   }
