@@ -48,7 +48,7 @@ test('says it is loading until the first status arrives', async () => {
 
   renderAsAdmin(<StatusPage />);
 
-  expect(await screen.findByText('Loading…')).toBeInTheDocument();
+  expect(await screen.findByText('Loading status…')).toBeInTheDocument();
 });
 
 test('shows the generation, its publication and the next ingestion', async () => {
