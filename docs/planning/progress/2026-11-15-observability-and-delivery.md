@@ -748,3 +748,22 @@ Compose project `p7t6`, every published port moved to `127.0.0.1:38xxx` by a scr
   - Grafana's own mechanism: a file provider, read-only, as the datasources are; the test mounts the files where compose does, like Task 1's.
   - Structure: the recorded names and the PromQL reading moved out of the shared `GrafanaProvisioningTest` into `StoredMetrics` (the test went from 416 lines to 258; `StoredMetrics` 172).
   - Nothing passes silently: a panel without a query, an expression with no metric name, or a word the reading cannot place each fails the check; Mutations M1 to M3 show it failing on a misspelt name.
+
+## Task 6 — fix round
+
+The review (one double reviewer): functional APPROVED, code CHANGES REQUESTED for one Important finding, I1: the Data freshness and Partitions stat tiles were range queries reduced with `lastNotNull`, so a gauge gone missing or reading NaN kept its last healthy value in green while its alert counts it as stale and fires.
+
+### The fix (red → green)
+
+- **Test: `GrafanaProvisioningTest.showsAnUnknownGaugeAsUnknownNeverAsItsLastValue`.** For each gauge tile (Data freshness A, Partitions A and B): its query is instant, the panel's `noValue` is "unknown", and its `null+nan` value mapping reads "unknown" in the colour of the alert that fires on it: red for freshness and days ahead (`ProviderDataStale`, `PartitionHorizonShort`), orange for rows in `DEFAULT`, whose unknown is `PartitionHorizonShort`'s.
+- Red: `[Partitions/A is instant] Expecting value to be true but was false`.
+- Green: both panels' targets `instant: true, range: false`; `noValue: "unknown"` and a `special` `null+nan` mapping in each panel's defaults, overridden to orange for the rows; freshness drops its sparkline (no range to draw); both descriptions now say what "unknown" means and when the alert fires on it. 10 tests, none failed.
+- Mutations, each red and restored: no `noValue`; the rows' unknown red instead of orange; `range` left on; `nan` instead of `null+nan`. Refactor: the tiles became a `GaugeTile` record; a mutation after it was red, restored green.
+
+### Checked against the running stack
+
+The compose stack was not stopped or restarted, and its Grafana lets no one sign in, so a throwaway Grafana 13.3.0 joined its network with this branch's provisioning, reading the running Prometheus, plus a scratch dashboard with copies of the two panels whose expressions read NaN or a missing metric. In headless Chrome: NaN shows each provider, days ahead and rows as "unknown" (red, red, orange); a missing gauge shows one red "unknown" tile per panel; the real dashboard shows healthy values in green as before. The container was removed. Screenshots kept out of git (`.superpowers/…/task-6-screens/fix-*.png`).
+
+### Minors left for the plan's closing round
+
+M1 (Provider calls' description misses the startup-run caveat), M2 (no test pins the dashboard's read-only provisioning), M3 (`_max` duration spikes fall between steps on long ranges), M4 (the `unless … offset 1h` term also counts in full after a Prometheus restart), M5 (`everyPanelQueriesAKnownMetric`'s Javadoc promises renames; optional `parse_query`), M6 (Discarded records legend clipped). Not fixed here, per CLAUDE.md.
