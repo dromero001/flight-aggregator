@@ -44,7 +44,11 @@ function Report({ report, now }: { report: StatusReport; now: Date }) {
       <ul className={styles.facts}>
         <li>Generation {report.generation}</li>
         {report.publishedAt && <li>Published {timeAgo(report.publishedAt, now)}</li>}
-        <li>{nextIngestion(report.nextIngestionAt, now)}</li>
+        <li>
+          {report.ingestionRunning
+            ? 'Ingestion in progress'
+            : nextIngestion(report.nextIngestionAt, now)}
+        </li>
       </ul>
       <ProviderTable providers={report.providers} now={now} />
     </>
