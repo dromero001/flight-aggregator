@@ -1209,3 +1209,16 @@ Step 4, in a fresh clone of `main` at `4460fdc` (`scratchpad/step4`): `./gradlew
 ## E9 — the Windows check and the user's decision
 
 The Windows PC's session ran the clean-clone check on `0ddb3a9` ([record](e9-windows-check.md)): every README check passed and the dashboard and admin sign-in worked, but on a 4-core laptop with 4 GB for Docker the first `up --build` failed on Keycloak's health check, two runs hit the 5-minute `COPY` bound, and the token command's `python3` is missing on Windows. **The user's decision (about 14:51): document, do not tune** — the README's "Requirements" gains "Minimum hardware" (measured) and "On an older or slower machine" (what to do: Docker's resources, a second `up`, a manual run, the token without Python, Git Bash). Grafana's two startup errors for missing provisioning folders stay as noise.
+
+## Task 10 — clean clone on the Mac (Step 6)
+
+A fresh `git clone https://github.com/dromero001/flight-aggregator.git` at `efdb2c8`, with the working copy's stack stopped and its volumes kept. The clone's folder has the same name as the working copy and `compose.yaml` sets no `name:`, so both would have been one compose project sharing `flight-aggregator_postgres-data`; every compose command in the clone ran under `COMPOSE_PROJECT_NAME=fa-clean`, the README's commands otherwise typed exactly as written (a reviewer cloning once is not affected). **No defect: every README command worked verbatim.**
+
+- `docker compose build --no-cache` 3 min 58 s; `docker compose up --build` 32 s to eleven services up (ten healthy; the Collector has no health check); the first flights 69 s after `up` (the first run 49.5 s).
+- The dashboard: 20 cards; 32 airport and 12 airline suggestions; `madrid` → `New York`, `iberia`, `2000,5` gave `?origin=MAD&destination=JFK&carrier=IB&maxPrice=2000.5`; a card's re-price "Price confirmed: €405.64"; `/admin` signed in through Keycloak with `admin` / `demo-admin-password`.
+- The README's admin commands verbatim in bash and zsh: the Keycloak wait loop, the token, status 200, ingestions 202 then 409, no token 401. API, `/health`, Swagger, `/v3/api-docs`; the mocks with and without their keys, Beta's XML and Gamma's CSV; the mocks alone with `docker compose up --build mock-gds`.
+- Prometheus: the app target up, every rule inactive. Grafana with no login: all ten panels with data; from the README's Loki query, "View trace" opened `ingestion.run` (18 spans) and "Related logs" led back to its line.
+- End to end from the clone (`npm ci`, `npx playwright install chromium`, the Chromium projects with `--no-deps`, since the config chains every project): **20 passed** in 2.1 min (smoke, search, re-price, accessibility and admin in Chromium, observability, rate-limit). Firefox does not start on macOS 27; WebKit and Firefox run in CI.
+- `docker compose down -v` in the clone removed only `fa-clean_postgres-data`; the working stack came back with `up --build -d --wait` in 29 s with its stored inventory.
+
+Covered at delivery: macOS arm64 (this clone), Linux amd64 (CI's `e2e` job from a clean checkout on every push), Windows 11 amd64 ([E9](e9-windows-check.md)).
