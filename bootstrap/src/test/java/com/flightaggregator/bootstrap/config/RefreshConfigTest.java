@@ -62,7 +62,7 @@ class RefreshConfigTest {
 
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
-          .withUserConfiguration(RefreshConfig.class)
+          .withUserConfiguration(RefreshConfig.class, TracingConfig.class)
           .withBean(FlightProvider.class, Alpha::new)
           .withBean(OfferStore.class, NothingStored::new)
           .withBean(AirportCatalogue.class, () -> () -> Set.of(MADRID, new Airport("LHR")))

@@ -24,6 +24,7 @@ import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.Publication;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -147,7 +148,8 @@ class IngestionJobTest {
             },
             metrics,
             new DefaultLockingTaskExecutor(configuration -> Optional.of(() -> {})),
-            instants::next);
+            instants::next,
+            ObservationRegistry.NOOP);
 
     job.run();
 
@@ -174,7 +176,8 @@ class IngestionJobTest {
                 configuration -> {
                   throw unreachable;
                 }),
-            () -> STARTED_AT);
+            () -> STARTED_AT,
+            ObservationRegistry.NOOP);
 
     assertThatCode(job::run).doesNotThrowAnyException();
 
@@ -203,7 +206,8 @@ class IngestionJobTest {
             },
             metrics,
             new DefaultLockingTaskExecutor(configuration -> Optional.empty()),
-            () -> STARTED_AT);
+            () -> STARTED_AT,
+            ObservationRegistry.NOOP);
 
     job.run();
 
@@ -236,7 +240,8 @@ class IngestionJobTest {
                   taken.add(configuration);
                   return Optional.of(() -> {});
                 }),
-            () -> STARTED_AT);
+            () -> STARTED_AT,
+            ObservationRegistry.NOOP);
 
     job.run();
 
@@ -387,7 +392,8 @@ class IngestionJobTest {
                   locked.add(configuration.getName());
                   return Optional.of(unlocked::countDown);
                 }),
-            () -> STARTED_AT);
+            () -> STARTED_AT,
+            ObservationRegistry.NOOP);
 
     assertThat(job.launch()).isTrue();
 
@@ -429,7 +435,8 @@ class IngestionJobTest {
                         unlocked.countDown();
                       });
                 }),
-            () -> STARTED_AT);
+            () -> STARTED_AT,
+            ObservationRegistry.NOOP);
 
     assertThat(job.launch()).isTrue();
     assertThat(unlocks.getFirst().await(10, TimeUnit.SECONDS)).as("the first run ended").isTrue();
@@ -454,7 +461,8 @@ class IngestionJobTest {
             },
             metrics,
             new DefaultLockingTaskExecutor(configuration -> Optional.empty()),
-            () -> STARTED_AT);
+            () -> STARTED_AT,
+            ObservationRegistry.NOOP);
 
     assertThat(job.launch()).isFalse();
 
@@ -483,7 +491,8 @@ class IngestionJobTest {
                 configuration -> {
                   throw unreachable;
                 }),
-            () -> STARTED_AT);
+            () -> STARTED_AT,
+            ObservationRegistry.NOOP);
 
     assertThatThrownBy(job::launch).isInstanceOf(CompletionException.class);
 
@@ -514,7 +523,8 @@ class IngestionJobTest {
         ingestion,
         metrics,
         new DefaultLockingTaskExecutor(configuration -> Optional.of(() -> {})),
-        () -> STARTED_AT);
+        () -> STARTED_AT,
+        ObservationRegistry.NOOP);
   }
 
   private static String runId(ILoggingEvent event) {

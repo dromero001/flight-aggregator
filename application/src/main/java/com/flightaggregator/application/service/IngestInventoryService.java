@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ThreadFactory;
 
 /**
  * One ingestion run (§5.1, §6.5): downloads every provider in parallel, stores each download that
@@ -53,8 +54,9 @@ public final class IngestInventoryService implements IngestInventory {
       ItineraryRepository repository,
       IngestionStatusStore statuses,
       Clock clock,
-      long maxItineraries) {
-    this.downloads = new ProviderDownloads(providers, catalogue, discardedRecords);
+      long maxItineraries,
+      ThreadFactory threads) {
+    this.downloads = new ProviderDownloads(providers, catalogue, discardedRecords, threads);
     this.store = store;
     this.repository = repository;
     this.statuses = statuses;

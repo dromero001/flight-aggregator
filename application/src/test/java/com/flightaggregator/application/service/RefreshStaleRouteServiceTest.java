@@ -29,6 +29,7 @@ import com.flightaggregator.application.service.fakes.InMemoryOfferStore;
 import com.flightaggregator.application.service.fakes.InMemoryRefreshCoordination;
 import com.flightaggregator.application.service.fakes.RecordingDiscardedRecords;
 import com.flightaggregator.application.service.fakes.RecordingDiscardedRecords.Entry;
+import com.flightaggregator.application.service.fakes.RecordingThreads;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Itinerary;
 import com.flightaggregator.domain.Leg;
@@ -38,7 +39,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -72,11 +75,24 @@ class RefreshStaleRouteServiceTest {
 
   private RefreshStaleRouteService service(
       ItineraryRepository itineraries, FakeFlightProvider... providers) {
-    return serviceWithCeiling(MAX_ITINERARIES, itineraries, providers);
+    return service(MAX_ITINERARIES, itineraries, Thread.ofVirtual().factory(), providers);
+  }
+
+  private RefreshStaleRouteService service(
+      ItineraryRepository itineraries, ThreadFactory threads, FakeFlightProvider... providers) {
+    return service(MAX_ITINERARIES, itineraries, threads, providers);
   }
 
   private RefreshStaleRouteService serviceWithCeiling(
       long maxItineraries, ItineraryRepository itineraries, FakeFlightProvider... providers) {
+    return service(maxItineraries, itineraries, Thread.ofVirtual().factory(), providers);
+  }
+
+  private RefreshStaleRouteService service(
+      long maxItineraries,
+      ItineraryRepository itineraries,
+      ThreadFactory threads,
+      FakeFlightProvider... providers) {
     return new RefreshStaleRouteService(
         List.of(providers),
         store,
@@ -85,7 +101,8 @@ class RefreshStaleRouteServiceTest {
         itineraries,
         coordination,
         () -> NOW,
-        maxItineraries);
+        maxItineraries,
+        threads);
   }
 
   /** A provider whose download of Madrid answers these legs, and of any other origin fails. */
@@ -152,6 +169,28 @@ class RefreshStaleRouteServiceTest {
         .containsExactlyInAnyOrder(List.of(madLhrNow), List.of(madCdg));
     assertThat(report.providers())
         .isEqualTo(Map.of(ALPHA, ProviderReport.Status.FRESH, BETA, ProviderReport.Status.KEPT));
+  }
+
+  /** So that bootstrap's threads carry the refresh's trace onto each download (§6.10). */
+  @Test
+  void downloadsOnThreadsOfItsFactory() {
+    RecordingThreads threads = new RecordingThreads();
+    Set<Thread> downloadedOn = ConcurrentHashMap.newKeySet();
+    FakeFlightProvider[] providers =
+        Stream.of(Provider.values())
+            .map(
+                provider ->
+                    FakeFlightProvider.downloadingFrom(
+                        provider,
+                        origin -> {
+                          downloadedOn.add(Thread.currentThread());
+                          return new ProviderDownload(List.of(), List.of());
+                        }))
+            .toArray(FakeFlightProvider[]::new);
+
+    service(repository, threads, providers).refresh(MADRID);
+
+    assertThat(downloadedOn).hasSize(3).containsExactlyInAnyOrderElementsOf(threads.created());
   }
 
   /**

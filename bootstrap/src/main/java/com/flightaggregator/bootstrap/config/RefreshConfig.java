@@ -12,6 +12,7 @@ import com.flightaggregator.application.port.out.RefreshScheduler;
 import com.flightaggregator.application.service.RefreshStaleRouteService;
 import com.flightaggregator.bootstrap.refresh.BackgroundRefresh;
 import java.util.List;
+import java.util.concurrent.ThreadFactory;
 import net.javacrumbs.shedlock.core.LockingTaskExecutor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -33,9 +34,18 @@ class RefreshConfig {
       ItineraryRepository itineraries,
       RefreshCoordination coordination,
       Clock clock,
-      @Value("${ingestion.max-itineraries}") long maxItineraries) {
+      @Value("${ingestion.max-itineraries}") long maxItineraries,
+      ThreadFactory contextThreads) {
     return new RefreshStaleRouteService(
-        providers, offers, airports, discarded, itineraries, coordination, clock, maxItineraries);
+        providers,
+        offers,
+        airports,
+        discarded,
+        itineraries,
+        coordination,
+        clock,
+        maxItineraries,
+        contextThreads);
   }
 
   @Bean

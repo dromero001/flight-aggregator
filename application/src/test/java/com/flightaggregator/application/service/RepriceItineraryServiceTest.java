@@ -18,6 +18,7 @@ import com.flightaggregator.application.service.fakes.FakeFlightProvider;
 import com.flightaggregator.application.service.fakes.FakeItineraryRepository;
 import com.flightaggregator.application.service.fakes.InMemoryItineraryReader;
 import com.flightaggregator.application.service.fakes.InMemoryOfferStore;
+import com.flightaggregator.application.service.fakes.RecordingThreads;
 import com.flightaggregator.domain.Itinerary;
 import com.flightaggregator.domain.Leg;
 import com.flightaggregator.domain.LegKey;
@@ -37,6 +38,7 @@ import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -75,11 +77,16 @@ class RepriceItineraryServiceTest {
   /** When each quote started, on the service's clock. */
   private final Queue<Instant> quoteStarts = new ConcurrentLinkedQueue<>();
 
+  /** The thread each quote ran on. */
+  private final Queue<Thread> quotedOn = new ConcurrentLinkedQueue<>();
+
   private Clock clock = () -> NOW;
   private RepriceSettings settings = SETTINGS;
 
   /** What each quote does after it has started and before it answers: nothing by default. */
   private QuoteWork eachQuote = start -> {};
+
+  private ThreadFactory threads = Thread.ofVirtual().factory();
 
   private record Quote(Provider provider, LegKey flight) {}
 
@@ -93,12 +100,14 @@ class RepriceItineraryServiceTest {
             .<FlightProvider>map(
                 provider -> FakeFlightProvider.quoting(provider, flight -> quote(provider, flight)))
             .toList();
-    return new RepriceItineraryService(reader, offers, providers, repository, clock, settings);
+    return new RepriceItineraryService(
+        reader, offers, providers, repository, clock, settings, threads);
   }
 
   private Optional<Leg> quote(Provider provider, LegKey flight) {
     Instant start = clock.now();
     quoteStarts.add(start);
+    quotedOn.add(Thread.currentThread());
     asked.add(new Quote(provider, flight));
     try {
       eachQuote.run(start);
@@ -179,6 +188,21 @@ class RepriceItineraryServiceTest {
     assertThat(result).isEqualTo(new RepriceResult.Confirmed(requoted));
     assertThat(requoted.quotedAt()).isEqualTo(REQUOTED_AT);
     assertThat(repository.updated()).containsExactly(requoted);
+  }
+
+  /** So that bootstrap's threads carry the re-price's trace onto each quote (§6.10). */
+  @Test
+  void quotesOnThreadsOfItsFactory() {
+    RecordingThreads recording = new RecordingThreads();
+    threads = recording;
+    Itinerary choice = trip(MAD_LHR, LHR_BCN);
+    reader.with(choice);
+    sells(offer(MAD_LHR, ALPHA, "100.00"));
+    sells(offer(LHR_BCN, BETA, "100.00"));
+
+    service().reprice(choice.id());
+
+    assertThat(quotedOn).hasSize(2).containsExactlyInAnyOrderElementsOf(recording.created());
   }
 
   @Test

@@ -72,7 +72,7 @@ class RepriceConfigTest {
 
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
-          .withUserConfiguration(RepriceConfig.class)
+          .withUserConfiguration(RepriceConfig.class, TracingConfig.class)
           .withBean(ItineraryReader.class, () -> new Route())
           .withBean(OfferStore.class, NoOtherOffers::new)
           .withBean(ItineraryRepository.class, () -> new Stores())

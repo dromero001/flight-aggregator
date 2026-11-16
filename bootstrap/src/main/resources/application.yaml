@@ -93,6 +93,11 @@ management:
     # Actuator's own port, reached only on compose's network, where Prometheus scrapes it with no
     # token; compose never publishes it (spec 6.6, the user's decision of 2026-11-15; plan 7, Q4).
     port: 8079
+  tracing:
+    sampling:
+      # Every request and run is traced (plan 7, Q4): Boot samples 10% by default, so the run a
+      # demo shows could go untraced, and a demo's volume is small.
+      probability: 1.0
   health:
     redis:
       # Valkey down makes search slower, not broken (spec 6.2), so Boot's indicator, which would

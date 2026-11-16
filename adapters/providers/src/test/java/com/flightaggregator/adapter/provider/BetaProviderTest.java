@@ -28,6 +28,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.retry.RetryListener;
+import org.springframework.web.client.RestClient;
 
 class BetaProviderTest {
 
@@ -164,7 +165,9 @@ class BetaProviderTest {
         settings,
         CircuitBreakerRegistry.of(ProviderHttp.circuitBreakerConfig()),
         new RetryListener() {},
-        clock);
+        clock,
+        RestClient.builder(),
+        Thread.ofVirtual().factory());
   }
 
   private static String page(int number, int totalPages, int flightNumber) {

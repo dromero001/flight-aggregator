@@ -34,6 +34,7 @@ import com.flightaggregator.application.service.fakes.InMemoryIngestionStatusSto
 import com.flightaggregator.application.service.fakes.InMemoryOfferStore;
 import com.flightaggregator.application.service.fakes.RecordingDiscardedRecords;
 import com.flightaggregator.application.service.fakes.RecordingDiscardedRecords.Entry;
+import com.flightaggregator.application.service.fakes.RecordingThreads;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Itinerary;
 import com.flightaggregator.domain.Leg;
@@ -83,7 +84,8 @@ class IngestInventoryServiceTest {
         repository,
         statuses,
         () -> NOW,
-        maxItineraries);
+        maxItineraries,
+        Thread.ofVirtual().factory());
   }
 
   private static ProviderDownload download(Leg... legs) {
@@ -303,6 +305,38 @@ class IngestInventoryServiceTest {
     service(providers).ingest();
 
     assertThat(met).containsOnly(entry(ALPHA, true), entry(BETA, true), entry(GAMMA, true));
+  }
+
+  /** So that bootstrap's threads carry the run's trace onto each download (§6.10). */
+  @Test
+  void downloadsOnThreadsOfItsFactory() {
+    RecordingThreads threads = new RecordingThreads();
+    Set<Thread> downloadedOn = ConcurrentHashMap.newKeySet();
+    List<FakeFlightProvider> providers =
+        Arrays.stream(Provider.values())
+            .map(
+                provider ->
+                    new FakeFlightProvider(
+                        provider,
+                        () -> {
+                          downloadedOn.add(Thread.currentThread());
+                          return download();
+                        }))
+            .toList();
+
+    new IngestInventoryService(
+            List.copyOf(providers),
+            store,
+            CATALOGUE,
+            discarded,
+            repository,
+            statuses,
+            () -> NOW,
+            MAX_ITINERARIES,
+            threads)
+        .ingest();
+
+    assertThat(downloadedOn).hasSize(3).containsExactlyInAnyOrderElementsOf(threads.created());
   }
 
   @Test
@@ -549,7 +583,8 @@ class IngestInventoryServiceTest {
             failing,
             statuses,
             () -> NOW,
-            MAX_ITINERARIES);
+            MAX_ITINERARIES,
+            Thread.ofVirtual().factory());
 
     assertThatThrownBy(service::ingest).isSameAs(failure);
     assertThat(store.offers(ALPHA)).containsExactly(madLhr);
@@ -569,7 +604,8 @@ class IngestInventoryServiceTest {
             repository,
             statuses,
             instants::next,
-            MAX_ITINERARIES);
+            MAX_ITINERARIES,
+            Thread.ofVirtual().factory());
 
     IngestionReport report = service.ingest();
 
@@ -624,7 +660,8 @@ class IngestInventoryServiceTest {
             repository,
             statuses,
             instants::next,
-            ceiling);
+            ceiling,
+            Thread.ofVirtual().factory());
 
     IngestionReport report = service.ingest();
 
@@ -673,7 +710,8 @@ class IngestInventoryServiceTest {
             repository,
             failing,
             () -> NOW,
-            MAX_ITINERARIES);
+            MAX_ITINERARIES,
+            Thread.ofVirtual().factory());
 
     IngestionReport report = service.ingest();
 
