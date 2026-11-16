@@ -9,11 +9,14 @@ import { expect, type Page } from '@playwright/test';
  */
 export const REPRICE_ANSWERED_WITHIN_MS = 15_000;
 
-/** The airport each card leaves from: the code after its departure time. */
+/**
+ * The airport each card leaves from: the code after its departure time. A card being replaced
+ * may give its text without the line breaks of its layout, so none is required between them.
+ */
 async function shownOrigins(page: Page): Promise<string[]> {
   const texts = await page.getByRole('article').allInnerTexts();
   return texts.map((text) => {
-    const origin = /^\d{2}:\d{2}\s+([A-Z]{3})\s/.exec(text);
+    const origin = /^\d{2}:\d{2}\s*([A-Z]{3})/.exec(text);
     if (!origin) throw new Error(`No origin on the card: ${text}`);
     return origin[1];
   });
