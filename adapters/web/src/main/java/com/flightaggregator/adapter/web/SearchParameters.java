@@ -30,7 +30,10 @@ record SearchParameters(
   static final String AIRPORT = "^[A-Za-z]{3}$";
   static final String CARRIER = "^[A-Za-z0-9]{2}$";
   static final String AMOUNT = "^[0-9]{1,9}(\\.[0-9]{1,2})?$";
-  static final String DEFAULT_SORT = "price";
+  static final String PRICE = "price";
+  static final String DEPARTURE = "departure";
+  static final String DURATION = "duration";
+  static final String DEFAULT_SORT = PRICE;
   static final int DEFAULT_LIMIT = 20;
   static final int MAXIMUM_LIMIT = 100;
 
@@ -41,10 +44,7 @@ record SearchParameters(
       "limit must be a whole number from 1 to " + MAXIMUM_LIMIT;
 
   private static final Map<String, SortOrder> SORT_ORDERS =
-      Map.of(
-          "price", SortOrder.PRICE,
-          "departure", SortOrder.DEPARTURE,
-          "duration", SortOrder.DURATION);
+      Map.of(PRICE, SortOrder.PRICE, DEPARTURE, SortOrder.DEPARTURE, DURATION, SortOrder.DURATION);
 
   SearchQuery toQuery() {
     return new SearchQuery(
