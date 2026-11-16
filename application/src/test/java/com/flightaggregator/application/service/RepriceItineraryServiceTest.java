@@ -6,7 +6,6 @@ import static com.flightaggregator.domain.Provider.ALPHA;
 import static com.flightaggregator.domain.Provider.BETA;
 import static com.flightaggregator.domain.Provider.GAMMA;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.flightaggregator.application.port.in.RepriceResult;
 import com.flightaggregator.application.port.in.RepriceSettings;
@@ -224,7 +223,9 @@ class RepriceItineraryServiceTest {
   enum BetaAnswer {
     UNAVAILABLE,
     REJECTED,
-    NO_LONGER_SOLD
+    NO_LONGER_SOLD,
+    /** A failure the port does not name, a bug: Beta failing all the same, as in a run (§6.5). */
+    FAILED_UNEXPECTEDLY
   }
 
   /**
@@ -252,6 +253,8 @@ class RepriceItineraryServiceTest {
       case NO_LONGER_SOLD -> {
         // Beta answers, but sells nothing.
       }
+      case FAILED_UNEXPECTEDLY ->
+          failing.put(BETA, new IllegalStateException("a bug in Beta's adapter"));
     }
 
     RepriceResult result = service().reprice(choice.id());
@@ -421,22 +424,5 @@ class RepriceItineraryServiceTest {
                 .toList());
     Instant first = quoteStarts.stream().min(Comparator.naturalOrder()).orElseThrow();
     assertThat(quoteStarts).allMatch(start -> start.isBefore(first.plus(settings.budget())));
-  }
-
-  /**
-   * A provider that fails in a way its port does not name, neither unavailable nor over its limit,
-   * has a bug: the failure propagates as it was thrown, from the leg's own thread, and nothing is
-   * stored.
-   */
-  @Test
-  void propagatesAProviderFailureOfAnotherKind() {
-    Itinerary choice = trip(MAD_LHR, LHR_BCN);
-    reader.with(choice);
-    sells(offer(MAD_LHR, ALPHA, "100.00"));
-    IllegalStateException bug = new IllegalStateException("a bug in Beta's adapter");
-    failing.put(BETA, bug);
-
-    assertThatThrownBy(() -> service().reprice(choice.id())).isSameAs(bug);
-    assertThat(repository.updated()).isEmpty();
   }
 }

@@ -3,6 +3,11 @@ package com.flightaggregator.bootstrap.observability;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.spi.ThrowableProxy;
+import ch.qos.logback.core.read.ListAppender;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.FlightProvider;
 import com.flightaggregator.application.port.out.ProviderDownload;
@@ -21,6 +26,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 class CountedFlightProviderTest {
 
@@ -79,6 +85,47 @@ class CountedFlightProviderTest {
     assertThatThrownBy(broken::download).isInstanceOf(IllegalStateException.class);
 
     assertThat(calls("download", "UNEXPECTED")).isEqualTo(1);
+  }
+
+  /**
+   * A quote that fails in a way no reason names is a bug that the re-price treats as the provider
+   * failing (§6.5): besides its count, it is one ERROR line naming the provider, with its stack
+   * trace, since nothing else reports it.
+   */
+  @Test
+  void logsAQuoteThatFailsUnexpectedlyAtErrorWithItsStackTrace() {
+    IllegalStateException bug = new IllegalStateException("A bug in the quote");
+    FlightProvider broken =
+        counted(
+            new Scripted(
+                () -> null,
+                origin -> null,
+                flight -> {
+                  throw bug;
+                }));
+    Logger logger = (Logger) LoggerFactory.getLogger(CountedFlightProvider.class);
+    ListAppender<ILoggingEvent> log = new ListAppender<>();
+    log.start();
+    logger.addAppender(log);
+    try {
+      assertThatThrownBy(() -> broken.quote(FLIGHT)).isSameAs(bug);
+    } finally {
+      logger.detachAppender(log);
+    }
+
+    assertThat(log.list)
+        .singleElement()
+        .satisfies(
+            line -> {
+              assertThat(line.getLevel()).isEqualTo(Level.ERROR);
+              assertThat(line.getFormattedMessage())
+                  .isEqualTo("A provider's quote failed unexpectedly");
+              assertThat(line.getKeyValuePairs())
+                  .extracting(pair -> pair.key + "=" + pair.value)
+                  .containsExactly("provider=ALPHA");
+              assertThat(((ThrowableProxy) line.getThrowableProxy()).getThrowable()).isSameAs(bug);
+            });
+    assertThat(calls("quote", "UNEXPECTED")).isEqualTo(1);
   }
 
   private FlightProvider counted(FlightProvider provider) {

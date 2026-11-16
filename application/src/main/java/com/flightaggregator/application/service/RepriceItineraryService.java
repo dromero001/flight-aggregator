@@ -42,8 +42,9 @@ import java.util.stream.Collectors;
  * StoreOutcome} the update answers, since its price was confirmed live: when a run has replaced the
  * inventory since the choice was read, or holds it to replace it, nothing is written. No quote
  * starts once the budget has run out; one already started is bounded by its provider's own
- * timeouts. Any other failure propagates as it was thrown: of a store, or a provider's failure of
- * another kind than {@link ProviderUnavailableException} or {@link RejectedExecutionException}.
+ * timeouts. A provider's failure of any kind leaves its leg unconfirmed by it, as {@link
+ * ProviderUnavailableException} and {@link RejectedExecutionException} do; a store's failure
+ * propagates as it was thrown.
  */
 public final class RepriceItineraryService implements RepriceItinerary {
 
@@ -183,7 +184,9 @@ public final class RepriceItineraryService implements RepriceItinerary {
 
   /**
    * The provider's offer of the flight now; none when it no longer sells it, fails or rejects the
-   * call, or when the re-price's budget has run out, so that no quote starts after it.
+   * call, or when the re-price's budget has run out, so that no quote starts after it. A failure of
+   * a kind the port does not name is that provider failing too, as in a run ({@code UNEXPECTED},
+   * §6.5: always try): the provider adapter's decorator counts it and logs it with its stack trace.
    */
   private Optional<Leg> quote(Provider provider, LegKey flight, Instant startedAt) {
     if (!clock.now().isBefore(startedAt.plus(settings.budget()))) {
@@ -191,7 +194,7 @@ public final class RepriceItineraryService implements RepriceItinerary {
     }
     try {
       return providers.get(provider).quote(flight);
-    } catch (ProviderUnavailableException | RejectedExecutionException unconfirmed) {
+    } catch (RuntimeException unconfirmed) {
       return Optional.empty();
     }
   }
