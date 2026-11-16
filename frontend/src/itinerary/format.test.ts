@@ -7,6 +7,7 @@ import {
   flight,
   freshness,
   isMultiAirline,
+  laterDayMark,
   layovers,
   localDate,
   localTime,
@@ -87,6 +88,11 @@ test('counts the local days from departure to arrival', () => {
   expect(daysLater('2026-11-20T18:00:00-05:00', '2026-11-20T21:30:00-08:00')).toBe(0);
   // Across the end of a month.
   expect(daysLater('2026-11-30T23:50:00Z', '2026-12-01T00:40:00Z')).toBe(1);
+});
+
+test('marks an arrival two local days later in the plural', () => {
+  // 23:30 in Los Angeles to 06:10 in Auckland, which is a day ahead: two calendar days later.
+  expect(laterDayMark('2026-11-20T23:30:00-08:00', '2026-11-22T06:10:00+13:00')).toBe('+2 days');
 });
 
 test("labels a flight with its airline's name", () => {
