@@ -82,6 +82,10 @@ Lessons for every brief: each subagent uses a private scratch folder of its own 
 - Plan 6 Tasks 6, 7 and 8: no per-task review; integrate after `npm run verify` and the controller's `./gradlew build`; the end-of-plan triple review covers them. Every other task keeps its per-task review.
 - A change that touches only `frontend/` runs `npm run verify` alone before each commit.
 
+## Cuts (the user's decision of 2026-11-16, about 06:00)
+
+- No cuts for now. If by mid-morning the margin to 23:59 falls below 4 h, propose to the user, in this order: E6 (Firefox and WebKit end to end), then the style-only Minors (moved to the backlog). Plan 7's optional Tasks 8 and 11 are already outside the estimate.
+
 ## Lesson of the night
 
 - A subagent that stops without changes loses its isolation worktree (auto-cleaned); resumed with SendMessage, it works wherever it lands. Before resuming one, check its worktree still exists; if not, tell it where to work and on which branch.
