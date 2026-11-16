@@ -841,7 +841,7 @@ The appender's version ("For the user" above): **accepted** by the user on 2026-
 
 ## Task 7 — evidence
 
-The observability proven end to end against compose, and documented. Branch `worktree-agent-ad7b69291fd00b999`, on `main` `d27071f`. No per-task review (the user's decision of 2026-11-16, about 10:02): the group review covers it.
+The observability proven end to end against compose, and documented. Branch `worktree-agent-ad7b69291fd00b999`, built on `main` `d27071f` and rebased on `eac8515` (append-only conflicts in this report and the extras backlog, both sides kept, `main`'s first). No per-task review (the user's decision of 2026-11-16, about 10:02): the group review covers it.
 
 - **Files:** `frontend/e2e/observability.spec.ts` (six tests) and `frontend/e2e/telemetry.ts` (reads Tempo, Loki and dashboard queries through Grafana's API with no credentials, Prometheus's rules on its own API, and the admin token from Keycloak; each read polls up to 60 s); `frontend/playwright.config.ts` gains the project `observability`, once, in Chromium, after every browser's admin project and before `rate-limit`. Docs: `docs/architecture/observability.md` (new), README "Observability" and its index, `docs/architecture/README.md`, one sentence in `dashboard.md` (the projects' order), spec §6.10 (Q1-A and Q2-A with their rejected options).
 - **The live stack:** a throwaway compose project `p7t7` from this worktree, every published port moved by a scratch override (`ports: !override`; Grafana `33001`, Prometheus `39090`, Keycloak `38180`, frontend `33000`), so the user's running stack was never stopped, restarted or rebuilt. The specs ran against it through a scratch Playwright config that imports the repository's and changes only `baseURL` and paths, plus `GRAFANA_URL`, `PROMETHEUS_URL`, `KEYCLOAK_URL`; `--project observability --no-deps`. Each mutation below changed `app`'s environment through a second override, or a file of this worktree that `p7t7` mounts (never the main checkout's), and was undone with `git checkout` and a restart or recreation.
@@ -879,7 +879,7 @@ The six together on the restored stack, on the final files: `6 passed (1.1m)` (s
 
 ### Gates
 
-- `npm run verify` in `frontend/`: exit 0 (typecheck, lint, format check, 151 component tests).
-- `./gradlew build`: exit 0, `BUILD SUCCESSFUL`; 1,104 tests, none failed or skipped (no backend change; the test tasks came from the build cache).
+- `npm run verify` in `frontend/`: exit 0 (typecheck, lint, format check, 151 component tests); again after the rebase on `eac8515`, exit 0, 155 component tests (main's airline suggestions added four).
+- `./gradlew build`: exit 0, `BUILD SUCCESSFUL`; 1,104 tests, none failed or skipped (no backend change; the test tasks came from the build cache); again after the rebase, exit 0, every task up to date (main's six commits touched no backend file). After the last end-to-end run Prettier reflowed one line of `telemetry.ts` (format only).
 - Self-review (thermo-nuclear) of the diff: `telemetry.ts` regrouped by backend; one `json()` request helper (10 s limit, a non-2xx answer an error naming the URL) instead of three copies; an unused `spanId` removed; a custom `poll` kept because Playwright's `expect.poll` does not return the value it waited for. No existing helper for client-credentials tokens or telemetry reads in `frontend/e2e/`. Nothing fails silently: every read that finds nothing within its minute throws, naming what it waited for; a Grafana query error throws at once.
 - Throwaway stack: `docker compose -p p7t7 … down -v`, exit 0; no container, volume or network of `p7t7` left; the user's `flight-aggregator` stack still running, 11 services, untouched.

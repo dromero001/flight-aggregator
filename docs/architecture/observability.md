@@ -147,6 +147,6 @@ The end-to-end project, `observability`, runs once, in Chromium, after every bro
 ## Known limitations
 
 - **The level is not a Loki label.** Filter it with `| detected_level="warn"`; making it a label needs the Collector's contrib distribution (extras backlog).
-- **The Logback appender is published only with an `-alpha` suffix,** OpenTelemetry's marker for that module's API stability; its version is the newest on the OpenTelemetry API that Boot's BOM manages (plan 7 Task 5, for the user).
+- **The Logback appender is published only with an `-alpha` suffix,** OpenTelemetry's marker for that module's API stability; its version is the newest on the OpenTelemetry API that Boot's BOM manages (plan 7 Task 5; accepted by the user on 2026-11-16 as an exception to the version policy).
 - **A Prometheus restart loses the history,** and the dashboard's counters created on first use then count in full for an hour (plan 7 Task 6, M4).
 - **Per-instance counters:** with several replicas, each keeps its own failures in a row and its own counters until its first run (plan 4 close-out).
