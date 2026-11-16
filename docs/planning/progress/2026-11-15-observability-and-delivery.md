@@ -582,3 +582,77 @@ One double reviewer (functional, then code), 2026-11-16 about 08:00, on `2e4839c
 | C2 | `deploy/prometheus/prometheus.yaml:22` | The scrape target's 8079 copies `application.yaml:87`; no test ties them | A small assertion, or Task 7's end-to-end run owns it |
 
 The implementer's points, as judged: the hand-written management-server check in `SecurityConfig` is kept (Boot's `toAnyEndpoint()` would open `/actuator/**` on the API port if both servers ever shared a port); `EXPOSE 8080` stays as is (an exposed 8079 would be published by `docker run -P`); plan 5 closing round 1's `HealthWithoutPostgresTest` moves to `/health` on the API port (not the management port), and its Hikari setting in `application.yaml` is merged by hand, whichever lands second.
+
+## Task 4 — evidence
+
+Traces: every search, re-price and ingestion run is one trace, carried to the providers as W3C `traceparent` and sent over OTLP to the Collector in compose. Libraries, all from Boot 4.1.2's BOM: `spring-boot-starter-opentelemetry`, `spring-boot-starter-restclient`, `io.micrometer:context-propagation`; for the tests `spring-boot-micrometer-tracing-test` and `io.opentelemetry:opentelemetry-sdk-testing`.
+
+The first implementer was cut by the network at 06:42 and the Mac's reboot at 07:05, after `6e98ce5` (now `fedbcf9` after rebasing) and in the middle of `pushesNoMetrics`; a second one took the task over on the same worktree. The red → green messages up to 06:42 are copied from the first implementer's work log (its tool calls and their output), since its scratch notes were wiped by the reboot. Every red step below was seen; none had to be recorded after the fact.
+
+### Red → green, one test at a time
+
+**Step 1.** `ContextThreadsTest.runsTheTaskInTheContextOfTheThreadThatCreatedIt` (an observation opened on the test thread is current inside the new thread).
+- Red, with `ContextThreads.virtual` a stub returning `Thread.ofVirtual().factory()`: `Expecting actual: null and: {name=run(null), ...} to refer to the same object`. (A first run, with a registry without handlers, compared against a no-op observation; a handler was added to the test's registry.)
+- Green: `ContextThreads.virtual` wraps each task in `snapshots.captureAll().wrap(task)` on a virtual thread; `TracingConfig` makes it the `contextThreads` bean.
+
+**Step 2.** Each with a recording factory (`RecordingThreads`); each red with the constructor already taking the factory but not using it.
+- `IngestInventoryServiceTest.downloadsOnThreadsOfItsFactory`. Red: `Expecting actual: [VirtualThread[#72]/terminated, VirtualThread[#73]/terminated, VirtualThread[#74]/terminated] to contain exactly in any order: [] but the following elements were unexpected`. Green: `ProviderDownloads` takes the factory and fans out through `Executors.newThreadPerTaskExecutor(threads)`.
+- `RefreshStaleRouteServiceTest.downloadsOnThreadsOfItsFactory`. Red: the same message with three other threads. Green: the factory passed on to `ProviderDownloads`.
+- `RepriceItineraryServiceTest.quotesOnThreadsOfItsFactory`. Red: the same message with two threads. Green: `Executors.newThreadPerTaskExecutor(threads)` for the quotes.
+- `PagedDownloadTest.fetchesPagesOnAThreadOfItsFactory`. Red: `Expected size: 1 but was: 0 in: []`. Green: `pages.newThread(task).start()` instead of `Thread.ofVirtual().start(task)`.
+
+**Step 3.** `TracingEndToEndTest`: Boot's tracing on (`@AutoConfigureTracing`), spans in an `InMemorySpanExporter`, PostgreSQL from `PostgresContainers`, one WireMock server for the three providers (`OneFlightProviders`).
+- `anIngestionRunIsOneTrace` (every provider request carries a `traceparent` of the `ingestion.run` span's trace).
+  - Red: `Expecting actual: [null, null, null] not to contain null elements` (`RestClient.builder()` sends no `traceparent`). A first run had failed on `No span named ingestion.run` because the span was asserted first; the headers are asserted first now.
+  - Green: `ProviderHttp` built from Boot's `RestClient.Builder` (cloned per provider; its request factory, timeout and key header kept), `PagedProvider` given the builder and the context threads for its page loop (`ProvidersConfig`); `IngestionJob`'s one entry for scheduled and manual runs opens the `ingestion.run` observation; `management.tracing.sampling.probability: 1.0` (Q4). The three `*ConfigTest` runners then lacked the `ThreadFactory` bean (`UnsatisfiedDependencyException`) and import `TracingConfig`.
+- `aManualRunIsOneTraceToo`: passed on its first run. Mutation M1, `launch()` calling the run without its observation: `AssertionError: No span named ingestion.run`.
+- `aSearchContinuesTheCallersTrace`: passed on its first run (Boot's server observation). Mutation M2, the test property `management.tracing.propagation.consume=b3`: `Expecting actual: ["7df72106f2b573606c3646b3400d512a"] to contain exactly (and in same order): ["4bf92f3577b34da6a3ce929d0e0e4736"]`.
+- `aRepriceIsOneTraceWithItsQuotes`: passed on its first run. Mutation M3, `RepriceConfig` passing `Thread.ofVirtual().factory()`: `Expecting ArrayList: ["e1b227253922e3c77a06577d12e19f32"] to contain only: ["beaf9409d0c5663cc8c62d4b8b47e964"]`.
+- `exportsNoSecretInAnySpan` (no attribute of a run's spans or of an admin call's holds a provider key or the bearer token): passed on its first run. Mutation M4, `ProviderHttp` appending `&apiKey=<provider>-key` to the URI: `Expecting all elements of: [..., "http://localhost:49986/beta/segments?page=1&pageSize=1000&apiKey=beta-key", ...]` (the key in the client span's URL attribute).
+- `pushesNoMetrics` (no meter registry is Micrometer's OTLP one; metrics export on, as in production). Red, with `@AutoConfigureMetrics` at the time: `Expecting ["io.micrometer.registry.otlp.OtlpMeterRegistry"] not to contain ["io.micrometer.registry.otlp.OtlpMeterRegistry"]`. Green: `management.otlp.metrics.export.enabled: false`.
+- `timesARunOnlyAsIngestionDuration` (after a run, the meters hold `ingestion.duration` and `ingestion.runs` and neither `ingestion.run` nor `ingestion.run.active`). Red: `... not to contain ["ingestion.run", "ingestion.run.active"] but found ["ingestion.run", "ingestion.run.active"]`. Green: Boot's filter, `management.metrics.enable.ingestion.run: false`; it matches whole name segments, so `ingestion.runs` stays.
+
+Every mutation was restored with `git checkout` and the test was green again.
+
+**Step 4.** `TelemetryUnavailableTest.servesAndIngestsWithTheCollectorDown`: tracing on; the OTLP traces and logs endpoints and the OTLP metrics URL on `http://127.0.0.1:1`, where nothing listens. It checks that the OTLP span exporter is built, runs ingestion (generation 1 published), flushes the run's spans so that their export is failing while the search runs, and times a search after the context's first one: 200 within 1 s.
+- Passed on its first run (Boot's batch span processor exports off the request path).
+- Mutation M5, a `SpanProcessor` bean in `TracingConfig` that waits up to 10 s for each ended span's export: `Expecting actual: 40.179236416S to be less than: 1S`.
+- Probes, not mutations: the timed search took `0.019770958S` (the context's first, untimed, 0.365 s); with a 20 s wait at the end, the test's output held `HttpExporter`'s `Failed to export spans. The request could not be executed.` twice, so the exports do fail.
+
+**Step 5: the run.** Compose under `-p p7t4`, with a local override file (not committed) that remapped the published ports, because plan 6 Task 11's stack held them: Grafana on `127.0.0.1:13001`. `app`, the Collector, Tempo, Loki, Prometheus and Grafana healthy.
+- Red, before the endpoint: the startup run ended `PUBLISHED` (1,030,286 itineraries, 31.7 s), and Tempo, searched through Grafana's datasource proxy as the anonymous Viewer, held no trace: `{"traces":[],...}`.
+- Green: `MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces` in `app`'s environment. The startup run (43.3 s, `traceId 4b7bbe34cd863eb89d32bc4e36e271d1` on its log line) is that trace in Tempo: `task ingestionJob.run` (Spring's `@Scheduled` observation) → `ingestion.run` → 13 `http get` client spans, children of `ingestion.run`: Alpha 4 pages (no cursor, then three cursors), Gamma 4 (offsets 0–3000), Beta 4 (pages 1–4) plus a retry of page 1 (`ResourceAccessException ... Request cancelled`, then 200). One client span per provider request, each page and each retry. The client spans hold the URL template and the full URL, never the key header.
+- Stopped with `down -v`; nothing of the project left.
+
+**After rebasing on plan 7 Task 2.** The first `./gradlew build` failed 10 bootstrap tests:
+- `ManagementPortTest.scrapesWithoutATokenOnTheManagementPort`: `expected: 200 but was: 404`. Boot's `spring-boot-starter-opentelemetry-test`, first chosen for the tests, also brings the metrics test module, whose customizer turns metrics export off in every test without `@AutoConfigureMetrics`. Fixed by depending on `spring-boot-micrometer-tracing-test` (it holds `@AutoConfigureTracing`) instead.
+- Nine `SecurityTest` cases: `FATAL: sorry, too many clients already` on the shared PostgreSQL, since every cached context keeps a pool of 10. Fixed with `@DirtiesContext` on `TracingEndToEndTest` and `TelemetryUnavailableTest`, whose contexts no other class shares.
+- `pushesNoMetrics` was shown red again without the metrics test module, by mutation M6 (`management.otlp.metrics.export.enabled: true`): `Expecting ["io.micrometer.registry.otlp.OtlpMeterRegistry", "io.micrometer.prometheusmetrics.PrometheusMeterRegistry", ...] not to contain ["io.micrometer.registry.otlp.OtlpMeterRegistry"]`.
+
+### Deviations from the plan's wording
+
+- **The OTLP traces endpoint is set in compose only, not in `application.yaml`.** Boot builds the OTLP span exporter only when `management.opentelemetry.tracing.export.otlp.endpoint` is set. A default in `application.yaml` would make the application run outside compose, where the Collector is not published (Q4), and every test with tracing on, retry and log a failed export every few seconds. `application.yaml` says where the endpoint comes from, as it does for the providers' URLs.
+- **The run's timer is denied by Boot's `management.metrics.enable` setting,** which Boot implements as a `MeterFilter` (`PropertiesMeterFilter`), not by a hand-written one (Global Constraints: Boot's own mechanisms first). Pinned by a test the plan's Step 3 does not list, `timesARunOnlyAsIngestionDuration`.
+- **`TelemetryUnavailableTest` times the context's second search,** after a first one asserted 200: the first request also starts the servlet (0.365 s here), which would make the 1 s bound flaky on CI's runners; mutation M5 makes every search slow, the second included.
+- **A test helper, `OneFlightProviders`,** holds the WireMock providers that `TracingEndToEndTest` and `TelemetryUnavailableTest` share (refactored green to green).
+
+### Concerns
+
+- **Plan 5 closing round 1 has not landed:** it changes the same fan-outs (one refresh at a time; the run's download out of the per-provider limit). Each fan-out here changed by one constructor parameter and one executor line, so its rebase should be small; `RefreshStaleRouteServiceTest.downloadsOnThreadsOfItsFactory` and `aRepriceIsOneTraceWithItsQuotes` pin the behaviour across it.
+- **`service.name` is `unknown_service`** in Tempo: the application sets no `spring.application.name`. Task 5's Loki query `{service_name="flight-aggregator"}` needs one; it belongs to Task 5 (or this task, if the user prefers), since no line of Task 4 names the service.
+- **Spans carry provider URLs with their query** (`http.url`, an origin filter included). Spans are not metrics, so §6.10's cardinality rule is not broken; no key or token is in them (`exportsNoSecretInAnySpan`).
+- **Boot also records `http.client.requests`** for the provider calls now that they go through its builder; its `uri` tag is the template (`/beta/segments?page={page}&pageSize={pageSize}`), low cardinality, and Task 6 may use it or ignore it.
+
+### Extras for the user to decide
+
+- None found.
+
+### Gates
+
+- `./gradlew build` on the branch rebased on `main` at `1a6d5bd` (plan 7 Task 2): `BUILD SUCCESSFUL` (exit 0); bootstrap 215 tests, none failed or skipped. `frontend/` is not touched.
+- Module tests between the task's commits (application, providers, bootstrap), each green before its commit.
+- Self-review (thermo-nuclear) before each commit:
+  - Existing mechanisms used: Boot's `RestClient.Builder` (observed, W3C propagation), Boot's sampling, OTLP and `management.metrics.enable` settings, Micrometer's context propagation for the fan-out threads; no hand-written filter, propagator or exporter.
+  - The application layer stays free of Micrometer: it takes a JDK `ThreadFactory`; each fan-out changed by one constructor parameter and one executor line.
+  - Silent failure: an export that cannot reach the Collector is dropped and logged by OpenTelemetry's exporter (`Failed to export spans`), never blocking or failing a request or a run (Step 4).
+  - Test fixtures shared rather than copied (`OneFlightProviders`); `TracingEndToEndTest` has 268 lines.
