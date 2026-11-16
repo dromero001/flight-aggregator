@@ -37,7 +37,7 @@ The layout follows Q6, "boarding pass": a top bar, one left-aligned column up to
 | Empty | "No flights match these filters. Remove a filter or raise the maximum price." |
 | Field error | A value the API would reject (an airport not of three letters, an airline not of two characters, an amount not above 0 with at most two decimals) is shown under its field, with `aria-invalid` and `aria-describedby`, and no request is sent; a shared URL with bad values shows the same errors |
 | 400 | The API's `detail` |
-| 429 | "Too many searches from your connection. Try again in N seconds.", N from `Retry-After` (seconds or an HTTP date); neither "Try again" nor "Load more" is offered during the wait, and "Search" with the same filters asks again |
+| 429 | "Too many searches from your connection. Try again in N seconds.", N from `Retry-After` (seconds or an HTTP date); neither "Try again" nor "Load more" is offered during the wait. Once it is over, a failed "Load more" gives way to "Load more" again, keeping the pages already loaded; a failed first page is asked again by "Search" with the same filters |
 | Any other failure | "Flights could not be loaded. Search again in a moment." with "Try again" (E9), which repeats the request that failed and is disabled while it runs |
 
 ### Re-price (inside a card)

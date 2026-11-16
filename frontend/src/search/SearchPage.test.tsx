@@ -367,6 +367,69 @@ test('does not offer Load more again after a rate-limited next page', async () =
   expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
 });
 
+test('offers Load more again once a rate-limited next page has waited', async () => {
+  // The pages already loaded stay; "Search" would start again from the first page.
+  // Faked timeouts still run with the real clock, so MSW and Testing Library keep working.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  const cursors: (string | null)[] = [];
+  server.use(
+    http.get(SEARCH, ({ request }) => {
+      const cursor = new URL(request.url).searchParams.get('cursor');
+      cursors.push(cursor);
+      if (cursor !== 'page-2') {
+        return HttpResponse.json(page({ itineraries: flights(1), nextCursor: 'page-2' }));
+      }
+      return cursors.filter((sent) => sent === 'page-2').length === 1
+        ? problem(429, 'Too many requests from this address.', { 'Retry-After': '30' })
+        : HttpResponse.json(page({ itineraries: flights(1, 1) }));
+    }),
+  );
+  renderAt('/?origin=MAD');
+  await user.click(await screen.findByRole('button', { name: 'Load more' }));
+  await screen.findByText('Too many searches from your connection. Try again in 30 seconds.');
+
+  act(() => {
+    vi.advanceTimersByTime(29_000);
+  });
+  expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+  act(() => {
+    vi.advanceTimersByTime(1_000);
+  });
+  await user.click(screen.getByRole('button', { name: 'Load more' }));
+
+  expect(await screen.findByText('Showing 2 flights')).toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(cursors).toEqual([null, 'page-2', 'page-2']);
+});
+
+test('waits again when the next page is rate-limited again', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  const cursors: (string | null)[] = [];
+  server.use(
+    http.get(SEARCH, ({ request }) => {
+      const cursor = new URL(request.url).searchParams.get('cursor');
+      cursors.push(cursor);
+      return cursor === 'page-2'
+        ? problem(429, 'Too many requests from this address.', { 'Retry-After': '30' })
+        : HttpResponse.json(page({ itineraries: flights(1), nextCursor: 'page-2' }));
+    }),
+  );
+  renderAt('/?origin=MAD');
+  await user.click(await screen.findByRole('button', { name: 'Load more' }));
+  await screen.findByRole('alert');
+  act(() => {
+    vi.advanceTimersByTime(30_000);
+  });
+
+  await user.click(screen.getByRole('button', { name: 'Load more' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Try again in 30 seconds.');
+  expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+  expect(cursors).toEqual([null, 'page-2', 'page-2']);
+});
+
 test('shows a next-page failure where Load more was', async () => {
   // The customer pressed "Load more" at the bottom of the list, so the failure is shown there.
   const user = userEvent.setup();
