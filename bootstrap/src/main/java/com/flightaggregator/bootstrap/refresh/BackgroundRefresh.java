@@ -35,7 +35,7 @@ import org.slf4j.spi.LoggingEventBuilder;
  *
  * <p>Every line of one refresh carries a correlation id of its own, as a run's lines carry the
  * run's, except the circuit breakers' transition lines, logged on a download's thread. Its report
- * is one {@code INFO} line; whatever it throws, taking the lock included, an error too, is one
+ * is one line, {@code WARN} for a refresh with nothing fresh and {@code INFO} otherwise; whatever it throws, taking the lock included, an error too, is one
  * {@code ERROR} line with its stack trace and goes no further.
  */
 public final class BackgroundRefresh implements RefreshScheduler {
@@ -108,10 +108,14 @@ public final class BackgroundRefresh implements RefreshScheduler {
     }
   }
 
-  /** The report's fields, each provider's status under its name, as in {@code alpha.status}. */
+  /**
+   * The report's fields, each provider's status under its name, as in {@code alpha.status}. A
+   * refresh with nothing fresh leaves search on the origin's old offers: a warning, as a run that
+   * publishes nothing is.
+   */
   private static void log(RefreshReport report) {
     LoggingEventBuilder line =
-        LOG.atInfo()
+        (report.outcome() == RefreshReport.Outcome.NOTHING_FRESH ? LOG.atWarn() : LOG.atInfo())
             .addKeyValue("origin", report.origin().code())
             .addKeyValue("outcome", report.outcome().name())
             .addKeyValue("generation", report.generation())

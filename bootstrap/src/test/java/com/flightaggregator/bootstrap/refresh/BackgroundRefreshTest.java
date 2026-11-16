@@ -161,6 +161,27 @@ class BackgroundRefreshTest {
   }
 
   /**
+   * A refresh with no fresh download leaves search on the origin's old offers: its line is a
+   * warning, as a run's that publishes nothing is (plan 5 Task 7's extra).
+   */
+  @Test
+  void logsARefreshWithNothingFreshAtWarn() throws Exception {
+    scheduler(
+            origin ->
+                new RefreshReport(
+                    origin,
+                    RefreshReport.Outcome.NOTHING_FRESH,
+                    0,
+                    0,
+                    Map.of(Provider.ALPHA, ProviderReport.Status.KEPT)))
+        .request(MADRID);
+
+    assertThat(awaitLines(1))
+        .extracting(ILoggingEvent::getLevel, ILoggingEvent::getFormattedMessage)
+        .containsExactly(tuple(Level.WARN, "The refresh of a stale origin ended"));
+  }
+
+  /**
    * Every line of one refresh carries an id of its own, as a run's lines carry the run's, the
    * failure's line included; the search that asked keeps its own logging context.
    */
