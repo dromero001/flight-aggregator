@@ -298,6 +298,20 @@ class OpenApiContractTest {
   }
 
   /**
+   * Every price is in euros (the global constraints), so the contract says so and the dashboard's
+   * types read {@code "EUR"}, not any string (G1, the user's decision of 2026-11-16).
+   */
+  @Test
+  void documentsEuroAsThePricesOnlyCurrency() throws Exception {
+    assertThat(
+            contract()
+                .at("/components/schemas/Price/properties/currency/enum")
+                .valueStream()
+                .map(JsonNode::asString))
+        .containsExactly("EUR");
+  }
+
+  /**
    * The contract names the API, its version and what it serves, instead of springdoc's defaults
    * ("OpenAPI definition", "v0"); its server is the host that serves it, a relative URL, not the
    * address the contract was generated on ({@code http://localhost}). G1, the user's decision of

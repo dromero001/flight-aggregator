@@ -103,7 +103,8 @@ export interface components {
     };
     Price: {
       amount: string;
-      currency: string;
+      /** @enum {string} */
+      currency: 'EUR';
     };
     /** @description An RFC 9457 problem: what went wrong with the request */
     ProblemDetail: {
