@@ -321,7 +321,7 @@ class BetaPageTest {
 
   /**
    * A quote is the listing with the flight's five key parts (Task 1), the departure a UTC instant
-   * ending in {@code Z}, on the first page of one record: the most a quote may answer.
+   * ending in {@code Z}, on the first page, with room for two records, so a second offer shows.
    */
   @Test
   void buildsTheQuotePath() {
@@ -329,7 +329,7 @@ class BetaPageTest {
 
     assertThat(path(request))
         .isEqualTo(
-            "/beta/segments?page=1&pageSize=1&carrier=IB&flightNumber=3170&origin=MAD"
+            "/beta/segments?page=1&pageSize=2&carrier=IB&flightNumber=3170&origin=MAD"
                 + "&destination=LHR&departure=2026-11-20T07%3A15%3A00Z");
   }
 

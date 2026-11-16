@@ -35,7 +35,7 @@ class AlphaProviderTest {
   private static final Instant FIRST_ARRIVAL = Instant.parse("2026-11-15T10:00:00Z");
 
   private static final String QUOTE =
-      "/alpha/legs?limit=1&carrier=IB&flightNumber=3170&origin=MAD&destination=LHR"
+      "/alpha/legs?limit=2&carrier=IB&flightNumber=3170&origin=MAD&destination=LHR"
           + "&departure=2026-11-20T07%3A15%3A00Z";
 
   private WireMockServer server;
@@ -121,6 +121,29 @@ class AlphaProviderTest {
               assertThat(e.provider()).isEqualTo(Provider.ALPHA);
               assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE);
             });
+  }
+
+  /**
+   * A quote asks for room for two records, so a provider that holds two offers of the flight says
+   * so on the page instead of behind a "more" signal; two offers of one flight contradict the
+   * quote, as ingestion's conflicting offers do.
+   */
+  @Test
+  void failsAQuoteWithTwoRecordsOfTheFlight() {
+    String one = page(3170, "null");
+    String record = one.substring(one.indexOf('[') + 1, one.lastIndexOf(']'));
+    String two =
+        "{\"legs\":["
+            + record
+            + ","
+            + record.replace("129.90", "139.90")
+            + "],\"nextCursor\":null}";
+    server.stubFor(get(urlEqualTo(QUOTE)).willReturn(aResponse().withBody(two)));
+
+    assertThatThrownBy(() -> provider().quote(FLIGHT))
+        .isInstanceOfSatisfying(
+            ProviderUnavailableException.class,
+            e -> assertThat(e.reason()).isEqualTo(FailureReason.MALFORMED_PAGE));
   }
 
   /** A discarded record is not "not sold": the provider answered, but not with a valid offer. */
