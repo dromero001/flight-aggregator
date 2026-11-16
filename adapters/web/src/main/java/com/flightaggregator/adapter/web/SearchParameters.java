@@ -65,7 +65,7 @@ record SearchParameters(
     List<String> unknown = sent.stream().filter(name -> !NAMES.contains(name)).toList();
     if (!unknown.isEmpty()) {
       throw new InvalidParameterException(
-          "Unknown parameters: "
+          (unknown.size() == 1 ? "Unknown parameter: " : "Unknown parameters: ")
               + String.join(", ", unknown)
               + ". The search takes "
               + String.join(", ", NAMES.subList(0, NAMES.size() - 1))
