@@ -116,6 +116,7 @@ Metrics use low-cardinality tags only (`provider`, `reason`, `outcome`, `status`
 | `ingestion.provider.last.fresh.seconds{provider}` | Age of the newest quote among the provider's stored offers, fresh or kept; restored by the first run after a restart, `NaN` while the provider has nothing stored |
 | `ingestion.records.discarded{provider,reason}` | Discarded records. `CONFLICTING` counts a fresh download's self-contradicting offers, once, on the run that downloaded them |
 | `resilience4j.circuitbreaker.*{name}` | Each provider's breaker (its state, calls and failure rate), named after the provider, by Resilience4j's Micrometer binding |
+| `reprice.store{outcome}` | A re-price's update in place: `STORED`, `GONE` or `BUSY` (a run or a refresh held the inventory; also a `WARN` line), as in step 2 above |
 | `ingestion.itineraries` | Itineraries in the last publication |
 | `ingestion.partitions.default.rows` | Rows in the `DEFAULT` partition (should stay 0) |
 | `ingestion.partitions.days.ahead` | Whole days from now until the last day partition ends (37 just after a run) |
