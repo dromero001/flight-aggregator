@@ -86,6 +86,11 @@ Lessons for every brief: each subagent uses a private scratch folder of its own 
 
 - No cuts for now. If by mid-morning the margin to 23:59 falls below 4 h, propose to the user, in this order: E6 (Firefox and WebKit end to end), then the style-only Minors (moved to the backlog). Plan 7's optional Tasks 8 and 11 are already outside the estimate.
 
+## More speed rules (the user's decision of 2026-11-16, about 06:05)
+
+- Plan 7 Tasks 2 and 4 start now on `main`, before plan 5 closes; they rebase on plan 5's closing rounds before their review. Up to four implementers at once for this.
+- `./gradlew build` only before a task's last commit and before integration; module tests between commits (`CLAUDE.md`).
+
 ## Lesson of the night
 
 - A subagent that stops without changes loses its isolation worktree (auto-cleaned); resumed with SendMessage, it works wherever it lands. Before resuming one, check its worktree still exists; if not, tell it where to work and on which branch.

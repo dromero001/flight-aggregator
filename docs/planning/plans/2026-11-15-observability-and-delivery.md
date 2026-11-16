@@ -155,6 +155,8 @@ Alertmanager, SLO burn-rate alerts and a trace id in error responses (rejected, 
 
 ### Task 2: Metrics on the management port, scraped by Prometheus (spec §6.6, the user's decision of 2026-11-15)
 
+**Started before plan 5 closes (the user's decision of 2026-11-16, for speed):** Tasks 2 and 4 start on `main` while plan 5's closing rounds run, and rebase on them before their review.
+
 **Files:**
 - Modify: `gradle/libs.versions.toml`, `bootstrap/build.gradle.kts` (`micrometer-registry-prometheus`, BOM); `application.yaml` (`management.server.port` per Q4; exposure `health,metrics,prometheus`; a health group whose additional path `server:/actuator/health` keeps the API port's health); `bootstrap/.../security/SecurityConfig.java`; `compose.yaml` (the management port never in `ports`); `deploy/prometheus/prometheus.yaml` (scrape job `app`); `README.md` ("Admin access": metrics are no longer on the API port); `security/SecurityTest.java`, `FlightAggregatorApplicationTest.java`, `ComposeFileTest.java`
 - Create: `bootstrap/src/test/.../security/ManagementPortTest.java` (real sockets, `RANDOM_PORT` and management port 0, because MockMvc does not see the management port)
