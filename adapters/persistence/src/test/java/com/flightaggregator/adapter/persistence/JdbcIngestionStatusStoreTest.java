@@ -4,15 +4,19 @@ import static com.flightaggregator.domain.Provider.ALPHA;
 import static com.flightaggregator.domain.Provider.BETA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import com.flightaggregator.adapter.persistence.support.LockWaits;
 import com.flightaggregator.adapter.persistence.support.PostgresTestDatabase;
+import com.flightaggregator.application.port.in.InventoryUnavailableException;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.LatestRun;
 import com.flightaggregator.application.port.out.ProviderRun;
 import java.sql.Connection;
 import java.sql.Statement;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.AbstractList;
 import java.util.List;
@@ -23,6 +27,7 @@ import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 
@@ -40,6 +45,31 @@ class JdbcIngestionStatusStoreTest {
     JdbcClient.create(dataSource)
         .sql("TRUNCATE ingestion_status, ingestion_status_discarded")
         .update();
+  }
+
+  /**
+   * The status read is bounded as a search read is (2 s), since the public health probe runs it: a
+   * read that waits longer, here for a run that holds the table, is cancelled and rolled back
+   * instead of holding its connection for the driver's 120 s, and fails with the port's {@link
+   * InventoryUnavailableException}, which the admin status answers with 503 and Retry-After.
+   */
+  @Test
+  void cutsAReadThatTakesLongerThanItsBound() throws Exception {
+    try (Connection run = dataSource.getConnection()) {
+      run.setAutoCommit(false);
+      try (Statement statement = run.createStatement()) {
+        statement.execute("LOCK TABLE ingestion_status IN ACCESS EXCLUSIVE MODE");
+      }
+
+      Throwable failure =
+          assertTimeoutPreemptively(Duration.ofSeconds(10), () -> catchThrowable(store::latest));
+
+      assertThat(failure)
+          .isInstanceOf(InventoryUnavailableException.class)
+          .cause()
+          .isInstanceOf(QueryTimeoutException.class);
+      run.rollback();
+    }
   }
 
   /**

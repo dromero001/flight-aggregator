@@ -8,14 +8,12 @@ import com.flightaggregator.application.port.out.Publication;
 import com.flightaggregator.application.port.out.StoreOutcome;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Itinerary;
-import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import javax.sql.DataSource;
-import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.TransactionStatus;
@@ -51,21 +49,12 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
    */
   private static final String RUN_WAIT_FOR_THE_PUBLICATION = "60s";
 
-  /**
-   * PostgreSQL's {@code lock_not_available}, which {@code NOWAIT} raises at once and {@code
-   * lock_timeout} at its end. Spring leaves it uncategorized, so it is read from the driver's
-   * exception.
-   */
-  private static final String LOCK_NOT_AVAILABLE = "55P03";
-
-  /** The publication row's read of the active slot; each caller adds the lock it takes. */
-  private static final String ACTIVE_SLOT = "SELECT active_slot FROM inventory_publication";
-
   private final DataSource dataSource;
   private final TransactionTemplate transaction;
   private final JsonFactory json;
   private final int partitionDaysAhead;
   private final JdbcClient jdbc;
+  private final PublicationRow publication;
 
   /**
    * Its connections and its transaction come from the one manager, so the load and its {@code COPY}
@@ -82,6 +71,7 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
     this.json = json;
     this.partitionDaysAhead = partitionDaysAhead;
     this.jdbc = JdbcClient.create(dataSource);
+    this.publication = new PublicationRow(jdbc);
   }
 
   @Override
@@ -114,7 +104,7 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
   private StoreOutcome rewrite(TransactionStatus status, Itinerary repriced) {
     waitForEachLockAtMost(LOCK_TIMEOUT);
     StatementTimeout.STORE.boundTheTransaction(jdbc);
-    Optional<Slot> active = activeSlotUnlessARunHoldsIt();
+    Optional<Slot> active = publication.activeUnlessARunHoldsIt();
     if (active.isEmpty()) {
       status.setRollbackOnly();
       return StoreOutcome.BUSY;
@@ -146,7 +136,7 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
   private Publication rewriteThrough(Airport origin, ItineraryWriter writer) {
     waitForEachLockAtMost(LOCK_TIMEOUT);
     StatementTimeout.STORE.boundTheTransaction(jdbc);
-    Slot slot = publishedSlotLocked();
+    Slot slot = publication.publishedLocked();
     Instant partitionedUntil = partitionedUntil(slot);
     jdbc.sql(
             "DELETE FROM "
@@ -155,12 +145,7 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
         .param(origin.code())
         .update();
     long itineraries = copy(slot, writer);
-    long generation =
-        jdbc.sql(
-                "UPDATE inventory_publication SET generation = generation + 1"
-                    + " RETURNING generation")
-            .query(Long.class)
-            .single();
+    long generation = publication.nextGeneration();
     return new Publication(generation, itineraries, rowsInDefaultPartition(slot), partitionedUntil);
   }
 
@@ -176,7 +161,7 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
   private Publication load(Instant now, ItineraryWriter writer) {
     waitForEachLockAtMost(RUN_WAIT_FOR_THE_PUBLICATION);
     StatementTimeout.STORE.boundTheTransaction(jdbc);
-    Slot slot = activeSlotLocked().other();
+    Slot slot = publication.activeLocked().other();
     waitForEachLockAtMost(LOCK_TIMEOUT);
     LocalDate today = PartitionCalendar.dayOf(now);
     LocalDate lastPartitionDay = today.plusDays(partitionDaysAhead);
@@ -191,72 +176,12 @@ public final class JdbcItineraryRepository implements ItineraryRepository {
     // also analyzes each partition (its row count and its column statistics), which the planner
     // reads for each partition's scan under the Merge Append.
     jdbc.sql("ANALYZE " + slot.table()).update();
-    long generation = switchTo(slot, now);
+    long generation = publication.switchTo(slot, now);
     return new Publication(
         generation,
         itineraries,
         rowsInDefaultPartition,
         PartitionCalendar.start(lastPartitionDay.plusDays(1)));
-  }
-
-  /**
-   * The active slot, read under the publication row's lock, held until the run or the refresh
-   * commits or rolls back: a second run, or a refresh, at once waits here, before it touches either
-   * slot, and then reads the slot the first one left active. Without the lock a run could read the
-   * old active slot, and truncate the new one once the first run switched to it; a refresh could
-   * write into the slot a run is about to leave.
-   */
-  private Slot activeSlotLocked() {
-    return Slot.of(jdbc.sql(ACTIVE_SLOT + " FOR UPDATE").query(String.class).single());
-  }
-
-  /**
-   * The active slot, read under the publication row's lock as {@link #activeSlotLocked} reads it,
-   * once a run has published it. Before the first run ({@code published_at} unset) there is nothing
-   * to rewrite, and a refresh must not publish a generation no run made.
-   */
-  private Slot publishedSlotLocked() {
-    record Row(String activeSlot, boolean published) {}
-    Row row =
-        jdbc.sql(
-                "SELECT active_slot, published_at IS NOT NULL AS published"
-                    + " FROM inventory_publication FOR UPDATE")
-            .query(Row.class)
-            .single();
-    if (!row.published()) {
-      throw new IllegalStateException("No run has published the inventory yet: nothing to refresh");
-    }
-    return Slot.of(row.activeSlot());
-  }
-
-  /**
-   * The active slot, read under a share of the publication row's lock, held until the update
-   * commits; none, without waiting, while a run holds the row {@code FOR UPDATE}. Shares do not
-   * exclude each other, so re-prices store side by side, and a run that starts meanwhile waits for
-   * them before it touches either slot. Any other failure to read the row propagates.
-   */
-  private Optional<Slot> activeSlotUnlessARunHoldsIt() {
-    try {
-      return Optional.of(
-          Slot.of(jdbc.sql(ACTIVE_SLOT + " FOR SHARE NOWAIT").query(String.class).single()));
-    } catch (DataAccessException e) {
-      if (e.getMostSpecificCause() instanceof SQLException refused
-          && LOCK_NOT_AVAILABLE.equals(refused.getSQLState())) {
-        return Optional.empty();
-      }
-      throw e;
-    }
-  }
-
-  /** Makes the slot the one search reads, in the next generation, and returns that generation. */
-  private long switchTo(Slot slot, Instant now) {
-    return jdbc.sql(
-            "UPDATE inventory_publication SET active_slot = ?, generation = generation + 1,"
-                + " published_at = ? RETURNING generation")
-        .param(slot.code())
-        .param(ProviderTime.instantParameter(now))
-        .query(Long.class)
-        .single();
   }
 
   /** Bounds each lock wait of the rest of the transaction, and of it alone. */
