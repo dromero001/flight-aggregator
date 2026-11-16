@@ -98,6 +98,9 @@ management:
       # Every request and run is traced (plan 7, Q4): Boot samples 10% by default, so the run a
       # demo shows could go untraced, and a demo's volume is small.
       probability: 1.0
+  # The traces' OTLP endpoint (management.opentelemetry.tracing.export.otlp.endpoint) has no default:
+  # compose sets the Collector's. Without one Boot builds no exporter, so a run outside compose,
+  # where no Collector is reachable, sends nothing.
   otlp:
     metrics:
       export:
