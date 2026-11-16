@@ -106,7 +106,6 @@ class IngestionEndToEndTest {
   @BeforeEach
   void startFromAnEmptyInventoryWithEveryProviderUp() {
     PostgresContainers.emptyTheInventory(jdbc);
-    letTheLockLapse();
     // The failures one test provokes must not open a breaker for the next.
     breakers.getAllCircuitBreakers().forEach(CircuitBreaker::reset);
     for (Meter meter : meters.getMeters()) {
@@ -171,7 +170,6 @@ class IngestionEndToEndTest {
     job.run();
     Instant betaQuotedAt = storedQuotedAt(BETA);
     down(BETA_PAGE);
-    letTheLockLapse();
 
     job.run();
 
@@ -246,7 +244,6 @@ class IngestionEndToEndTest {
     job.run();
     down(BETA_PAGE);
     down(GAMMA_PAGE);
-    letTheLockLapse();
 
     job.run();
 
@@ -268,10 +265,8 @@ class IngestionEndToEndTest {
     down(ALPHA_PAGE);
     down(BETA_PAGE);
     down(GAMMA_PAGE);
-    letTheLockLapse();
 
     job.run();
-    letTheLockLapse();
     job.run();
 
     assertThat(generation()).isEqualTo(3);
@@ -315,15 +310,6 @@ class IngestionEndToEndTest {
 
     assertThat(generation()).isZero();
     PROVIDERS.verify(0, anyRequestedFor(anyUrl()));
-  }
-
-  /**
-   * Ends the lock that the last run keeps for a minute after it ({@code lockAtLeastFor}), as the
-   * time between two scheduled runs does. ShedLock's own advice is to change the row, never to
-   * delete it: it remembers the rows it has inserted.
-   */
-  private void letTheLockLapse() {
-    jdbc.sql("UPDATE shedlock SET lock_until = locked_at").update();
   }
 
   private long generation() {
