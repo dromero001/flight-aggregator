@@ -53,7 +53,7 @@ A card's summary is one disclosure button (`aria-expanded`). Opening it shows ea
 | Pending | "Checking the price…" |
 | `CONFIRMED` | "Price confirmed: €412.60" and "Select"; a price other than the one the stub showed when the card was opened is worded "Price changed: was €412.60, now €431.00" (below) |
 | `PRICE_CHANGED` | "Price changed: was €412.60, now €431.00" and "Select", where "was" is the price the stub showed when the card was opened; a new price equal to that one reads "Price confirmed: €412.60" (below). The card's stub shows the new price and its freshness |
-| `ALTERNATIVE` | §6.5's notice, *"We couldn't confirm this flight. This is the best alternative we found."*, the alternative's legs under the caption "Alternative legs" (G2: the caption names the list, so its legs are not read as the chosen ones above), "Price confirmed: €…" and "Select", inside the same card (Q5-A) |
+| `ALTERNATIVE` | §6.5's notice, *"We couldn't confirm this flight. This is the best alternative we found."*, the alternative's legs under the caption "Alternative legs" (G2: the caption names the list, so its legs are not read as the chosen ones above; G3: a leg that leaves on another local date than the chosen itinerary shows that date before its time, "MAD Sat 21 Nov 08:15", the same day times only), "Price confirmed: €…" and "Select", inside the same card (Q5-A) |
 | `503` | §6.5's *"We can't confirm the price right now. Please try again in a few minutes."* (a 502 or a network error says the same) |
 | `404` | "This flight is no longer available. Search again for current flights." |
 | `429` | "Too many price checks from your connection. Try again in N seconds." |

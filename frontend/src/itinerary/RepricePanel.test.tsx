@@ -271,6 +271,42 @@ test('shows the alternative inside the card with its notice', async () => {
   expect(summary.getByText('€412.60')).toBeInTheDocument();
 });
 
+test('dates the alternative legs that fly on another day than the chosen itinerary', async () => {
+  // The chosen itinerary leaves on Fri 20 Nov; the alternative leaves the next morning.
+  const nextDay = connecting({
+    id: '6c7d8e9f-0a1b-4c2d-8e3f-4a5b6c7d8e9f',
+    departure: '2026-11-21T08:15:00+01:00',
+    arrival: '2026-11-21T13:40:00-05:00',
+    legs: [
+      {
+        carrier: 'IB',
+        flightNumber: 3166,
+        origin: 'MAD',
+        destination: 'LHR',
+        departure: '2026-11-21T08:15:00+01:00',
+        arrival: '2026-11-21T09:40:00Z',
+      },
+      {
+        carrier: 'BA',
+        flightNumber: 117,
+        origin: 'LHR',
+        destination: 'JFK',
+        departure: '2026-11-21T10:50:00Z',
+        arrival: '2026-11-21T13:40:00-05:00',
+      },
+    ],
+  });
+  const panel = await openCard(() =>
+    HttpResponse.json({ outcome: 'ALTERNATIVE', itinerary: nextDay }),
+  );
+
+  const [first, second] = within(
+    await within(panel).findByRole('list', { name: 'Alternative legs' }),
+  ).getAllByRole('listitem');
+  expect(first).toHaveTextContent('Iberia IB 3166 MAD Sat 21 Nov 08:15 to LHR 09:40');
+  expect(second).toHaveTextContent('British Airways BA 117 LHR Sat 21 Nov 10:50 to JFK 13:40');
+});
+
 test('captions the alternative legs, to tell them from the chosen ones', async () => {
   const panel = await openCard(() =>
     HttpResponse.json({ outcome: 'ALTERNATIVE', itinerary: alternative() }),
