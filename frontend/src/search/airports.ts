@@ -36,3 +36,15 @@ export const AIRPORT_CITIES: ReadonlyMap<string, string> = new Map([
   ['DXB', 'Dubai'],
   ['NRT', 'Tokyo'],
 ]);
+
+const CODE_BY_CITY: ReadonlyMap<string, string> = new Map(
+  [...AIRPORT_CITIES].map(([code, city]) => [city.toLowerCase(), code]),
+);
+
+/**
+ * The code of the airport whose city `text` names exactly, trimmed and in any case ("madrid",
+ * " New York "); any other text as it is, for the search's own validation.
+ */
+export function airportCodeOf(text: string): string {
+  return CODE_BY_CITY.get(text.trim().toLowerCase()) ?? text;
+}

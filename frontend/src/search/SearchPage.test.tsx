@@ -722,6 +722,19 @@ test('shows the normalised value when the search is already shown', async () => 
   expect(screen.getByLabelText('From')).toHaveValue('MAD');
 });
 
+test('searches the airports of the cities typed in From and To by their codes', async () => {
+  const user = userEvent.setup();
+  renderAt('/');
+  await user.type(screen.getByLabelText('From'), 'madrid');
+  await user.type(screen.getByLabelText('To'), 'New York');
+
+  await user.click(screen.getByRole('button', { name: 'Search' }));
+
+  expect(screen.getByLabelText('location')).toHaveTextContent('?origin=MAD&destination=JFK');
+  expect(screen.getByLabelText('From')).toHaveValue('MAD');
+  expect(screen.getByLabelText('To')).toHaveValue('JFK');
+});
+
 test('keeps the searched values in the inputs while a new search is applied', async () => {
   // The router applies the new URL in a transition, after the submit's own render.
   const user = userEvent.setup();

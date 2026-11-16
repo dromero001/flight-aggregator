@@ -1,4 +1,5 @@
-import { useState, type SubmitEvent } from 'react';
+import { useId, useState, type SubmitEvent } from 'react';
+import { AIRPORT_CITIES, airportCodeOf } from './airports';
 import styles from './FilterBar.module.css';
 import {
   FILTER_FIELDS,
@@ -11,9 +12,12 @@ import {
 } from './searchParams';
 
 /** Every filter's control (spec 6.8): a new filter in `FILTER_FIELDS` cannot compile without one. */
-const CONTROLS: Record<FilterField, { label: string; inputMode?: 'decimal' }> = {
-  origin: { label: 'From' },
-  destination: { label: 'To' },
+const CONTROLS: Record<
+  FilterField,
+  { label: string; inputMode?: 'decimal'; suggestsAirports?: true }
+> = {
+  origin: { label: 'From', suggestsAirports: true },
+  destination: { label: 'To', suggestsAirports: true },
   carrier: { label: 'Airline' },
   maxPrice: { label: 'Max price', inputMode: 'decimal' },
 };
@@ -40,6 +44,7 @@ export function FilterBar({ criteria, errors, onSubmit }: FilterBarProps) {
   const urlKey = JSON.stringify(fromUrl);
   const [draft, setDraft] = useState(fromUrl);
   const [shownKey, setShownKey] = useState(urlKey);
+  const airportsId = useId();
   // The inputs follow the URL (Back, Forward, a normalised search) without remounting the form, which would drop the focus. A sort change leaves the URL's filters alone, so unsent typing stays.
   if (shownKey !== urlKey) {
     setShownKey(urlKey);
@@ -48,18 +53,23 @@ export function FilterBar({ criteria, errors, onSubmit }: FilterBarProps) {
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    onSubmit(draft);
+    const sent = {
+      ...draft,
+      origin: airportCodeOf(draft.origin),
+      destination: airportCodeOf(draft.destination),
+    };
+    onSubmit(sent);
     // The inputs show what was searched, normalised (" mad " is MAD), as the URL will read it.
     // Not the URL's current values: the router applies a new search's URL in a transition, after
     // this render, so they would show the previous search for a moment.
-    const searched = parseSearch(toSearchParams({ ...draft, sort: criteria.sort })).criteria;
+    const searched = parseSearch(toSearchParams({ ...sent, sort: criteria.sort })).criteria;
     setDraft(draftFrom(searched));
   }
 
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
       {FILTER_FIELDS.map((field) => {
-        const { label, inputMode } = CONTROLS[field];
+        const { label, inputMode, suggestsAirports } = CONTROLS[field];
         const error = errors[field];
         const errorId = `${field}-error`;
         return (
@@ -71,6 +81,7 @@ export function FilterBar({ criteria, errors, onSubmit }: FilterBarProps) {
                 name={field}
                 type="text"
                 inputMode={inputMode}
+                list={suggestsAirports ? airportsId : undefined}
                 value={draft[field]}
                 onChange={(event) => {
                   setDraft({ ...draft, [field]: event.target.value });
@@ -86,6 +97,13 @@ export function FilterBar({ criteria, errors, onSubmit }: FilterBarProps) {
           </div>
         );
       })}
+      <datalist id={airportsId}>
+        {[...AIRPORT_CITIES].map(([code, city]) => (
+          <option key={code} value={code}>
+            {`${code} — ${city}`}
+          </option>
+        ))}
+      </datalist>
       <button className={styles.submit} type="submit">
         Search
       </button>
