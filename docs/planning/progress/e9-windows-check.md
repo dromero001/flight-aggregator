@@ -1,45 +1,73 @@
 # E9 — Clean-clone check on Windows (plan 7, extra E9)
 
-**Result: incomplete.** The clone and its line endings were checked and are correct. The stack was not started: the run was aborted during the image pulls because the Windows host ran out of free memory, and the host also runs other workloads that had to be protected. No defect of the project was found; the README states no memory requirement for Docker (proposal 2 below).
+**Result: it works on Windows, with three findings.** From a clean clone, `docker compose up --build` builds every image and, at the second `up`, all eleven services are healthy; every README check passes, the dashboard searches and re-prices, and the admin screen signs in through Keycloak. On this slow machine it did not work at the first attempt: Keycloak outran its healthcheck (finding 1), the ingestion's `COPY` can outrun its 5-minute statement timeout (finding 2), and the README's token command needs a Python that Windows does not ship (finding 3).
 
 ## Environment
 
 | Item | Value |
 |---|---|
-| Date and time | 2026-11-16, 13:02 CET (12:02 UTC) |
-| Commit | `ce0d93c` Write SOLUTION.md: architecture, modelling, pagination at 1M, assumptions, limitations and AI usage |
-| Windows | Windows 11 Home 10.0.26200 (build 26200), 6.9 GB of RAM, AMD Ryzen 5 3500U (8 logical CPUs) |
-| Docker Desktop | 4.99.0 (Engine 29.9.3, Compose v5.7.0), WSL 2 backend (WSL 3.0.5) |
-| Docker memory | 2 GB (`MemTotal 1997185024`): the WSL 2 VM is capped by the user's `.wslconfig` (`memory=2GB`, `swap=2GB`) because the PC runs other workloads |
+| Date and time | 2026-11-16, 12:11–13:45 UTC (13:11–14:45 CET) |
+| Commit | `0ddb3a9` Continuation point: Task 10's final review and delivery docs in flight (`main`, cloned fresh) |
+| Windows | Windows 11 Home 10.0.26200 (build 26200), AMD Ryzen 5 3500U (4 cores, 8 threads), 6.9 GB of RAM, other workloads stopped for the check |
+| Docker Desktop | 4.99.0 (Engine 29.9.3, Compose v5.7.0), WSL 2 backend (WSL 3.0.5); the VM was given 4 GB of memory and 4 GB of swap for the check |
 | git | 2.56.0.windows.4 (Git Bash) |
-| `core.autocrlf` | `true`, from Git for Windows' system config (`C:/Program Files/Git/etc/gitconfig`), left unchanged as a reviewer would have it |
+| `core.autocrlf` | `true`, from Git for Windows' system config, left unchanged as a reviewer would have it |
 
-## Checks
+A first attempt on commit `ce0d93c`, with the VM capped at 2 GB and the host's other workloads running, was aborted during the image pulls because the host ran out of free memory; its only result, the line endings, is the same as below.
 
-| # | Check | Result |
-|---|---|---|
-| 1 | `git clone` into an empty folder with the machine's default git config | ✅ Cloned `ce0d93c` |
-| 1b | Line endings of the checkout (`git ls-files --eol`) with `core.autocrlf=true` | ✅ `.gitattributes` wins: 651 files LF in the working tree, only `gradlew.bat` CRLF (as intended), 1 binary (`gradle-wrapper.jar`). Every script (`gradlew`, `frontend/nginx/*.sh`, `.claude/hooks/*.sh`) and every file compose mounts (`deploy/**`, the Keycloak realm) is LF, so the CRLF failure mode is ruled out on this checkout |
-| 2 | Docker Desktop running; ports 3000, 3001, 8080, 8081, 8180 and 9090 free | ✅ Engine ready; no container and no listener on those ports, nothing to stop |
-| 3 | `docker compose up --build -d --wait` and the time to healthy | ❌ **Aborted after about 1.5 min, during the image pulls** (only `otel/opentelemetry-collector` had been pulled; no image built, no container created). Cause below. Time to healthy: not measured |
-| 4 | `/health`, search and page 2, re-price, the 400s, the admin token, `/api/admin/status` and its 401, `POST /api/admin/ingestions` and the generation, the dashboard on 3000, Grafana on 3001, the browser flow | ⏭ Not run: the stack never started |
-| 5 | `docker compose logs app`, logs of failed containers | ⏭ Not run: no container was created |
-| 6 | `docker compose down -v` | ✅ Run; Docker Desktop stopped and `wsl --shutdown` |
+## Startup
 
-## Why it was aborted
+| Step | Result |
+|---|---|
+| Line endings of the checkout | ✅ `.gitattributes` wins over `autocrlf=true`: 651 files LF, only `gradlew.bat` CRLF, 1 binary. Every script and every file compose mounts is LF, so no container failed on CRLF |
+| Ports 3000, 3001, 8080, 8081, 8180, 9090 | ✅ Free; no other stack to stop |
+| `docker compose up --build -d --wait` | ❌ **Exit 1 after 1,409 s (23.5 min)**: `keycloak` unhealthy, so `app` and `frontend` were not started. Every image built (the two Gradle `bootJar` stages took most of the time) and the other eight services were healthy |
+| `docker compose up -d --wait` again, as a reviewer would | ✅ **Exit 0 after 65 s**, all eleven services healthy |
+| Peak memory | 2.8 GB summed over the containers (`docker stats`, sampled every 20 s); the WSL VM's resident memory peaked at 2.2 GB on the host |
 
-The host's free memory was sampled every 30 s while compose pulled the images:
+## Checks (README, curl from Git Bash)
 
-| Time (CET) | Free RAM | Free commit (virtual memory) |
-|---|---|---|
-| 13:02:37 | 0.20 GB | 0.63 GB |
-| 13:03:08 | 0.10 GB | 0.47 GB |
-| 13:03:39 | 0.05 GB | 0.30 GB |
-| 13:04:09 (after the abort) | 0.68 GB | 2.13 GB |
+| Check | Result |
+|---|---|
+| `GET /health` | ✅ 200 `{"status":"UP"}` |
+| `GET /api/itineraries?origin=MAD&destination=JFK&limit=5` | ✅ 200, 5 itineraries, cheapest first (€377.43 direct), `nextCursor` given |
+| Page 2 with its `nextCursor` | ✅ 200, 5 itineraries, none repeated from page 1 |
+| `POST /api/itineraries/{id}/reprice` | ✅ 200 `PRICE_CHANGED`, `previousPrice` €377.43, new €369.01 |
+| `origin=MADRID` | ✅ 400 problem+json: "origin must be a three-letter airport code, like MAD" |
+| `maxPrice=0` | ✅ 400 problem+json: "maxPrice must be an amount in euros above 0, with at most two decimals, like 150 or 149.99" |
+| Keycloak ready (README step 1) | ✅ |
+| Token with the README's command (`python3`) | ❌ **`python3` is the Microsoft Store alias** on a stock Windows: it prints "no se encontró Python…" and exits 49, so `TOKEN` is empty (finding 3) |
+| Token with the README's alternative (`jq -r .access_token`) | ✅ (jq installed by hand; Windows does not ship it either) |
+| `GET /api/admin/status` without a token | ✅ 401 with `WWW-Authenticate: Bearer resource_metadata=…` |
+| `GET /api/admin/status` with the token | ✅ 200: generation 1, three providers `UP`, breakers `CLOSED`, 3,673 / 3,588 / 3,728 legs, discarded records by reason |
+| `POST /api/admin/ingestions` | ✅ 202. That run then failed (lock timeout, below); the next run published generation 2, so the generation rises: 1 → 2 |
+| `http://localhost:3000/` | ✅ 200 |
+| Grafana `http://localhost:3001` | ✅ 200, no login |
 
-The WSL 2 VM already held 1.6 GB of committed memory before any build started. The build stages (Gradle's `bootJar` for `app` and `mock-gds`, `npm ci` and `npm run build` for the frontend) and then eleven containers (two JVMs, `app` at `-Xmx512m`, plus Keycloak, PostgreSQL with ~1M itineraries, Valkey, nginx, the Collector, Prometheus, Tempo, Loki and Grafana) would have needed more than the 2 GB cap and more than the host could commit without risking the other workloads. The run was stopped on purpose; it did not fail on its own.
+**In a browser** (Playwright driving the installed Google Chrome): a MAD → JFK search shows 20 cards with the filters in the URL; "Load more" goes to 40; opening the first card re-prices it ("Price changed: was €369.01, now €371.51", "Select"); `/admin` goes to Keycloak's login, `admin` / `demo-admin-password` signs in, and the screen shows generation 2, the next ingestion, and Alpha, Beta and Gamma up with their breakers, legs and discarded records.
 
-## Proposals
+## Ingestion runs
 
-1. **Rerun E9 on a Windows machine with enough free memory for Docker**, or on this PC with its other workloads paused and the `.wslconfig` cap raised for the duration of the check. Steps 3 to 5 are the ones still to prove.
-2. **State the memory the stack needs in the README** (section "Run the aggregator"), for example "Docker needs about N GB of memory for `docker compose up --build`". Measure N on the Mac with `docker stats` at the peak (during the build, then during the first ingestion run), and add a margin. A reviewer whose Docker Desktop is set to less memory would otherwise see the stack fail or stall with no hint of the cause.
+| Run (UTC) | Result |
+|---|---|
+| At startup, 12:38 | ❌ `An ingestion run failed` at 12:43:26: `COPY itinerary_b … canceling statement due to statement timeout` at line 891,982 of ~1M (`StatementTimeout.STORE`, 5 min). The host's other workloads were restarting during this run and took memory back |
+| Manual (`POST /api/admin/ingestions`), 12:45:24 | ✅ Published generation 1 at 12:51:11, about 5 min 47 s for the whole run |
+| Manual, 13:02 | ❌ `An ingestion run failed` at 13:03:53: `SELECT active_slot FROM inventory_publication FOR UPDATE … lock timeout`. A stale-origin refresh, set off by the check's searches, held the publication; that refresh then failed too at 13:08:08, with the same `COPY` statement timeout |
+| 13:13:26 | ✅ Published generation 2 at 13:17:19, about 4 min |
+
+Each failure was logged as one `ERROR` line with its cause. Before the first publication the search answered 200 with no itineraries; after it, the failed runs and refresh left search serving the last published generation.
+
+## Logs
+
+- `app`: 440 `WARN Discarded a provider record` (the mocks' malformed records, by design), 2 `ERROR An ingestion run failed` and 1 `ERROR The refresh of a stale origin failed` (above), 1 `WARN Skipped storing a re-price` (a run held the inventory), and springdoc's two startup notices. No other error.
+- `postgres`: only the two statement timeouts and the lock timeout above.
+- `prometheus`: 10 `Error refreshing DNS targets … could not resolve "app"` before `app` was created; `loki`: 3 "empty ring" / deadline errors at startup; `tempo`: "no jobs found" warnings; `grafana`: `can't read … provisioning/plugins` and `provisioning/alerting` (the folders do not exist) plus SQLite "database is locked, retrying" at startup. All startup noise; none of them stopped a service.
+- `valkey`, `keycloak`, `mock-gds`, `frontend`: no error.
+
+## Findings and proposals
+
+1. **Keycloak outruns its healthcheck on a slow machine, so the first `docker compose up --build` fails.** Keycloak 26.8.1 `start-dev` started in 156.7 s of JVM time, about 250 s after its container was created; the healthcheck allows 40 s of `start_period` plus 10 retries every 10 s, about 140 s, and compose then refuses to start `app` and `frontend`. *Proposal:* raise `keycloak`'s `start_period` to 300 s (or its `retries`); a start period ends as soon as the check passes, so a fast machine waits no longer. Consider the same margin for `app`, whose own `start_period` is 40 s.
+2. **The ingestion's `COPY` can outrun `StatementTimeout.STORE` (5 min) on a slow host.** The startup run and a refresh both failed at about 890k and 500k rows; a quiet run took 4–6 min end to end where the Mac takes about 30 s. After a failed startup run the dashboard shows no flights until the next run, 30 minutes later, or a manual one. *Proposal:* give the store's bound more margin or make it a setting, and say in the README that on a slow machine the first flights can take several minutes (and that "Run ingestion now" retries).
+3. **The README's token command needs `python3`, which a stock Windows does not have** (the name runs the Microsoft Store alias), and the `jq` alternative is not shipped either. *Proposal:* a command with no extra tool, for example `| sed -E 's/.*"access_token":"([^"]+)".*/\1/'`, or a PowerShell variant with `Invoke-RestMethod`.
+4. **The README does not say how much memory Docker needs.** Measured here: the containers peak at about 2.8 GB; with the VM capped at 2 GB the first attempt could not even finish pulling on a busy host. *Proposal:* state "Docker needs about 4 GB of memory" in "Run the aggregator", and that the first `--build` takes several minutes (23 here).
+5. *Minor:* Grafana logs two errors at startup for the missing `provisioning/plugins` and `provisioning/alerting` folders; empty folders (or not mounting them) would silence them.
