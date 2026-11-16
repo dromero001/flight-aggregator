@@ -430,6 +430,39 @@ test('waits again when the next page is rate-limited again', async () => {
   expect(cursors).toEqual([null, 'page-2', 'page-2']);
 });
 
+test("waits for a new search's own rate-limited next page", async () => {
+  // The wait that ended belonged to the search before; this one has not started its own.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  const requests: string[] = [];
+  server.use(
+    http.get(SEARCH, ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      requests.push(`${String(params.get('origin'))}:${String(params.get('cursor'))}`);
+      return params.get('cursor') === 'page-2'
+        ? problem(429, 'Too many requests from this address.', { 'Retry-After': '30' })
+        : HttpResponse.json(page({ itineraries: flights(1), nextCursor: 'page-2' }));
+    }),
+  );
+  renderAt('/?origin=MAD');
+  await user.click(await screen.findByRole('button', { name: 'Load more' }));
+  await screen.findByRole('alert');
+  act(() => {
+    vi.advanceTimersByTime(30_000);
+  });
+  await user.clear(screen.getByLabelText('From'));
+  await user.type(screen.getByLabelText('From'), 'BCN');
+  await user.click(screen.getByRole('button', { name: 'Search' }));
+
+  await user.click(await screen.findByRole('button', { name: 'Load more' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Too many searches from your connection. Try again in 30 seconds.',
+  );
+  expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+  expect(requests).toEqual(['MAD:null', 'MAD:page-2', 'BCN:null', 'BCN:page-2']);
+});
+
 test('shows a next-page failure where Load more was', async () => {
   // The customer pressed "Load more" at the bottom of the list, so the failure is shown there.
   const user = userEvent.setup();

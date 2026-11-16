@@ -56,9 +56,10 @@ export function ResultsList({ criteria, enabled }: ResultsListProps) {
   const { itineraries, inventoryChanged } = mergePages(search.data?.pages ?? []);
   const failure = search.error && describeFailure(search.error);
   // After a rate-limited "Load more", the button comes back once the wait is over, so the pages
-  // already loaded stay; "Search" would start again from the first page.
+  // already loaded stay; "Search" would start again from the first page. Each failed request
+  // throws a new error, so the wait is the failure's own, whichever search it belongs to.
   const nextPageWaitOver = useWaitOver(
-    search.errorUpdateCount,
+    search.error,
     search.isFetchNextPageError ? rateLimitWait(search.error) : undefined,
   );
   const showsNextPageFailure = search.isFetchNextPageError && !nextPageWaitOver;
