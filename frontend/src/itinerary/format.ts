@@ -1,4 +1,5 @@
 import type { Leg } from '../api/types';
+import { CARRIER_NAMES } from './carriers';
 
 // Display formats for the itinerary card (plan 6, Q7: en-GB, EUR, the 24-hour clock).
 
@@ -99,9 +100,14 @@ export function layovers(legs: Leg[]): Layover[] {
   });
 }
 
-/** "IB 3166": a leg's carrier and flight number. */
+/**
+ * "Iberia IB 3166": a leg's airline, carrier code and flight number (plan 6 E2); "ZZ 120" for a
+ * carrier the bundle does not name.
+ */
 export function flight(leg: Leg): string {
-  return `${leg.carrier} ${String(leg.flightNumber)}`;
+  const code = `${leg.carrier} ${String(leg.flightNumber)}`;
+  const name = CARRIER_NAMES.get(leg.carrier);
+  return name === undefined ? code : `${name} ${code}`;
 }
 
 /** True when the legs are flown by more than one carrier ("Multiple airlines", spec 6.8). */

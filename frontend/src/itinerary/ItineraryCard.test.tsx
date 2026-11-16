@@ -42,7 +42,7 @@ test('shows a direct flight', () => {
   expect(card.getByText('LHR')).toBeInTheDocument();
   expect(card.getByText('2h 25m')).toBeInTheDocument();
   expect(card.getByText('Direct')).toBeInTheDocument();
-  expect(card.getByText('IB 3166')).toBeInTheDocument();
+  expect(card.getByText('Iberia IB 3166')).toBeInTheDocument();
   expect(card.getByText('€129.90')).toBeInTheDocument();
   expect(card.getByText('Updated 5 min ago')).toBeInTheDocument();
   expect(card.queryByText('Multiple airlines')).not.toBeInTheDocument();
@@ -86,7 +86,7 @@ test('marks a multi-airline itinerary', () => {
   );
 
   const card = within(screen.getByRole('article'));
-  expect(card.getByText('IB 3166, BA 117')).toBeInTheDocument();
+  expect(card.getByText('Iberia IB 3166, British Airways BA 117')).toBeInTheDocument();
   expect(card.getByText('Multiple airlines')).toBeInTheDocument();
 });
 
@@ -132,8 +132,8 @@ test('shows each leg when opened', async () => {
   const legs = screen.getByRole('list', { name: 'Legs' });
   expect(summary).toHaveAttribute('aria-controls', legs.parentElement?.id);
   const [first, second] = within(legs).getAllByRole('listitem');
-  expect(first).toHaveTextContent('IB 3166 MAD 08:15 to LHR 09:40');
-  expect(second).toHaveTextContent('BA 117 LHR 10:50 to JFK 13:40');
+  expect(first).toHaveTextContent('Iberia IB 3166 MAD 08:15 to LHR 09:40');
+  expect(second).toHaveTextContent('British Airways BA 117 LHR 10:50 to JFK 13:40');
 
   await user.click(summary);
   expect(screen.queryByRole('list', { name: 'Legs' })).not.toBeInTheDocument();

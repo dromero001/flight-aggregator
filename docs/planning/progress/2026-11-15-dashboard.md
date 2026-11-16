@@ -456,3 +456,15 @@ Red → green, one test at a time:
 Choices to review: the marker is on the card's arrival only, not on each leg in the open card (E1 names the arrival); it counts any number of days (`+2` would show too), though the rule given is "+1"; it is visible text inside the summary button, so a screen reader reads "plus 1" after the time.
 
 Checks: `npm run verify` exit 0 (67 tests in 12 files). Self-review (thermo-nuclear): `daysLater` reuses `wallClock`, so the date has one reading in the module; the card adds one value and one condition, no new state.
+
+### E2: airline names beside the codes (approved extra, assigned to Task 6)
+
+The names come from a static `src/itinerary/carriers.ts` (the controller's choice of 2026-11-16: in the bundle, no API change): the twelve carriers of `mock-gds`'s `StandardCatalogue`, checked against `mock-gds/src/main/java/com/flightaggregator/mockgds/reference/StandardCatalogue.java` (IB Iberia, UX Air Europa, BA British Airways, AF Air France, LH Lufthansa, KL KLM, TP TAP Air Portugal, AZ ITA Airways, LX Swiss, FR Ryanair, U2 easyJet, VY Vueling).
+
+Red → green, one test at a time (`format.test.ts`):
+- `"labels a flight with its airline's name"` (`direct()`'s leg → "Iberia IB 3166", `connecting()`'s second → "British Airways BA 117"): red `AssertionError: expected 'IB 3166' to be 'Iberia IB 3166'`. Green with `CARRIER_NAMES` (a `ReadonlyMap`) read by `flight(leg)`, the one label helper that Task 6 extracted, so the card's flights line and every leg list changed together. The card's expectations that pinned the old label ("IB 3166", "IB 3166, BA 117" in `ItineraryCard.test.tsx`) went red with it and were updated to the new text; the leg-list expectations still passed, because `toHaveTextContent` matches a substring, and were updated to the full new text as well.
+- `'labels a flight of an unknown carrier with its code alone'` (`ZZ 120`): red `AssertionError: expected 'undefined ZZ 120' to be 'ZZ 120'`. Green: the name is added only when the map has the code.
+
+Choices to review: the name stands before the code ("Iberia IB 3166", as E2 wrote it); the "Airline" filter still takes a code (unchanged, Task 3); the list must follow the dataset by hand, which the module's comment says.
+
+Checks: `npm run verify` exit 0 (69 tests in 12 files). Self-review (thermo-nuclear): no carrier list existed in the frontend; one map, read in one place, with no wrapper function around the map.

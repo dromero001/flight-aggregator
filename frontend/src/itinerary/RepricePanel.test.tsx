@@ -119,8 +119,8 @@ test('shows the alternative inside the card with its notice', async () => {
   const [first, second] = within(
     within(panel).getByRole('list', { name: 'Alternative legs' }),
   ).getAllByRole('listitem');
-  expect(first).toHaveTextContent('IB 3166 MAD 08:15 to LHR 09:40');
-  expect(second).toHaveTextContent('BA 175 LHR 13:15 to JFK 16:05');
+  expect(first).toHaveTextContent('Iberia IB 3166 MAD 08:15 to LHR 09:40');
+  expect(second).toHaveTextContent('British Airways BA 175 LHR 13:15 to JFK 16:05');
   expect(within(panel).getByText('Price confirmed: €398.20')).toBeInTheDocument();
   expect(within(panel).getByRole('button', { name: 'Select' })).toBeInTheDocument();
   // The chosen card keeps its own flights and price; the alternative does not replace it (Q5-A).

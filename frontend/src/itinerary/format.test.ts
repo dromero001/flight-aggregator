@@ -4,6 +4,7 @@ import { connecting, direct } from '../test/fixtures';
 import {
   daysLater,
   duration,
+  flight,
   freshness,
   isMultiAirline,
   layovers,
@@ -81,4 +82,13 @@ test('counts the local days from departure to arrival', () => {
   expect(daysLater('2026-11-20T18:00:00-05:00', '2026-11-20T21:30:00-08:00')).toBe(0);
   // Across the end of a month.
   expect(daysLater('2026-11-30T23:50:00Z', '2026-12-01T00:40:00Z')).toBe(1);
+});
+
+test("labels a flight with its airline's name", () => {
+  expect(flight(direct().legs[0])).toBe('Iberia IB 3166');
+  expect(flight(connecting().legs[1])).toBe('British Airways BA 117');
+});
+
+test('labels a flight of an unknown carrier with its code alone', () => {
+  expect(flight({ ...direct().legs[0], carrier: 'ZZ', flightNumber: 120 })).toBe('ZZ 120');
 });
