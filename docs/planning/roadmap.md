@@ -15,6 +15,8 @@ Legend: 👤 = with the user (review and decisions), 🌙 = autonomous work by a
 | 6 | [Dashboard](plans/2026-11-15-dashboard.md) | The two approved screens, with Playwright and axe end to end | 5 | Done: closed on 2026-11-16, the triple re-review approved ([progress](progress/2026-11-15-dashboard.md#end-of-plan-fix-round--re-review-verdicts)) |
 | 7 | [Observability and delivery](plans/2026-11-15-observability-and-delivery.md) | Grafana stack, `SOLUTION.md`, final reviews, a clean-clone check | 6 | Mon 👤: Tasks 1–7 and 9 done, with extras E1, E4 and E5; Task 10 done: the final triple review, its fix round re-reviewed, the full verification and the clean clone on macOS, Linux (CI) and Windows (E9), tagged `v1.0.0`; the optional Tasks 8 and 11 not built ([progress](progress/2026-11-15-observability-and-delivery.md)) |
 
+**After plan 7: delivery groups.** With the delivery ready hours early, the user had extras from the [backlog](extras-backlog.md) built in groups, each under one double review: G1 (search and API) and G2 (dashboard), both in `v1.0.0`; then G3 (dashboard, end to end and CI) and G4a (backend logs and metrics), through pull requests, for `v1.1.0`. Each plan's and group's tag, commits, review verdicts and CI run: [increments](increments.md).
+
 **Order rationale:** foundations first, so that every later commit already passes the architecture, formatting and coverage gates. Plans 2 and 3 do not depend on each other and can run in parallel. The search API waits for real ingested data, and the dashboard waits for the API contract it is generated from.
 
 ## Change of course on Sunday 2026-11-15, to meet the delivery date

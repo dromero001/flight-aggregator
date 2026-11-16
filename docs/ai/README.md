@@ -19,8 +19,8 @@ Plans are executed by subagents, one per task, and reviewed by three reviewer su
 
 | Reviewer | Question it answers | When |
 |---|---|---|
-| [`functional-reviewer`](../../.claude/agents/functional-reviewer.md) | Does the change deliver what the brief, the spec and the plan ask, with nothing missing and no unapproved extra? | After every task, and on the whole plan |
-| [`code-reviewer`](../../.claude/agents/code-reviewer.md) | Is the code maintainable (thermo-nuclear review) and correct, and does it respect the hexagonal boundaries? | After every task, and on the whole plan |
+| [`functional-reviewer`](../../.claude/agents/functional-reviewer.md) | Does the change deliver what the brief, the spec and the plan ask, with nothing missing and no unapproved extra? | After every task (later, every group: below), and on the whole plan |
+| [`code-reviewer`](../../.claude/agents/code-reviewer.md) | Is the code maintainable (thermo-nuclear review) and correct, and does it respect the hexagonal boundaries? | After every task (later, every group: below), and on the whole plan |
 | [`risk-reviewer`](../../.claude/agents/risk-reviewer.md) | What can go wrong in production: security, data loss, silent failures, half-applied state, concurrency, resilience? | On the whole plan |
 
 **Why separate reviewers.** A single reviewer asked to check everything tends to stop at the first kind of problem it finds. Giving each reviewer one question and its own checklist makes each review thorough, and a reviewer that did not write the code is not anchored on the author's reasoning.
@@ -29,7 +29,12 @@ Plans are executed by subagents, one per task, and reviewed by three reviewer su
 
 **Why risk review once per plan.** Operational risks usually live *between* tasks: a write in one task and its rollback in another, a fallback whose log line is in a third. A reviewer that sees one task at a time misses them, so the risk reviewer reads the whole plan's diff. It also keeps the cost reasonable: for a seven-task plan, two reviewers per task plus three at the end make 17 reviews instead of 21, and most foundation tasks (formatting, Dependabot) carry little operational risk.
 
-**Change for the deadline (from plan 5 on).** To fit the delivery date, the user merged the two per-task reviews into one reviewer that acts as both and gives two verdicts, and allowed independent tasks to run in parallel in their own worktrees. The three reviewers at the end of every plan stay. See the [roadmap](../planning/roadmap.md), "Change of course".
+**Changes for the deadline.** The user traded per-task review time for speed three times; the three reviewers at the end of every plan stayed, and so did each task's TDD evidence and gates:
+- **From plan 5 on** (2026-11-15): one reviewer per task acts as both and gives two verdicts, and independent tasks run in parallel in their own worktrees ([roadmap](../planning/roadmap.md#change-of-course-on-sunday-2026-11-15-to-meet-the-delivery-date)).
+- **Plan 6's Tasks 6, 7 and 8** (2026-11-16, about 00:30), leaf tasks no other task builds on, had no per-task review; the end-of-plan triple review covered them.
+- **By group from 2026-11-16, about 10:02:** one double review covers a group of work instead of each task: plan 7's review group 1, G1, G2, then G3 and G4a together.
+
+Plan 0, the mock dataset, came before the reviewers existed; the user reviewed it. [Increments](../planning/increments.md) records each plan's and group's verdicts.
 
 A task moves on only when both of its reviewers approve; a plan closes only when all three do. Findings are fixed, or the user decides to accept them, and the progress report records which.
 

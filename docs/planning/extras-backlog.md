@@ -1,6 +1,6 @@
 # Extras backlog
 
-Extras the implementers and reviewers proposed while plans 5 and 6 were built, and that are **out of the delivery** by the user's decision of 2026-11-16: "keep the extras that are not built, in case there is time later". None is approved. Each would need the user's approval before it is built; any left at the end is listed in `SOLUTION.md` as a next step.
+Extras the implementers and reviewers proposed while plans 5, 6 and 7 were built and on delivery day, and that are **out of the delivery** by the user's decision of 2026-11-16: "keep the extras that are not built, in case there is time later". None in the tables is approved. Each would need the user's approval before it is built; those left at the end stay here, and `SOLUTION.md` links to this backlog.
 
 Extras that a review turned into a finding are not here: they are fixed in the closing rounds of their plan.
 
@@ -21,6 +21,21 @@ The user decided on 2026-11-16, about 15:05, to build these before delivery; the
 
 Also built in G1, though not a backlog row: an anonymous `HEAD /api/itineraries` is answered as the public search it is (spec §6.6), where it was a `401`. The row "E3, airport and airline suggestions" is gone from plan 6's table: E3 was built on 2026-11-16.
 
+## Built on 2026-11-16 (G3 and G4a)
+
+The user decided on 2026-11-16, about 17:55, to build these after the `v1.0.0` tag (next section); they left the tables below and reached `main` through pull requests [#6](https://github.com/dromero001/flight-aggregator/pull/6) (G3) and [#7](https://github.com/dromero001/flight-aggregator/pull/7) (G4a). Each is described where it now lives; the red → green evidence is in the day's progress report, [G3](progress/2026-11-15-observability-and-delivery.md#g3--evidence) and [G4a](progress/2026-11-15-observability-and-delivery.md#g4a--evidence).
+
+- A date on the alternative's legs when they fly on another day than the chosen itinerary (the final clean clone): [Dashboard, re-price](../architecture/dashboard.md).
+- One shared renewal for concurrent `401`s (plan 6 Task 7): [Dashboard, sign-in](../architecture/dashboard.md#sign-in-and-the-admins-token).
+- `openapi-typescript --check` (`npm run api:check`) instead of `schema.test.ts` (plan 6 Task 2): [Dashboard, types from the contract](../architecture/dashboard.md#types-from-the-contract).
+- `E2E_BROWSERS` (plan 6 Task 10) and `E2E_BASE_URL` (plan 7 Task 7): the [README](../../README.md#use-the-dashboard) and [Dashboard, how each layer is tested](../architecture/dashboard.md#how-each-layer-is-tested).
+- Screenshots and traces of failed end-to-end tests kept, and Playwright's browsers cached in CI's `e2e` job (plan 6 Task 10): the same section of [Dashboard](../architecture/dashboard.md#how-each-layer-is-tested).
+- Valkey with `--save ""`, so the cache writes no snapshot (plan 5 Task 13): [Search API](../architecture/search-api.md).
+- A `NOTHING_FRESH` refresh logged at `WARN`, and each kept provider's failure reason in a refresh's report (plan 5 Task 7): [Ingestion, the stale-route refresh](../architecture/ingestion.md#the-stale-route-refresh).
+- Refresh metrics, `refresh.runs{outcome}` and `refresh.duration{outcome}`, with the skipped refreshes counted as `SKIPPED` in the same counter (plan 5 Task 7; plan 5 closing round 1): [Ingestion, observability](../architecture/ingestion.md#observability). No panel and no alert: none was approved.
+
+Not built, and back in the tables with what was found: `npm run dev` signing in (plan 6), and the counters registered at zero (delivery day).
+
 ## Decided on 2026-11-16, about 17:55 (G3 and G4a, after the `v1.0.0` tag)
 
 The user chose to build two more groups before delivery, in parallel worktrees, with **one double review (functional, then code) over the whole range** and one fix round only for a Critical or Important; the final commit gets the tag `v1.1.0` once its CI is green (`v1.0.0` stays on `dc58627`). Each row leaves its table when it reaches `main`.
@@ -36,23 +51,14 @@ The user chose to build two more groups before delivery, in parallel worktrees, 
 | Extra | Proposed by | Value | Cost |
 |---|---|---|---|
 | A `oneOf` re-price contract with a discriminator on `outcome` | Task 10 | a true union type in the dashboard | a springdoc customizer, regenerated types |
-| A `NOTHING_FRESH` refresh logged at WARN, as an empty run is | Task 7 | visible degraded refreshes | one line, one test |
-| Each kept provider's failure reason in a refresh's report | Task 7 | easier diagnosis | report field, log |
-| Refresh metrics (count by outcome, duration) | Task 7 | observability of refreshes | meters, tests |
 | Reschedule the next run from the last run, manual or not | Task 12 | `nextIngestionAt` matches the scheduler | scheduler change |
 | A health other than `UP` before the first run ends | Task 12 | honest health at start | indicator change |
-| Valkey with `--save ""`, so the cache writes no snapshots (the image declares no volume) | Task 13 | no disk writes for a cache | one compose flag |
 
 ## Plan 6, dashboard
 
 | Extra | Proposed by | Value | Cost |
 |---|---|---|---|
-| `openapi-typescript --check` instead of `schema.test.ts` | Task 2 | one file and a tsconfig exception fewer | the generated file left unformatted |
-| Let `npm run dev` sign in (Vite on 3000 with `strictPort`, or the realm allowing 5173) | Task 7 | local sign-in without flags | config line |
-| One shared renewal for concurrent 401s | Task 7 | one renewal instead of two | a shared promise, test |
-| Cache Playwright's browsers in the CI `e2e` job | Task 10 | faster CI | a cache step |
-| Choose the end-to-end browsers with an environment variable (`E2E_BROWSERS`), so `npm run e2e` works where a browser does not start (Firefox on macOS 27) | Task 10 | local runs on any Mac | config, docs |
-| Keep screenshots and traces of failed end-to-end tests | Task 10 | easier diagnosis of CI failures | config, artefacts |
+| Let `npm run dev` sign in. Tried in G3 and not built: Vite on 3000 with `strictPort` does not fail beside the compose dashboard on macOS, it binds `[::1]:3000` and silently shadows it; binding `127.0.0.1` fails but advertises an address the realm refuses ([decided on 2026-11-16, about 17:55](#decided-on-2026-11-16-about-1755-g3-and-g4a-after-the-v100-tag)) | Task 7 | local sign-in without flags | an IPv4 port check before Vite starts, or the realm allowing 5173 |
 
 **Built on 2026-11-16 (G2)**, by the user's decision of about 15:05, and so out of this table: the focus on the first new card after "Load more"; "+1" on each leg in the open card; the caption on an alternative's legs ("Alternative legs"); "Loading…" on the first status read; no polling after a 403; hours in "Next ingestion in …". The same decision added three points that were not rows here: no immediate retry of a failure with `Retry-After`, the decimal comma read only when there is no dot, and "Ingestion in progress" on the admin screen (`ingestionRunning` in `GET /api/admin/status`). What each does: [`dashboard.md`](../architecture/dashboard.md).
 
@@ -69,12 +75,26 @@ The user chose to build two more groups before delivery, in parallel worktrees, 
 | Extra | Proposed by | Value | Cost |
 |---|---|---|---|
 | Order ties of the chosen sort by departure (today by id, so dates jump among equal prices or durations) | plan 6 Task 11 | results read in time order | a second key in the API's ordering, both slots' indexes, the cursor, plan 5's tests |
-| A counter of refreshes skipped because another one runs | plan 5 closing round 1 | visible refresh pressure | one meter, one test |
-| Register `provider.calls`, `ingestion.runs` and `ingestion.records.discarded` at zero at startup, so `rate` and `increase` see the first run and the Grafana panels drop their `unless … offset 1h` term | plan 7 Task 6 (E-T6-1) | the startup run's provider calls show on the dashboard | production code in three classes, a test each |
+| Register `provider.calls`, `ingestion.runs` and `ingestion.records.discarded` at zero at startup, so `rate` and `increase` see the first run and the Grafana panels drop their `unless … offset 1h` term. Built in G4a and withdrawn after the review: the startup run starts before Prometheus's first scrape (about 15 s), so the zeros are never scraped first, and the panels filled with flat zero lines ([decided on 2026-11-16, about 17:55](#decided-on-2026-11-16-about-1755-g3-and-g4a-after-the-v100-tag)) | plan 7 Task 6 (E-T6-1) | the startup run's provider calls show on the dashboard | production code in three classes, a test each; the startup run delayed past the first scrape, and `> 0` on the panels |
 | The log level as a Loki stream label (today only `service_name` is a label; the level is structured metadata, `severity_text` and Loki's `detected_level`, filtered with `\| detected_level="warn"`). Loki promotes only resource attributes to labels, so it needs the Collector's contrib distribution (a `transform` processor) or a resource attribute per level | plan 7 Task 5 | `{service_name="flight-aggregator", level="WARN"}` as a stream selector | a contrib Collector image or extra pipeline config, a test |
 | Nest the console's trace and span ids as `"trace":{"id":…}` like `correlation`, by a `Slf4JEventListener` bean with ECS keys instead of Boot's `logging.structured.json.rename` (today flat dotted keys, `"trace.id":"…"`; ECS reads both the same) | plan 7 Task 5 | one key style in the JSON | one bean replacing Boot's, the setting removed |
-| A date on the alternative's legs when they fly on another day (today times only, as `dashboard.md` promises) | the final clean clone | the customer sees which day the alternative flies | the leg list's date helper, one test |
-| The end-to-end base URL from an environment variable (`E2E_BASE_URL`, today fixed at `http://localhost:3000` in `playwright.config.ts`), so the suite runs against a second stack on other ports, as the telemetry addresses already can (`GRAFANA_URL`, `PROMETHEUS_URL`, `KEYCLOAK_URL`). Task 7 ran its project against a throwaway stack through a scratch config that overrides `baseURL`; the admin specs would also need that stack's Keycloak address | plan 7 Task 7 | the whole suite runs beside a stack already on the default ports | one line in the config, a README line |
+
+## Minors deferred by the G3 and G4a review
+
+The double review left these Minors unfixed, by the project's rule (a Minor opens no fix round of its own); they are in the pull requests' review comments, [#6](https://github.com/dromero001/flight-aggregator/pull/6) and [#7](https://github.com/dromero001/flight-aggregator/pull/7).
+
+| Group | Minor |
+|---|---|
+| G3 | `dashboard.md` said concurrent `401`s make one `signinSilent`, though one that arrives after the shared renewal has settled starts another (corrected in the documentation audit of 2026-11-16) |
+| G3 | An empty or trailing-comma `E2E_BROWSERS` stops with `unknown browser, ""` |
+| G3 | Two avoidable type casts |
+| G3 | CI runs `api:check` twice (its named step, then again inside `npm run verify`) |
+| G3 | The concurrency tests of the shared renewal wait on a real 50 ms timer |
+| G4a | `ComposeFileTest` checks Valkey's flags by sequence instead of the exact command |
+| G4a | `RefreshMetrics.record` takes the whole report for its outcome, and `FAILED` is written in two classes |
+| G4a | `ProviderReport.Status.of` takes an `Optional` parameter |
+| G4a | `ingestion.md` did not say that a skipped refresh whose claim release throws counts as `FAILED` (corrected in the documentation audit of 2026-11-16) |
+| G4a | `RefreshMetricsTest` repeats one case |
 
 ## Left by plan 5's closing round 3 (the user's decision of 2026-11-16: known limitations, not built before delivery)
 
