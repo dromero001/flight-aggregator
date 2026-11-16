@@ -31,6 +31,45 @@ The frontend is an npm project in `frontend/` (Node from `frontend/.nvmrc`), out
 | `npm run api:generate` | Regenerates `src/api/schema.d.ts` from `docs/architecture/openapi.json`; `npm run api:check` fails when it is stale |
 | `npm run e2e` | Playwright with axe in Chromium, Firefox and WebKit against the running stack (`npx playwright install --with-deps chromium firefox webkit` first). Firefox does not start on macOS 27: run it in Playwright's Linux image, as [Dashboard](docs/architecture/dashboard.md#how-each-layer-is-tested) shows |
 
+## Airports in the dataset
+
+The mock network has 32 airports, from `mock-gds`'s [`StandardCatalogue`](mock-gds/src/main/java/com/flightaggregator/mockgds/reference/StandardCatalogue.java). Hubs connect to every other hub; a spoke connects through its hub; a long-haul airport through its gateway hubs. The aggregator's catalogue is [`V2__airport_catalogue.sql`](adapters/persistence/src/main/resources/db/migration/V2__airport_catalogue.sql), and the dashboard's list of airports (`frontend/src/search/airports.ts`) must match it; `frontend/src/search/airports.test.ts` checks that both, and this table, hold the same codes.
+
+| Code | City | Country | Role in the mock network |
+|---|---|---|---|
+| MAD | Madrid | Spain | Hub |
+| BCN | Barcelona | Spain | Hub |
+| LHR | London | United Kingdom | Hub |
+| CDG | Paris | France | Hub |
+| FRA | Frankfurt | Germany | Hub |
+| AMS | Amsterdam | Netherlands | Hub |
+| LIS | Lisbon | Portugal | Hub |
+| FCO | Rome | Italy | Hub |
+| ZRH | Zurich | Switzerland | Hub |
+| SVQ | Seville | Spain | Spoke, through MAD |
+| LPA | Gran Canaria | Spain | Spoke, through MAD |
+| PMI | Palma de Mallorca | Spain | Spoke, through BCN |
+| IBZ | Ibiza | Spain | Spoke, through BCN |
+| EDI | Edinburgh | United Kingdom | Spoke, through LHR |
+| MAN | Manchester | United Kingdom | Spoke, through LHR |
+| NCE | Nice | France | Spoke, through CDG |
+| BOD | Bordeaux | France | Spoke, through CDG |
+| HAM | Hamburg | Germany | Spoke, through FRA |
+| BER | Berlin | Germany | Spoke, through FRA |
+| EIN | Eindhoven | Netherlands | Spoke, through AMS |
+| OPO | Porto | Portugal | Spoke, through LIS |
+| FAO | Faro | Portugal | Spoke, through LIS |
+| NAP | Naples | Italy | Spoke, through FCO |
+| VCE | Venice | Italy | Spoke, through FCO |
+| GVA | Geneva | Switzerland | Spoke, through ZRH |
+| JFK | New York | United States | Long-haul, through MAD, LHR, CDG, FRA, AMS |
+| MIA | Miami | United States | Long-haul, through MAD, LHR |
+| BOG | Bogota | Colombia | Long-haul, through MAD |
+| MEX | Mexico City | Mexico | Long-haul, through MAD |
+| GRU | Sao Paulo | Brazil | Long-haul, through LIS, MAD |
+| DXB | Dubai | United Arab Emirates | Long-haul, through LHR, FRA |
+| NRT | Tokyo | Japan | Long-haul, through FRA, CDG |
+
 ## Run the mock providers
 
 The three mock GDS providers run as one image, built from `mock-gds/Dockerfile`. `docker compose up --build` starts them with the rest of the stack; to start the mocks alone:

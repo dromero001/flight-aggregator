@@ -1,0 +1,38 @@
+/**
+ * The city of each of the dataset's 32 airports, by IATA code: the aggregator's catalogue
+ * (`V2__airport_catalogue.sql`), which `airports.test.ts` keeps this list in step with.
+ */
+export const AIRPORT_CITIES: ReadonlyMap<string, string> = new Map([
+  ['MAD', 'Madrid'],
+  ['BCN', 'Barcelona'],
+  ['LHR', 'London'],
+  ['CDG', 'Paris'],
+  ['FRA', 'Frankfurt'],
+  ['AMS', 'Amsterdam'],
+  ['LIS', 'Lisbon'],
+  ['FCO', 'Rome'],
+  ['ZRH', 'Zurich'],
+  ['GVA', 'Geneva'],
+  ['SVQ', 'Seville'],
+  ['LPA', 'Gran Canaria'],
+  ['PMI', 'Palma de Mallorca'],
+  ['IBZ', 'Ibiza'],
+  ['EDI', 'Edinburgh'],
+  ['MAN', 'Manchester'],
+  ['NCE', 'Nice'],
+  ['BOD', 'Bordeaux'],
+  ['HAM', 'Hamburg'],
+  ['BER', 'Berlin'],
+  ['EIN', 'Eindhoven'],
+  ['OPO', 'Porto'],
+  ['FAO', 'Faro'],
+  ['NAP', 'Naples'],
+  ['VCE', 'Venice'],
+  ['JFK', 'New York'],
+  ['MIA', 'Miami'],
+  ['BOG', 'Bogota'],
+  ['MEX', 'Mexico City'],
+  ['GRU', 'Sao Paulo'],
+  ['DXB', 'Dubai'],
+  ['NRT', 'Tokyo'],
+]);

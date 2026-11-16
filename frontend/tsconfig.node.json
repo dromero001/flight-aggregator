@@ -18,5 +18,11 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts", "playwright.config.ts", "e2e", "src/api/schema.test.ts"]
+  "include": [
+    "vite.config.ts",
+    "playwright.config.ts",
+    "e2e",
+    "src/api/schema.test.ts",
+    "src/search/airports.test.ts"
+  ]
 }
