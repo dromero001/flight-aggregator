@@ -11,8 +11,11 @@ import com.flightaggregator.domain.Provider;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Optional;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Counts every call of one provider as {@code provider.calls{provider, operation, outcome}}
@@ -21,8 +24,15 @@ import java.util.function.Supplier;
  * {@code FailureReason} of a provider that failed, or {@code REJECTED} for a call over the
  * provider's concurrency limit; a call that fails any other way is {@code UNEXPECTED}, so every
  * call is counted. The answer or the failure passes through unchanged.
+ *
+ * <p>An {@code UNEXPECTED} quote is also one {@code ERROR} line with its stack trace: it is a bug,
+ * and the re-price that asked treats it as the provider failing (§6.5), so nothing else reports it.
+ * A download's failure is reported by its run, which logs each kept provider's with its stack
+ * trace.
  */
 public final class CountedFlightProvider implements FlightProvider {
+
+  private static final Logger LOG = LoggerFactory.getLogger(CountedFlightProvider.class);
 
   private static final String OK = "OK";
   private static final String NOT_SOLD = "NOT_SOLD";
@@ -49,21 +59,34 @@ public final class CountedFlightProvider implements FlightProvider {
 
   @Override
   public ProviderDownload download() {
-    return counted("download", provider::download, download -> OK);
+    return counted("download", provider::download, download -> OK, unexpected -> {});
   }
 
   @Override
   public ProviderDownload downloadFrom(Airport origin) {
-    return counted("origin-download", () -> provider.downloadFrom(origin), download -> OK);
+    return counted(
+        "origin-download", () -> provider.downloadFrom(origin), download -> OK, unexpected -> {});
   }
 
   @Override
   public Optional<Leg> quote(LegKey flight) {
     return counted(
-        "quote", () -> provider.quote(flight), quote -> quote.isPresent() ? OK : NOT_SOLD);
+        "quote",
+        () -> provider.quote(flight),
+        quote -> quote.isPresent() ? OK : NOT_SOLD,
+        unexpected ->
+            LOG.atError()
+                .addKeyValue("provider", provider.provider().name())
+                .setCause(unexpected)
+                .log("A provider's quote failed unexpectedly"));
   }
 
-  private <T> T counted(String operation, Supplier<T> call, Function<T, String> outcome) {
+  /** Counts the call; one that fails {@code UNEXPECTED} is handed to {@code unexpected} first. */
+  private <T> T counted(
+      String operation,
+      Supplier<T> call,
+      Function<T, String> outcome,
+      Consumer<RuntimeException> unexpected) {
     T answer;
     try {
       answer = call.get();
@@ -75,6 +98,7 @@ public final class CountedFlightProvider implements FlightProvider {
       throw e;
     } catch (RuntimeException e) {
       count(operation, FailureReason.UNEXPECTED.name());
+      unexpected.accept(e);
       throw e;
     }
     count(operation, outcome.apply(answer));
