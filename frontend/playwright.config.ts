@@ -48,7 +48,10 @@ export default defineConfig({
   retries: 0,
   reporter: [['list'], ['html', { open: 'never' }]],
   outputDir: 'test-results/e2e',
-  use: { baseURL: 'http://localhost:3000' },
+  use: {
+    // The dashboard as compose publishes it; E2E_BASE_URL points at a stack on other ports.
+    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
+  },
   projects: projects.map((project, index) => ({
     ...project,
     dependencies: index === 0 ? [] : [projects[index - 1].name],
