@@ -48,6 +48,8 @@ Extras that a review turned into a finding are not here: they are fixed in the c
 | Extra | Proposed by | Value | Cost |
 |---|---|---|---|
 | Measure the Valkey cache hit ratio under a realistic, synthetic search load, so `SOLUTION.md` can cite a figure instead of saying it is unmeasured. Out by the user's decision of 2026-11-16: too big a change at this stage of the project, with the delivery due the same day | Task 9 (the draft's review point 2) | evidence for Valkey's place | a load script with a realistic route mix, a measured run, the figure and its method in the docs |
+| E2, database spans in traces (`datasource-micrometer`, outside Boot's BOM). Approved on 2026-11-15, but no task built it; out by the user's choice of 2026-11-16, about 11:13, which built E1, E4 and E5 instead | plan 7's extras | a search's trace shows its SQL statements and their time | one dependency chosen by §6.1's rule, its settings, one test |
+| E7, telemetry of `mock-gds`. Approved on 2026-11-15, out by the same choice | plan 7's extras | traces cross into the providers, as in a real distributed system | Boot's starter and settings in `mock-gds`, one test |
 
 ## Proposed on delivery day (out by the user's standing rule of 2026-11-16: unbuilt extras wait in this backlog)
 

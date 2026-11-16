@@ -198,6 +198,8 @@ The same `docker compose up --build` starts the telemetry services, provisioned 
 2. Open Grafana's Explore (`http://localhost:3001/explore`), choose the **Loki** datasource, and run `{service_name="flight-aggregator"} |= "Ingestion run ended"`.
 3. Click the run's line to open its details, then **View trace**: the trace opens beside the logs, with the run (`ingestion.run`) and one request per provider page to Alpha, Beta and Gamma.
 
+The way back works too: **Related logs** on a trace, or on any of its spans, opens that trace's log lines. The dashboard also shows the search's and re-price's requests, the alert rules and their state, and the application's latest log lines.
+
 The pipeline, the alert rules, the dashboard's panels, what is not collected and how each part is tested: [Observability](docs/architecture/observability.md).
 
 ## Documentation
@@ -211,7 +213,7 @@ The documentation is split by what each part shows.
 - [Search API](docs/architecture/search-api.md): the endpoints, cursor and generation, cache, refresh, re-price, auth and rate limit, measured on the real volume
 - [OpenAPI contract](docs/architecture/openapi.json): the API as the application serves it, from which the dashboard's types are generated; `OpenApiContractTest` fails when it drifts
 - [Dashboard](docs/architecture/dashboard.md): the two screens and their states, the URL parameters, re-price, the admin sign-in and its token, `/config.json`, nginx, and how each layer is tested
-- [Observability](docs/architecture/observability.md): metrics, traces and logs from the application to Grafana, who reaches what, the alert rules and what they mean on a restart, the dashboard, the jump from a log line to its trace, and how each part is tested
+- [Observability](docs/architecture/observability.md): metrics, traces and logs from the application to Grafana, who reaches what, the alert rules and what they mean on a restart, the dashboard, the jumps between a log line and its trace, and how each part is tested
 
 ### 2. Planning — how the work was planned
 - [Design spec](docs/planning/design-spec.md): goals, domain rules, every design decision and its reasoning

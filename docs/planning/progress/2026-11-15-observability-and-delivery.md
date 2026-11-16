@@ -1028,3 +1028,56 @@ The placeholders that later tasks could fill are filled, and the text is brought
 - **§7 now has eight limitations,** the plan's six and M1 and M4.
 
 Extras: none.
+
+## Extras E1, E4, E5 — evidence
+
+The approved extras that no task had built, as the user chose on 2026-11-16 at about 11:13 (option B, recorded in the plan's "⚠ Extras" section and session 09): E1 (a link from a trace to its logs), E4 (a logs panel and an alert list on the dashboard), E5 (an HTTP panel). E2 (database spans) and E7 (`mock-gds` telemetry) moved to the [extras backlog](../extras-backlog.md). Branch `plan7-extras-e1-e4-e5`, from `main` `e8e8228` (a first worktree from `9377e02` was removed during the user's pause, 11:15–12:40, before any change; `main` had moved by docs only).
+
+- **Files:** `deploy/grafana/provisioning/datasources/datasources.yaml` (Tempo's `tracesToLogsV2`), `deploy/grafana/dashboards/flight-aggregator.json` (panels "HTTP requests", "Alerts", "Logs"), `GrafanaProvisioningTest` (three tests added, three adapted), `frontend/e2e/observability.spec.ts` and `telemetry.ts` (two tests added, one adapted), `docs/architecture/observability.md`, README "Observability".
+- **The live stack:** a throwaway compose project `p7ex` from this worktree, every published port moved by a scratch override (`ports: !override`: Grafana `43001`, Prometheus `49090`, Keycloak `48180`, frontend `43000`, app `48080`, mock-gds `48081`); the specs ran through a scratch Playwright config outside the repository that imports the repository's and changes only paths and `baseURL`, with `GRAFANA_URL`, `PROMETHEUS_URL`, `KEYCLOAK_URL`, `--project observability --no-deps`. Mutations changed files of this worktree that `p7ex` mounts, never the main checkout's; the user's stack was not stopped, restarted or rebuilt.
+
+### Red → green, one test at a time
+
+1. **E1, `GrafanaProvisioningTest.linksATraceToItsLogLines`** (Tempo's `tracesToLogsV2`: `datasourceUid: loki`, a tag `service.name` → `service_name`, `customQuery: true`, query `{${__tags}} | trace_id="${__trace.traceId}"`).
+   - Red: `expected: "loki" but was: ""`.
+   - Green: `tracesToLogsV2` in `datasources.yaml`, `$$` escaping `${…}` from provisioning's environment expansion as Task 5 did, five minutes either side of the span. Refactor: `linksALogLineToItsTrace` reads its datasource through the same `datasource(uid)` helper.
+   - Why a custom query: a line holds its trace id as the structured metadata `trace_id`, not in its text, so Grafana's default line filter finds nothing (shown red below).
+2. **E1, e2e `'jumps from a trace to its log lines in Grafana'`** (Chromium, no sign-in: the newest run line in Loki names a trace; Explore on Tempo with it; the trace header's **Related logs**; the Loki pane shows "Ingestion run ended").
+   - First run red for the test's own reason: it waited for a "Logs for this span" button; Grafana 13.3 calls the link "Related logs" (one in the trace header, one in each span's details, both to `{service_name="flight-aggregator"} | trace_id="<id>"`). Fixed; green.
+   - Red by mutation: the query as a line filter, `|= "<trace id>"`, Grafana restarted: `getByText('Ingestion run ended')`, `element(s) not found`. Restored: green.
+3. **E4, `GrafanaProvisioningTest.showsTheApplicationsLogLines`** (a panel "Logs", type `logs`, on uid `loki`, one query `{service_name="flight-aggregator"}`).
+   - Red: `No panel titled Logs` (from a new `panel(title)` helper that fails naming the panel).
+   - Green: the panel, full width at the bottom, newest first. Two Task 6 tests then failed on their premise and were adapted: `loadsTheDashboardWithItsSevenPanels` → `loadsTheDashboardWithItsPanels` (the extras' titles appended), and `everyPanelQueriesAKnownMetric` checks the panels on the `prometheus` datasource (a LogQL selector names no metric). It still bites: `rate(provider_call_total…` → `Expecting empty but was: ["provider_call_total"]`, restored. Refactor: the gauge-tile test finds its panels with `panel(title)` (a renamed panel now fails naming it, Task 6 re-review F-m2).
+   - End to end: `'feeds every dashboard panel'` already runs every query of every panel, the logs panel's included. Red by mutation, `{service_name="no-such-service"}`: `Logs/A: Error: No data from … after 60 s`. Restored: green.
+4. **E4, `GrafanaProvisioningTest.listsTheAlertRulesInEveryState`** (a panel "Alerts", type `alertlist`, every state shown).
+   - Explored first on a scratch dashboard file, removed after: Grafana's alert list reads Prometheus's rules for the anonymous Viewer; with its defaults a healthy stack shows "No alerts matching filters".
+   - Red: `No panel titled Alerts`. Green: the panel, right of the HTTP panel.
+   - `'feeds every dashboard panel'` then failed: `TypeError: Cannot read properties of undefined (reading 'map')`; the alert list has no query. It now runs the panels that do (`runsQueries`, a type guard in `telemetry.ts`).
+   - New e2e `'lists the alert rules on the dashboard'` (the Alerts panel alone, `viewPanel`, the four alert names visible): **red for a real gap**, `getByText('IngestionFailing')` not found, the page showing "No alerts matching filters": a rule that is not firing has no instance, and the list hides it unless `showInactiveAlerts` is on. Back to the provisioning test first: it asserts `showInactiveAlerts`, red (`[rules with no instance shown] Expecting value to be true but was false`), then green with the option; the e2e test green.
+5. **E5, `GrafanaProvisioningTest.showsTheSearchAndRepriceRequests`** (a panel "HTTP requests"; every query filters `{uri=~"/api/itineraries(/.+/reprice)?"}`; one groups by `outcome`; the names used are exactly `http_server_requests_seconds_count`, `_sum`, `_max`).
+   - Checked first on `p7ex`'s Prometheus: the `uri` tags are route templates; after a search, a re-price and a bad search the filter gave `/api/itineraries` SUCCESS and CLIENT_ERROR and `/api/itineraries/{id}/reprice` SUCCESS, and left `/health` out.
+   - Red: `No panel titled HTTP requests`. Green: requests per second by route and outcome (CLIENT_ERROR orange, SERVER_ERROR red), mean latency (`rate` of `_sum` over `rate` of `_count`) and `max by (uri)` of `_max`, both dashed on the right axis in seconds; the titles test gains it.
+   - End to end: `'feeds every dashboard panel'` runs its three queries. Red by mutation, `/api/itinerary(/.+/reprice)?` in all three: `HTTP requests/A`, `/B`, `/C`: `No data from … after 60 s`. Restored: green.
+
+The whole `observability` project on `p7ex`, after the self-review's changes: see Gates. A screenshot of the dashboard with all ten panels holding data, kept out of git for the user: `.superpowers/sdd/2026-11-15-observability-and-delivery/extras-e1-e4-e5-dashboard.png`.
+
+### Deviations from the plan's wording
+
+- **E1's link is "Related logs"**, Grafana 13.3's name for trace to logs, in the trace header and in each span's details; it opens the whole trace's lines, not only the span's, since the query filters on the trace id within five minutes of the span.
+- **E4's alert list shows each alert twice** (a rule on its value and one labelled `gauge: unknown`, Task 3's design); the panel's description says so.
+- **E5 shows errors as series by outcome** (client errors and server errors) rather than a separate error-rate query, which would have no series on a healthy stack and leave the panel's query empty.
+- **Three Task 6 and Task 7 tests were adapted** to the new panels (above): the titles list, the metric check limited to Prometheus panels, the panel data test limited to panels with queries.
+
+### Concerns
+
+- The HTTP panel's route filter is written in each of its three queries (Grafana's JSON has no shared constant short of a dashboard variable); `showsTheSearchAndRepriceRequests` pins it in all three.
+- The alert list and the trace-to-logs link are checked in the browser only; Grafana resolves both in its frontend, so no API call shows them.
+
+### Gates
+
+- Between commits, `GrafanaProvisioningTest` (15 tests at the end, 0 failed) and the touched e2e tests on `p7ex`.
+- The whole `observability` project on `p7ex`, on the final files: `8 passed (1.7m)` (search 4.2 s, manual run 1.3 min, log to trace 2.4 s, trace to logs 1.5 s, labels 5 ms, rules 12.2 s, panels 453 ms, alert list 1.7 s).
+- `npm run verify` in `frontend/`: exit 0 (typecheck, lint, format check, 155 component tests).
+- `./gradlew build`: exit 0, `BUILD SUCCESSFUL` in 2 min 12 s; 1,108 tests across the modules (Task 7's 1,104 plus this work's four), none failed or skipped.
+- Self-review (thermo-nuclear) of the diff, three findings fixed: `'feeds every dashboard panel'` carried optional fields with silent fallbacks (`datasource?.uid ?? ''`, `targets = []`), replaced by a `QueryPanel` type and its `runsQueries` guard; the alert list test resolved the panel id with a fallback to `0`, replaced by `panelUrl(dashboard, title)`, which throws naming a missing panel; the HTTP test's `containsOnly(…).contains(…)` became one set equality. Kept: Grafana's own mechanisms (`tracesToLogsV2`, the `alertlist` and `logs` panels, the file provider, read-only); `GrafanaProvisioningTest` 463 lines; no production code changed.
+- Throwaway stack: `docker compose -p p7ex … down -v`, exit 0; no container, volume or network of `p7ex` left; the user's `flight-aggregator` stack still running, 11 services, untouched.

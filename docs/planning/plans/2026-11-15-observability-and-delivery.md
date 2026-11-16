@@ -339,6 +339,8 @@ Alertmanager, SLO burn-rate alerts and a trace id in error responses (rejected, 
 
 **Decided by the user (2026-11-15):** E1, E2, E3, E4, E5, E7, E8, E9 and E10 are approved and become part of this plan; E6 (exemplars) stays out. E9 is the user's own check on the Windows PC on Monday; E2 adds `datasource-micrometer` under §6.1's version rule.
 
+**Decided by the user (2026-11-16, about 11:13):** no task had built E1, E2, E4, E5 and E7. Of three options (all five, about 1.5 h; the three cheap and visible ones, about 45 min; none), the user chose the second: E1, E4 and E5 are built (evidence in the progress report, "Extras E1, E4, E5 — evidence"); E2 and E7 move to the [extras backlog](../extras-backlog.md).
+
 - **E1. A link from a trace to its logs** (Tempo's datasource pointing at Loki). Value: the reverse jump, from a slow span to its lines. Cost: a few provisioning lines and one e2e step. Left out unless you approve.
 - **E2. Database spans in traces** (`datasource-micrometer`, outside Boot's BOM). Value: a search's trace shows its SQL and its time. Cost: one dependency by §6.1, its settings and one test. Left out unless you approve.
 - **E3. The background refresh as one trace** (an observation on its thread). Value: a refresh's provider requests are grouped instead of one trace per request. Cost: a few lines and one test. Left out unless you approve.

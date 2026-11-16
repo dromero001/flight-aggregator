@@ -1,6 +1,6 @@
 # Observability
 
-How the aggregator's three signals, metrics, traces and logs, leave the application and meet in one Grafana that the whole team opens without signing in (spec [§6.10](../planning/design-spec.md#610-observability-decided-in-the-grill-me-q9), [§6.6](../planning/design-spec.md#66-authentication-and-access-control-decided-in-the-grill-me-q6)). `docker compose up --build` starts every part, configured from files under `deploy/`; nothing is set up by hand. Built by [plan 7](../planning/plans/2026-11-15-observability-and-delivery.md), Tasks 1 to 7; the evidence is in its [progress report](../planning/progress/2026-11-15-observability-and-delivery.md).
+How the aggregator's three signals, metrics, traces and logs, leave the application and meet in one Grafana that the whole team opens without signing in (spec [§6.10](../planning/design-spec.md#610-observability-decided-in-the-grill-me-q9), [§6.6](../planning/design-spec.md#66-authentication-and-access-control-decided-in-the-grill-me-q6)). `docker compose up --build` starts every part, configured from files under `deploy/`; nothing is set up by hand. Built by [plan 7](../planning/plans/2026-11-15-observability-and-delivery.md), Tasks 1 to 7 and its extras E1, E4 and E5; the evidence is in its [progress report](../planning/progress/2026-11-15-observability-and-delivery.md).
 
 ## The pipeline
 
@@ -21,6 +21,7 @@ flowchart LR
     tempo --> grafana
     loki --> grafana
     loki -. "trace_id: View trace" .-> tempo
+    tempo -. "trace id: Related logs" .-> loki
 ```
 
 | Signal | From the application | Through | Stored in | Read in |
@@ -73,7 +74,7 @@ What the rules mean when an instance is restarted, down, or one of several (the 
 
 ## The dashboard
 
-One dashboard, "Flight aggregator" (uid `flight-aggregator`), provisioned from `deploy/grafana/dashboards/flight-aggregator.json` by a read-only file provider. Its seven panels read Prometheus and combine instances as the rules do:
+One dashboard, "Flight aggregator" (uid `flight-aggregator`), provisioned from `deploy/grafana/dashboards/flight-aggregator.json` by a read-only file provider. Its first seven panels are the metrics the spec promises (plan 7 Task 6); the last three are approved extras (E4, E5). The metric panels read Prometheus and combine instances as the rules do; the alert list reads Prometheus's rules, and the logs panel reads Loki:
 
 | Panel | Shows |
 |---|---|
@@ -84,6 +85,9 @@ One dashboard, "Flight aggregator" (uid `flight-aggregator`), provisioned from `
 | Cache hit ratio | hits over all lookups of the search cache in the last hour, errors included |
 | Discarded records | records discarded in the last hour, by provider and reason |
 | Partitions | days ahead, red below 34; rows in `DEFAULT`, red from 1 |
+| HTTP requests | the search's and the re-price's requests per second by outcome, client errors orange and server errors red; their mean and maximum latency, dashed, on the right axis (Spring's `http.server.requests`; admin calls and health checks left out) |
+| Alerts | Prometheus's rules and their state, healthy ones as Normal: each alert's rule on its value and its `gauge: unknown` rule, as on Prometheus's alerts page |
+| Logs | the application's lines from Loki, newest first; a line's details hold **View trace** |
 
 The gauge tiles (freshness, partitions) are instant queries: a gauge that reads `NaN` or is missing shows "unknown" in the colour of the alert that fires on it, never its last healthy value. Counters created on their first use (`ingestion.runs`, `ingestion.records.discarded`) are counted in full the first hour they exist, so the startup run shows; `provider.calls` uses `rate`, which misses a counter's first increment, so the startup run's calls show from the second run on.
 
@@ -123,6 +127,10 @@ The Loki datasource has a derived field, `TraceID`, that reads each line's `trac
 2. Click a line to open its details.
 3. Click **View trace** beside `trace_id`: Tempo's trace opens beside the logs, with `ingestion.run` and one `http get` per provider page.
 
+## From a trace to its lines
+
+The reverse jump (plan 7 extra E1): the Tempo datasource links a trace to Loki with the query `{service_name="<the span's service>"} | trace_id="<the trace id>"`, since a line holds its trace id as structured metadata, not in its text. The trace's header and each span's details show **Related logs**, which opens the trace's lines beside it, within five minutes of the span. From a trace found in Explore on Tempo, or reached through **View trace** above, **Related logs** shows, for a run, its "Ingestion run ended" line with every provider's figures.
+
 ## What is not collected
 
 - The mock providers, nginx, Keycloak, PostgreSQL and Valkey send no telemetry; only the aggregator's is collected (spec §6.10). PostgreSQL and Valkey exporters and a JVM dashboard are plan 7's optional Task 8, "only if time remains".
@@ -136,13 +144,13 @@ The Loki datasource has a derived field, `TraceID`, that reads each line's `trac
 | Images | `ComposeFileTest`, `ObservabilityImages` | Every compose image pinned by tag and digest; the tests run the images compose runs; published ports only on loopback, the management port never | `./gradlew build` |
 | Collector, Tempo, Loki, Prometheus | `CollectorConfigTest`, `TempoConfigTest`, `LokiConfigTest`, `PrometheusConfigTest` | Each starts with the repository's file on its pinned image; no usage reports; Prometheus loads the rule files, not their tests, and keeps no volume | `./gradlew build` |
 | Alert rules | `AlertRulesTest`, running promtool on `ingestion.rules.test.yaml` | Every threshold, the `NaN`, missing and two-instance cases, with `--lint-fatal` | `./gradlew build` |
-| Grafana | `GrafanaProvisioningTest` | The anonymous Viewer, Explore open, no sign-in, no query history, no usage reports; the three datasources; the log-to-trace link; the dashboard's seven panels, each querying a stored metric, its unknown gauges shown as unknown | `./gradlew build` |
+| Grafana | `GrafanaProvisioningTest` | The anonymous Viewer, Explore open, no sign-in, no query history, no usage reports; the three datasources; the log-to-trace and trace-to-logs links; the dashboard's ten panels, each metric panel querying a stored metric, its unknown gauges shown as unknown, the HTTP panel on the search and re-price routes, the alert list showing every state, the logs panel on the application's stream | `./gradlew build` |
 | Management port | `ManagementPortTest` | Prometheus scrapes with no token on 8079; the API port serves no metrics | `./gradlew build` |
 | Traces | `ContextThreadsTest`, `TracingEndToEndTest`, `RefreshTraceTest`, `TelemetryUnavailableTest` | A run, a manual run, a search, a re-price and a refresh are each one trace; no secret in a span; no metrics pushed; search and runs unaffected with the Collector down | `./gradlew build` |
 | Logs | `StructuredLogsTest`, `LogExportTest` | Every line of a run carries its trace, span and correlation ids; the exported records keep the trace context and key-value pairs, and hold no secret | `./gradlew build` |
-| End to end | `frontend/e2e/observability.spec.ts`, against the compose stack, reading Grafana's API with no credentials | A search with a caller's `traceparent` is in Tempo under that trace; a manual run's report line in Loki names a trace in Tempo with `ingestion.run` and requests to Alpha, Beta and Gamma; in a browser with no sign-in, a log line opens its trace; Loki's labels hold no id; the four alerts' rules are loaded and, evaluated on the app's gauges, none fires; every dashboard panel returns data after two identical searches | `npm run e2e`; CI job `e2e` |
+| End to end | `frontend/e2e/observability.spec.ts`, against the compose stack, reading Grafana's API with no credentials | A search with a caller's `traceparent` is in Tempo under that trace; a manual run's report line in Loki names a trace in Tempo with `ingestion.run` and requests to Alpha, Beta and Gamma; in a browser with no sign-in, a log line opens its trace and a run's trace opens its lines; Loki's labels hold no id; the four alerts' rules are loaded and, evaluated on the app's gauges, none fires; every query of every dashboard panel returns data after two identical searches; the dashboard's alert list shows the four alerts | `npm run e2e`; CI job `e2e` |
 
-The end-to-end project, `observability`, runs once, in Chromium, after every browser's admin run and before the rate-limit test ([Dashboard](dashboard.md#how-each-layer-is-tested)). Its reads poll for up to a minute. Each address it uses has a default, the one compose publishes, and an environment variable for a stack published elsewhere: `GRAFANA_URL`, `PROMETHEUS_URL`, `KEYCLOAK_URL` (and `ADMIN_SERVICE_CLIENT_SECRET`, as compose reads it). Each check was shown red once by a mutation of a running stack: B3 propagation instead of W3C, sampling 0, the derived field's datasource uid, `correlation.id` indexed as a Loki label, an alert threshold that fires, and a panel's label filter that matches nothing ([plan 7 Task 7's evidence](../planning/progress/2026-11-15-observability-and-delivery.md#task-7--evidence)).
+The end-to-end project, `observability`, runs once, in Chromium, after every browser's admin run and before the rate-limit test ([Dashboard](dashboard.md#how-each-layer-is-tested)). Its reads poll for up to a minute. Each address it uses has a default, the one compose publishes, and an environment variable for a stack published elsewhere: `GRAFANA_URL`, `PROMETHEUS_URL`, `KEYCLOAK_URL` (and `ADMIN_SERVICE_CLIENT_SECRET`, as compose reads it). Each check was shown red once by a mutation of a running stack: B3 propagation instead of W3C, sampling 0, the derived field's datasource uid, the trace-to-logs query as a line filter (a line's text holds no trace id), `correlation.id` indexed as a Loki label, an alert threshold that fires, and a panel's label filter that matches nothing (the cache hit ratio, the logs panel's stream, the HTTP panel's routes); the alert list was red until it showed rules with no instance ([plan 7 Task 7's evidence](../planning/progress/2026-11-15-observability-and-delivery.md#task-7--evidence), [extras E1, E4, E5](../planning/progress/2026-11-15-observability-and-delivery.md#extras-e1-e4-e5--evidence)).
 
 ## Known limitations
 
