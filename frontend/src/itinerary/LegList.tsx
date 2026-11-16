@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import type { Leg } from '../api/types';
-import { flight, laterDayMark, localTime } from './format';
+import { DayMark } from './DayMark';
+import { flight, localTime } from './format';
 import styles from './LegList.module.css';
 
 interface LegListProps {
@@ -26,18 +27,15 @@ export function LegList({ legs, label, captioned = false }: LegListProps) {
         aria-labelledby={captioned ? captionId : undefined}
       >
         {/* A flight may come back in one itinerary, so the position is the key. */}
-        {legs.map((leg, index) => {
-          // "+1 day": the leg lands on a later local date than it took off, as on the card.
-          const arrivalMark = laterDayMark(leg.departure, leg.arrival);
-          return (
-            <li key={index}>
-              <span className={styles.flight}>{flight(leg)}</span> {leg.origin}{' '}
-              <time dateTime={leg.departure}>{localTime(leg.departure)}</time> to {leg.destination}{' '}
-              <time dateTime={leg.arrival}>{localTime(leg.arrival)}</time>
-              {arrivalMark && ` ${arrivalMark}`}
-            </li>
-          );
-        })}
+        {legs.map((leg, index) => (
+          <li key={index}>
+            <span className={styles.flight}>{flight(leg)}</span> {leg.origin}{' '}
+            <time dateTime={leg.departure}>{localTime(leg.departure)}</time> to {leg.destination}{' '}
+            <time dateTime={leg.arrival}>{localTime(leg.arrival)}</time>{' '}
+            {/* "+1 day": the leg lands on a later local date than it took off, as on the card. */}
+            <DayMark departure={leg.departure} arrival={leg.arrival} />
+          </li>
+        ))}
       </ol>
     </>
   );

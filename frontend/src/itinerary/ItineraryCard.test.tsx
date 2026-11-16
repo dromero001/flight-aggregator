@@ -8,6 +8,7 @@ import { connecting, direct } from '../test/fixtures';
 import { renderWithClient } from '../test/renderWithClient';
 import { server } from '../test/server';
 import { ItineraryCard } from './ItineraryCard';
+import dayMarkStyles from './DayMark.module.css';
 import styles from './ItineraryCard.module.css';
 
 const REPRICE = '*/api/itineraries/:id/reprice';
@@ -210,4 +211,32 @@ test('marks each leg that lands on the next local day', async () => {
   expect(first).toHaveTextContent('Iberia IB 3166 MAD 22:40 to LHR 06:15 +1 day');
   expect(second).toHaveTextContent('British Airways BA 117 LHR 10:50 to JFK 13:40');
   expect(second).not.toHaveTextContent('+1 day');
+});
+
+test("styles a leg's day mark as the summary's", async () => {
+  const user = userEvent.setup();
+  // 22:40 in Madrid, 06:15 the next morning in London.
+  const overnight = direct({
+    departure: '2026-11-20T22:40:00+01:00',
+    arrival: '2026-11-21T06:15:00Z',
+    durationMinutes: 515,
+    legs: [
+      {
+        carrier: 'IB',
+        flightNumber: 3166,
+        origin: 'MAD',
+        destination: 'LHR',
+        departure: '2026-11-20T22:40:00+01:00',
+        arrival: '2026-11-21T06:15:00Z',
+      },
+    ],
+  });
+  renderWithClient(<ItineraryCard itinerary={overnight} now={new Date('2026-11-15T09:05:00Z')} />);
+  const summary = screen.getByRole('button', { expanded: false });
+
+  await user.click(summary);
+
+  const legMark = within(screen.getByRole('list', { name: 'Legs' })).getByText('+1 day');
+  expect(legMark).toHaveClass(dayMarkStyles.mark);
+  expect(within(summary).getByText('+1 day')).toHaveClass(dayMarkStyles.mark);
 });

@@ -63,11 +63,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Raised beside the arrival time, as on a timetable. */
+/* The day mark (DayMark) at the top of the route line, close to the arrival time. */
 .days {
   align-self: flex-start;
   margin-left: calc(-1 * var(--space-1));
-  font-size: 0.875rem;
 }
 
 .code {

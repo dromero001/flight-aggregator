@@ -1,0 +1,8 @@
+/* Small and raised beside an arrival time, as on a timetable: the same on the card and its legs. */
+.mark {
+  font-family: var(--font-codes);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+  vertical-align: super;
+}

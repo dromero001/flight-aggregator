@@ -2,7 +2,6 @@ import { type Ref, useId, useState } from 'react';
 import type { Itinerary } from '../api/types';
 import styles from './ItineraryCard.module.css';
 import {
-  laterDayMark,
   duration,
   flight,
   freshness,
@@ -13,6 +12,7 @@ import {
   price,
   stopsSummary,
 } from './format';
+import { DayMark } from './DayMark';
 import { LegList } from './LegList';
 import { RepricePanel } from './RepricePanel';
 import { useReprice } from './useReprice';
@@ -31,7 +31,6 @@ interface ItineraryCardProps {
 export function ItineraryCard({ itinerary, now, summaryRef }: ItineraryCardProps) {
   const { origin, destination, departure, arrival, legs } = itinerary;
   const connections = layovers(legs);
-  const arrivalMark = laterDayMark(departure, arrival);
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const reprice = useReprice();
@@ -86,7 +85,7 @@ export function ItineraryCard({ itinerary, now, summaryRef }: ItineraryCardProps
               {localTime(arrival)}
             </time>
             {/* "+1 day": the arrival's local date is after the departure's (plan 6 E1). */}
-            {arrivalMark && <span className={styles.days}>{arrivalMark}</span>}
+            <DayMark departure={departure} arrival={arrival} className={styles.days} />
           </span>
           <span className={styles.details}>
             <time dateTime={departure}>{localDate(departure)}</time>
