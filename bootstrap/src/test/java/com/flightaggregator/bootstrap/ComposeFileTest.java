@@ -169,21 +169,26 @@ class ComposeFileTest {
   /**
    * Neither store is published: only the app reaches PostgreSQL and Valkey, on compose's network,
    * since anyone who reached Valkey could reset any client's rate-limit counter (plan 5 Task 13).
-   * The app, the dashboard, Keycloak and the mock providers are published on the loopback interface
-   * only (README, "Run the aggregator").
+   * Every port any other service publishes is on the loopback interface only, written in the short
+   * syntax {@code 127.0.0.1:published:container} (README, "Run the aggregator"); a port in the long
+   * syntax fails this test until it is checked here too.
    */
   @Test
   void publishesNeitherStoreAndTheRestOnTheLoopbackOnly() throws IOException {
-    Map<String, Object> ports = new HashMap<>();
-    ComposeFile.services().forEach((name, service) -> ports.put(name, service.get("ports")));
+    Map<String, Map<String, Object>> services = ComposeFile.services();
+    Map<String, String> published = new HashMap<>();
+    services.forEach(
+        (name, service) -> {
+          if (service.get("ports") instanceof List<?> ports) {
+            ports.forEach(port -> published.put(name + " " + port, String.valueOf(port)));
+          }
+        });
 
-    assertThat(ports)
-        .containsEntry("postgres", null)
-        .containsEntry("valkey", null)
-        .containsEntry("app", List.of("127.0.0.1:8080:8080"))
-        .containsEntry("frontend", List.of("127.0.0.1:3000:8080"))
-        .containsEntry("keycloak", List.of("127.0.0.1:8180:8080"))
-        .containsEntry("mock-gds", List.of("127.0.0.1:8081:8080"));
+    assertThat(services.get("postgres")).doesNotContainKey("ports");
+    assertThat(services.get("valkey")).doesNotContainKey("ports");
+    assertThat(published)
+        .isNotEmpty()
+        .allSatisfy((port, value) -> assertThat(value).as(port).startsWith("127.0.0.1:"));
   }
 
   /**
