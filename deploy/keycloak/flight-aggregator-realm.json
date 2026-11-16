@@ -22,7 +22,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "demo-admin-password",
+          "value": "${ADMIN_USER_PASSWORD:demo-admin-password}",
           "temporary": false
         }
       ],
