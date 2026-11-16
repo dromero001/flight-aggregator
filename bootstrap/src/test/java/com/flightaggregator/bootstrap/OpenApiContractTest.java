@@ -187,6 +187,7 @@ class OpenApiContractTest {
   @ParameterizedTest(name = "{1} {0} answers {2}")
   @CsvSource({
     "/api/itineraries, get, 429",
+    "/api/itineraries, get, 503",
     "/api/itineraries/{id}/reprice, post, 400",
     "/api/itineraries/{id}/reprice, post, 404",
     "/api/itineraries/{id}/reprice, post, 429",
@@ -220,7 +221,7 @@ class OpenApiContractTest {
    */
   @ParameterizedTest(name = "{1} {0}")
   @CsvSource({
-    "/api/itineraries, get, SearchResponse, 200 400 429",
+    "/api/itineraries, get, SearchResponse, 200 400 429 503",
     "/api/itineraries/{id}/reprice, post, RepriceResponse, 200 400 404 429 503",
     "/api/admin/status, get, StatusResponse, 200 401 403",
     "/api/admin/ingestions, post, , 202 401 403 409"
@@ -287,6 +288,7 @@ class OpenApiContractTest {
   @ParameterizedTest(name = "{1} {0} answers {2}")
   @CsvSource({
     "/api/itineraries, get, 429",
+    "/api/itineraries, get, 503",
     "/api/itineraries/{id}/reprice, post, 429",
     "/api/itineraries/{id}/reprice, post, 503"
   })
