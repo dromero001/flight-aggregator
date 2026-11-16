@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { loadConfig, type AppConfig } from '../config';
 import { createAuthClient } from './authClient';
 import { AdminSession, SignInFailed, SigningIn } from './AdminSession';
+import { StatusPage } from './StatusPage';
 
 /** The admin screen (`/admin`): reads the sign-in settings, then signs the admin in. */
 export function AdminPage() {
@@ -24,7 +25,7 @@ function AdminScreen({ config }: { config: AppConfig }) {
 
   return (
     <AdminSession auth={auth}>
-      <h1>Provider status</h1>
+      <StatusPage />
       {/* Ends Keycloak's session as well, which then sends the browser back to /admin. */}
       <button
         type="button"

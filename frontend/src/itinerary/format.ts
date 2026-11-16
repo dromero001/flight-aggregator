@@ -72,16 +72,21 @@ function minutesBetween(from: string | Date, to: string | Date): number {
   return Math.floor((new Date(to).getTime() - new Date(from).getTime()) / MILLIS_PER_MINUTE);
 }
 
-/** "Updated just now", "Updated 4 min ago", "Updated 1 h ago" (plan 6, Q7). */
-export function freshness(quotedAt: string, now: Date): string {
-  const minutes = minutesBetween(quotedAt, now);
+/** "just now", "4 min ago", "1 h ago": how long before `now` an instant was (plan 6, Q7). */
+export function timeAgo(instant: string, now: Date): string {
+  const minutes = minutesBetween(instant, now);
   if (minutes < 1) {
-    return 'Updated just now';
+    return 'just now';
   }
   if (minutes < 60) {
-    return `Updated ${String(minutes)} min ago`;
+    return `${String(minutes)} min ago`;
   }
-  return `Updated ${String(Math.floor(minutes / 60))} h ago`;
+  return `${String(Math.floor(minutes / 60))} h ago`;
+}
+
+/** "Updated just now", "Updated 4 min ago", "Updated 1 h ago" (plan 6, Q7). */
+export function freshness(quotedAt: string, now: Date): string {
+  return `Updated ${timeAgo(quotedAt, now)}`;
 }
 
 /** A connection: the airport and the minutes from one leg's arrival to the next departure. */

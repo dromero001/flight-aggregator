@@ -1,11 +1,12 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
 import App from '../App';
 import type { AppConfig } from '../config';
 import { axe } from '../test/axe';
 import { adminUser, fakeAuth } from '../test/fakeAuth';
+import { statusReport } from '../test/fixtures';
 import { server } from '../test/server';
 import type { AuthClient } from './authClient';
 
@@ -20,6 +21,11 @@ const CONFIG: AppConfig = {
   oidcAuthority: 'http://localhost:8180/realms/flight-aggregator',
   oidcClientId: 'dashboard',
 };
+
+beforeEach(() => {
+  // The status screen reads the status as soon as the admin is signed in.
+  server.use(http.get('*/api/admin/status', () => HttpResponse.json(statusReport())));
+});
 
 function renderAdmin() {
   window.history.pushState({}, '', '/admin');
@@ -48,6 +54,18 @@ test('signs in with the served settings', async () => {
     await screen.findByRole('heading', { level: 1, name: 'Provider status' }),
   ).toBeInTheDocument();
   expect(createAuthClient).toHaveBeenCalledWith(CONFIG);
+});
+
+test('shows the provider status once signed in', async () => {
+  server.use(http.get('*/config.json', () => HttpResponse.json(CONFIG)));
+  const auth = fakeAuth();
+  auth.getUser.mockResolvedValue(adminUser());
+  createAuthClient.mockReturnValue(auth);
+
+  renderAdmin();
+
+  expect(await screen.findByRole('table', { name: 'Providers' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Run ingestion now' })).toBeInTheDocument();
 });
 
 test('signs out through Keycloak', async () => {

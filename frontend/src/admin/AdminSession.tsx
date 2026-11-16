@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router';
+import { adminClient } from '../api/client';
+import { AdminClientContext } from './adminClientContext';
 import { AdminTokenContext, type AdminToken } from './adminToken';
 import type { AuthClient } from './authClient';
 
@@ -36,6 +38,8 @@ export function AdminSession({ auth, children }: AdminSessionProps) {
     () => auth.getUser().then((user) => user?.access_token ?? null),
     [auth],
   );
+  // One client per `AuthClient`: the screens' calls share its middleware and its token.
+  const client = useMemo(() => adminClient(auth), [auth]);
 
   useEffect(() => {
     if (started.current) return;
@@ -66,7 +70,11 @@ export function AdminSession({ auth, children }: AdminSessionProps) {
 
   switch (state) {
     case 'signed-in':
-      return <AdminTokenContext value={adminToken}>{children}</AdminTokenContext>;
+      return (
+        <AdminTokenContext value={adminToken}>
+          <AdminClientContext value={client}>{children}</AdminClientContext>
+        </AdminTokenContext>
+      );
     case 'failed':
       return <SignInFailed />;
     case 'signing-in':

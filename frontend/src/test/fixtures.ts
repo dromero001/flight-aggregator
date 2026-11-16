@@ -1,4 +1,4 @@
-import type { Itinerary, Leg } from '../api/types';
+import type { Itinerary, Leg, ProviderStatus, StatusReport } from '../api/types';
 
 // Friday 20 November 2026. Each time is written at its airport's own offset, as the API writes
 // it (spec 4.2): Madrid +01:00, London Z, New York -05:00.
@@ -58,6 +58,31 @@ export function connecting(overrides: Partial<Itinerary> = {}): Itinerary {
         arrival: '2026-11-20T13:40:00-05:00',
       },
     ],
+    ...overrides,
+  };
+}
+
+/** A provider whose last run downloaded fresh offers: up, its breaker closed. */
+export function providerStatus(overrides: Partial<ProviderStatus> = {}): ProviderStatus {
+  return {
+    provider: 'ALPHA',
+    health: 'UP',
+    breaker: 'CLOSED',
+    newestQuotedAt: '2026-11-15T09:00:00Z',
+    legs: 412,
+    discarded: {},
+    stale: false,
+    ...overrides,
+  };
+}
+
+/** Generation 7, published at 09:00 UTC, the next run due at 09:30; one provider, Alpha. */
+export function statusReport(overrides: Partial<StatusReport> = {}): StatusReport {
+  return {
+    generation: 7,
+    publishedAt: '2026-11-15T09:00:00Z',
+    nextIngestionAt: '2026-11-15T09:30:00Z',
+    providers: [providerStatus()],
     ...overrides,
   };
 }

@@ -1,0 +1,103 @@
+/* The provider-status screen (spec 6.8) in the boarding-pass palette (plan 6, Q6). */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.page h1 {
+  margin: 0;
+}
+
+/* Text says what went wrong, so the colour is never the only signal (spec 6.8). */
+.failure {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-hold);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-hold);
+}
+
+.run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.run p {
+  margin: 0;
+}
+
+.button {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-ink);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button:disabled {
+  cursor: progress;
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-weight: 600;
+}
+
+.table {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-collapse: collapse;
+  background: var(--color-surface);
+}
+
+.table caption {
+  padding-bottom: var(--space-2);
+  font-weight: 600;
+  text-align: left;
+}
+
+.table th,
+.table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.table thead th {
+  color: var(--color-tarmac);
+  font-size: 0.875rem;
+}
+
+/* The word is the signal; the colour repeats it. */
+.up {
+  color: var(--color-cleared);
+  font-weight: 600;
+}
+
+.down {
+  color: var(--color-hold);
+  font-weight: 600;
+}
+
+.note,
+.reasons {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  color: var(--color-tarmac);
+  font-size: 0.875rem;
+  list-style: none;
+}
