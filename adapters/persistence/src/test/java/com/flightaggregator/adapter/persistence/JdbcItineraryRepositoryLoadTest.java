@@ -116,10 +116,11 @@ class JdbcItineraryRepositoryLoadTest {
   }
 
   /**
-   * Q6: each sort order, keyed by id, alone, behind an origin and destination prefix, and behind an
-   * origin alone (Q6-C, plan 5's end-of-plan review, I1), on both slots and on each kind of
-   * partition: a day partition created by a load inherits them, and the DEFAULT partitions, which
-   * existed when the indexes were created, received them then.
+   * Q6: each sort order, keyed by id, alone, behind an origin and destination prefix, behind an
+   * origin alone (Q6-C, plan 5's end-of-plan review, I1) and behind a destination alone (Q6-C, its
+   * re-review, N1), on both slots and on each kind of partition: a day partition created by a load
+   * inherits them, and the DEFAULT partitions, which existed when the indexes were created,
+   * received them then.
    */
   @Test
   void indexesEverySortOrderOnBothSlots() {
@@ -128,6 +129,9 @@ class JdbcItineraryRepositoryLoadTest {
     List<String> expected =
         List.of(
             "departure, id",
+            "destination, departure, id",
+            "destination, duration_seconds, id",
+            "destination, price, id",
             "duration_seconds, id",
             "origin, departure, id",
             "origin, destination, departure, id",

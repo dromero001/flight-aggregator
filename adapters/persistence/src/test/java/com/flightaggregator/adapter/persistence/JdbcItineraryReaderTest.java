@@ -259,6 +259,28 @@ class JdbcItineraryReaderTest {
   }
 
   /**
+   * The re-review of closing round 1 (N1): a destination without an origin, sorted by price, is
+   * read through an index that starts with the destination, so trips to a long-haul airport, the
+   * dearest, are not found by walking every cheaper trip first (V9, the user's decision).
+   */
+  @Test
+  void readsADestinationByPriceThroughAnIndexStartingWithTheDestination() throws SQLException {
+    List<Itinerary> trips = new ArrayList<>();
+    IntStream.rangeClosed(1, 40)
+        .forEach(
+            n -> {
+              String departure = "2026-11-21T%02d:%02d:00+01:00".formatted(6 + n / 4, n % 4 * 15);
+              trips.add(trip(leg("IB", n, "MAD", "LHR", departure, 120, String.valueOf(50 + n))));
+              trips.add(trip(leg("JL", n, "LHR", "NRT", departure, 720, String.valueOf(900 + n))));
+            });
+    publish(trips.toArray(Itinerary[]::new));
+    KeysetQuery query =
+        KeysetQuery.of(Slot.B, filters(null, "NRT", null, null), Optional.empty(), 21, NOW);
+
+    assertThat(indexKeysScannedBy(query)).containsExactly("destination, price, id");
+  }
+
+  /**
    * The key columns of the indexes the planner scans for a query, e.g. {@code price, id}, with
    * sequential scans turned off in its session.
    */
