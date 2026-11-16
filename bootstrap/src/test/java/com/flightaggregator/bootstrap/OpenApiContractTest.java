@@ -159,17 +159,36 @@ class OpenApiContractTest {
   /** A bad parameter or cursor is an RFC 9457 problem (global constraints), and says so. */
   @Test
   void documentsTheProblemOfABadRequest() throws Exception {
-    JsonNode contract = contract();
-
     assertThat(
-            contract
+            contract()
                 .at("/paths/~1api~1itineraries/get/responses/400/content")
                 .path("application/problem+json")
                 .at("/schema/$ref")
                 .asString())
         .isEqualTo("#/components/schemas/ProblemDetail");
-    assertThat(contract.at("/components/schemas/ProblemDetail/properties").propertyNames())
-        .contains("type", "title", "status", "detail", "instance");
+  }
+
+  /**
+   * The problem schema states exactly the members a problem the API writes holds, each required
+   * (G1, the user's decision of 2026-11-16): Spring writes no {@code type} unless one is set, and
+   * never a member named {@code properties}.
+   */
+  @Test
+  void describesTheProblemAsTheApiWritesIt() throws Exception {
+    JsonNode written =
+        JSON.readTree(
+            mvc.perform(get("/api/itineraries").param("cursor", "not-a-cursor"))
+                .andExpect(status().isBadRequest())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+    JsonNode schema = contract().at("/components/schemas/ProblemDetail");
+
+    assertThat(schema.path("properties").propertyNames())
+        .containsExactlyInAnyOrderElementsOf(written.propertyNames());
+    assertThat(schema.path("required").valueStream().map(JsonNode::asString))
+        .containsExactlyInAnyOrderElementsOf(written.propertyNames());
+    assertThat(schema.at("/properties/instance/format").asString()).isEqualTo("uri-reference");
   }
 
   /** A problem body, RFC 9457, in {@link Response#body}. */

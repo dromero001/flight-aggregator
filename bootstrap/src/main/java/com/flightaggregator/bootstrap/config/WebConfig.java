@@ -1,6 +1,7 @@
 package com.flightaggregator.bootstrap.config;
 
 import com.flightaggregator.adapter.web.AdminController;
+import com.flightaggregator.adapter.web.ProblemDetailSchema;
 import com.flightaggregator.adapter.web.ProblemResponses;
 import com.flightaggregator.adapter.web.RateLimitInterceptor;
 import com.flightaggregator.adapter.web.RateLimitResponses;
@@ -13,6 +14,7 @@ import com.flightaggregator.application.port.out.RequestCounter;
 import com.flightaggregator.application.service.RateLimitService;
 import java.time.Duration;
 import java.util.Map;
+import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springdoc.core.customizers.OperationCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -53,6 +55,12 @@ class WebConfig {
   @Bean
   OperationCustomizer rateLimitResponses() {
     return new RateLimitResponses();
+  }
+
+  /** The problem schema every error response refers to, as the API writes it. */
+  @Bean
+  OpenApiCustomizer problemDetailSchema() {
+    return new ProblemDetailSchema();
   }
 
   @Bean

@@ -454,30 +454,33 @@
       },
       "ProblemDetail" : {
         "type" : "object",
+        "description" : "An RFC 9457 problem: what went wrong with the request",
         "properties" : {
           "detail" : {
-            "type" : "string"
+            "type" : "string",
+            "description" : "What went wrong and what to do, naming the parameter at fault"
           },
           "instance" : {
             "type" : "string",
-            "format" : "uri"
-          },
-          "properties" : {
-            "type" : "object",
-            "additionalProperties" : { }
+            "format" : "uri-reference",
+            "description" : "The path of the request, such as /api/itineraries"
           },
           "status" : {
             "type" : "integer",
-            "format" : "int32"
+            "format" : "int32",
+            "description" : "The HTTP status code"
           },
           "title" : {
-            "type" : "string"
-          },
-          "type" : {
             "type" : "string",
-            "format" : "uri"
+            "description" : "The status's reason phrase, such as \"Bad Request\""
           }
-        }
+        },
+        "required" : [
+          "detail",
+          "instance",
+          "status",
+          "title"
+        ]
       },
       "ProviderStatusResponse" : {
         "type" : "object",
