@@ -32,15 +32,16 @@ function failure(error: Error): string {
 /** The sentence for a price the API has just confirmed (Q5-A), against the price the card showed. */
 function confirmation(response: RepriceResponse, shown: Itinerary['price']): string {
   const now = price(response.itinerary.price.amount);
-  const changed = (before: string) => `Price changed: was ${before}, now ${now}`;
   switch (response.outcome) {
-    case 'PRICE_CHANGED':
-      return changed(price(shown.amount));
-    case 'CONFIRMED': {
-      // The API confirms against its stored price, which a cached page may not show yet (final
-      // review, code I2): for the customer, a price other than the card's has changed.
+    case 'CONFIRMED':
+    case 'PRICE_CHANGED': {
+      // The API compares with its stored price, which a cached page may not show yet (final review,
+      // code I2): the customer is told the difference from the price on the card (the user's
+      // decision of 2026-11-16, option A), so the stored `previousPrice` is not shown.
       const before = price(shown.amount);
-      return before === now ? `Price confirmed: ${now}` : changed(before);
+      return before === now
+        ? `Price confirmed: ${now}`
+        : `Price changed: was ${before}, now ${now}`;
     }
     case 'ALTERNATIVE':
       // Another itinerary, whose price the card never showed.

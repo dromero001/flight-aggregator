@@ -137,6 +137,21 @@ test('says a changed price was the one the card showed, not the stored one', asy
   ).toBeInTheDocument();
 });
 
+test('confirms a changed price that is the one the card showed', async () => {
+  // A cached search page still shows €500.00; the API stored €520.00 since, and quotes €500.00 now.
+  const panel = await openCard(
+    () =>
+      HttpResponse.json({
+        outcome: 'PRICE_CHANGED',
+        itinerary: connecting({ price: { amount: '500.00', currency: 'EUR' } }),
+        previousPrice: { amount: '520.00', currency: 'EUR' },
+      }),
+    connecting({ price: { amount: '500.00', currency: 'EUR' } }),
+  );
+
+  expect(await within(panel).findByText('Price confirmed: €500.00')).toBeInTheDocument();
+});
+
 test('shows how fresh a changed price is', async () => {
   // The search quoted it ten minutes before `now`; the re-price, at `now`.
   await openCard(() =>
