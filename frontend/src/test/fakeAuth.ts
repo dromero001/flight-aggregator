@@ -2,11 +2,19 @@ import { User } from 'oidc-client-ts';
 import { vi } from 'vitest';
 import type { AuthClient } from '../admin/authClient';
 
-/** A signed-in admin holding `accessToken`, as `oidc-client-ts` returns it. */
-export function adminUser(accessToken = 'admin-token'): User {
+/** Keycloak's access token lifetime, in seconds. */
+const TOKEN_LIFETIME_SECONDS = 300;
+
+/**
+ * A signed-in admin holding `accessToken`, as `oidc-client-ts` returns it: just issued, or with its
+ * lifetime over when `expired`.
+ */
+export function adminUser(accessToken = 'admin-token', { expired = false } = {}): User {
+  const now = Math.floor(Date.now() / 1000);
   return new User({
     access_token: accessToken,
     token_type: 'Bearer',
+    expires_at: expired ? now - 1 : now + TOKEN_LIFETIME_SECONDS,
     profile: {
       sub: 'admin',
       iss: 'http://localhost:8180/realms/flight-aggregator',

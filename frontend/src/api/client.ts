@@ -61,10 +61,16 @@ function bearerToken(auth: AuthClient): Middleware {
       if (response.status !== 401) {
         return undefined;
       }
+      // Read before the renewal replaces it.
+      const refused = await auth.getUser();
       const renewed = await auth.signinSilent().catch(() => null);
       if (!renewed) {
-        // Keycloak's own session ended: one more sign-in. The page leaves for Keycloak.
-        await auth.signinRedirect();
+        // An expired token that cannot be renewed: Keycloak's own session ended, so one more
+        // sign-in, and the page leaves for Keycloak. A token still valid refused would be refused
+        // again after a new sign-in, which would loop: the 401 goes to the screen instead.
+        if (refused?.expired) {
+          await auth.signinRedirect();
+        }
         return undefined;
       }
       // A renewed token refused too means the API does not accept this issuer's tokens: a new
