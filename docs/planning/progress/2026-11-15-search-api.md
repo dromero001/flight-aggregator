@@ -2056,3 +2056,23 @@ Not this round's: m1's e2e retry and m7 (plan 6's closing round, `frontend/`).
 
 - The `ERROR` line for an unexpected quote lives in `CountedFlightProvider`, the one bootstrap class that sees every provider call; a download's unexpected failure is still logged by its run only (a refresh drops it, N1 in the backlog).
 - T7-C2 is listed for the user although round 2's table did not mark it a design change: its guard needs a port change and a new refresh outcome, in a class plan 7 Task 4 is changing.
+
+## End-of-plan fix round 3 — review
+
+Double review (functional and code, one reviewer) of `436ef65..5aee4a3`: **Functional APPROVED, Code APPROVED**; no Critical or Important. Ran `./gradlew build --rerun-tasks` (1,080 tests, none failed or skipped) and five mutations, each red as the report quotes (refresh without `writeAtMost`; the ceiling's `catch` marking the origin; the re-price `catch` narrowed back; `exclude: db` removed; the quote's `ERROR` handler a no-op). The reasons for the ten items left to the user hold.
+
+Minors, for the controller and the user:
+
+| Id | Finding |
+|---|---|
+| F1 | `RefreshStaleRouteService.java:86-95`: the ceiling counts only the origin's itineraries; the active slot can still hold the ceiling plus every other origin's rows. `ingestion.md:72` says so |
+| F2 | `BackgroundRefresh.java:107`: a refresh's `CEILING_EXCEEDED` is logged at INFO and not counted, unlike a run's (WARN and counted); follows the user's N1 decision |
+| F3 | `search-api.md:73` still says the `/health` group "takes every component"; it now excludes `db` |
+| F4 | `CountedFlightProvider.java:30` Javadoc: a refresh's download failure is only counted, not reported by its run (N1, backlog) |
+| F5 | `ingestion.md:112` "the `FailureReason`, or `REJECTED`": `REJECTED` is now a `FailureReason` |
+| F6 | `application.yaml:12`: a comment line over 100 characters |
+| C1 | `RepriceItineraryService.java:196`: the `catch (RuntimeException)` also covers `providers.get(provider)`; a provider missing from the map would be swallowed uncounted and unlogged. Look it up before the `try` |
+| C2 | `CountedFlightProvider.java:69,75,96`: logs as well as counts through a `Consumer<RuntimeException>` that two of three callers pass as a no-op |
+| C3 | `RateLimitResponses.java:49`: hard-coded `$ref` to `ProblemDetail`, resolved only because another annotation registers it; `OpenApiContractTest` would catch a break |
+| C4 | `ProviderTime.java:36`: the generic `timestamptz` reader `readInstant` lives in the provider-time class |
+| C5 | With a provider that keeps sending too much, every 2-minute claim expiry starts a refresh that copies up to the ceiling and rolls back, holding the publication row; one refresh at a time limits it (with F1, F2) |
