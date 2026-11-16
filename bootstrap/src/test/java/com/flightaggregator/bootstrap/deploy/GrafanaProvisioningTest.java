@@ -208,7 +208,7 @@ class GrafanaProvisioningTest {
 
   /**
    * One dashboard with every metric the spec promises (spec 6.10; plan 7 Task 6), then the approved
-   * extras' panels (plan 7 E4), read as the anonymous Viewer reads it.
+   * extras' panels (plan 7 E4, E5), read as the anonymous Viewer reads it.
    */
   @Test
   void loadsTheDashboardWithItsPanels() throws IOException, InterruptedException {
@@ -224,6 +224,7 @@ class GrafanaProvisioningTest {
             "Cache hit ratio",
             "Discarded records",
             "Partitions",
+            "HTTP requests",
             "Alerts",
             "Logs");
   }
@@ -268,6 +269,39 @@ class GrafanaProvisioningTest {
     assertThat(logs.at("/datasource/uid").asString()).isEqualTo("loki");
     assertThat(logs.path("targets").valueStream().map(target -> target.path("expr").asString()))
         .containsExactly("{service_name=\"flight-aggregator\"}");
+  }
+
+  /**
+   * The API's behaviour in the demo (plan 7 extra E5): the search's and the re-price's requests, by
+   * outcome, so errors show as their own series, and their latency, from Spring's {@code
+   * http.server.requests} timer. Every query reads those two routes only, not health checks or
+   * admin calls.
+   */
+  @Test
+  void showsTheSearchAndRepriceRequests() throws IOException, InterruptedException {
+    List<String> expressions =
+        panel("HTTP requests")
+            .path("targets")
+            .valueStream()
+            .map(target -> target.path("expr").asString())
+            .toList();
+
+    assertThat(expressions)
+        .isNotEmpty()
+        .allSatisfy(
+            expression ->
+                assertThat(expression).contains("{uri=~\"/api/itineraries(/.+/reprice)?\"}"));
+    assertThat(expressions).anySatisfy(expression -> assertThat(expression).contains("outcome"));
+    assertThat(
+            expressions.stream().flatMap(expression -> StoredMetrics.namedIn(expression).stream()))
+        .containsOnly(
+            "http_server_requests_seconds_count",
+            "http_server_requests_seconds_sum",
+            "http_server_requests_seconds_max")
+        .contains(
+            "http_server_requests_seconds_count",
+            "http_server_requests_seconds_sum",
+            "http_server_requests_seconds_max");
   }
 
   /**
