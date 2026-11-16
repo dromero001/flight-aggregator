@@ -36,6 +36,10 @@ services:
         condition: service_healthy
       mock-gds:
         condition: service_healthy
+      valkey:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8080:8080"
     environment:
@@ -51,6 +55,8 @@ services:
       PROVIDERS_BETA_APIKEY: ${BETA_API_KEY:-demo-beta-key}
       PROVIDERS_GAMMA_BASEURL: http://mock-gds:8080
       PROVIDERS_GAMMA_APIKEY: ${GAMMA_API_KEY:-demo-gamma-key}
+      # The result cache, refresh claims and rate-limit counters (spec 6.2), on the compose network.
+      SPRING_DATA_REDIS_HOST: valkey
       # The signatures are checked against Keycloak on the compose network; the issuer is its public
       # name (the issuer-uri of application.yaml stays http://localhost:8180/realms/flight-aggregator).
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/flight-aggregator/protocol/openid-connect/certs
@@ -69,6 +75,20 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
+
+  valkey:
+    restart: unless-stopped
+    # The image the Valkey tests run (ValkeyImage), by tag and multi-arch digest (spec 6.1).
+    image: valkey/valkey:9.1.3-trixie@sha256:3add1a336a920ea54770a001ab6feb3da5fceea96a40373a3a2cd469b815f0b7
+    # A cache, not a store: bounded memory, the least recently used key evicted first (spec 6.2).
+    command: ["valkey-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    # Not published: only the app, on the compose network, reaches it.
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
   frontend:
     restart: unless-stopped
