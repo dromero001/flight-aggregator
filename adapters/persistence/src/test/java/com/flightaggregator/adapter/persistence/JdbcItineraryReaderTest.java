@@ -8,6 +8,7 @@ import com.flightaggregator.adapter.persistence.support.ItinerarySlots;
 import com.flightaggregator.adapter.persistence.support.LockWaits;
 import com.flightaggregator.adapter.persistence.support.OneSession;
 import com.flightaggregator.adapter.persistence.support.PostgresTestDatabase;
+import com.flightaggregator.application.port.in.InventoryUnavailableException;
 import com.flightaggregator.application.port.in.SearchCriteria;
 import com.flightaggregator.application.port.in.SeekPosition;
 import com.flightaggregator.application.port.in.SortOrder;
@@ -377,7 +378,8 @@ class JdbcItineraryReaderTest {
    * A read that takes longer than its bound, here waiting for a lock on its slot, fails with
    * PostgreSQL's statement timeout and rolls back: it holds neither its connection nor its {@code
    * ACCESS SHARE} lock on the slot any longer, which a run's {@code TRUNCATE} of the slot would
-   * wait for.
+   * wait for. The failure is the port's {@link InventoryUnavailableException}, which the API
+   * answers with 503 and Retry-After (plan 5's end-of-plan review, I1).
    */
   @Test
   void cutsAReadThatTakesLongerThanItsBound() throws SQLException {
@@ -396,8 +398,11 @@ class JdbcItineraryReaderTest {
                       () -> reader.page(EVERYTHING_BY_PRICE, Optional.empty(), 10, NOW)));
 
       // Spring translates PostgreSQL's query_canceled, 57014, into a QueryTimeoutException.
-      assertThat(failure).isInstanceOf(QueryTimeoutException.class);
-      assertThat(((QueryTimeoutException) failure).getMostSpecificCause())
+      assertThat(failure)
+          .isInstanceOf(InventoryUnavailableException.class)
+          .cause()
+          .isInstanceOf(QueryTimeoutException.class);
+      assertThat(((QueryTimeoutException) failure.getCause()).getMostSpecificCause())
           .isInstanceOfSatisfying(
               SQLException.class, cause -> assertThat(cause.getSQLState()).isEqualTo("57014"))
           .hasMessageContaining("statement timeout");

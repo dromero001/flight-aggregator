@@ -6,9 +6,11 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.flightaggregator.application.port.in.InventoryUnavailableException;
 import com.flightaggregator.application.port.in.PageCursor;
 import com.flightaggregator.application.port.in.SearchCriteria;
 import com.flightaggregator.application.port.in.SearchPage;
@@ -29,6 +31,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
@@ -193,6 +196,29 @@ class SearchControllerTest {
         .andExpect(jsonPath("$.instance").value("/api/itineraries"));
 
     assertThat(search.queries()).isEmpty();
+  }
+
+  /**
+   * Plan 5's end-of-plan review (I1): a read that outruns its bound is the inventory busy, not a
+   * bug, so it answers 503 with Retry-After, as re-price's other 503 does (Q9: 60 s), never a 500.
+   */
+  @Test
+  void answers503WithRetryAfterWhenTheInventoryCannotBeReadInTime() throws Exception {
+    search.fail(
+        new InventoryUnavailableException(
+            "a search read outran its bound", new IllegalStateException("statement timeout")));
+
+    mvc.perform(get("/api/itineraries").param("origin", "NRT"))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(header().string(HttpHeaders.RETRY_AFTER, "60"))
+        .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+        .andExpect(jsonPath("$.status").value(503))
+        .andExpect(
+            jsonPath("$.detail")
+                .value(
+                    "The flights could not be read in time: try again after the seconds in"
+                        + " Retry-After."))
+        .andExpect(jsonPath("$.instance").value("/api/itineraries"));
   }
 
   /** The global constraints: each bad value is a 400 whose detail names its parameter. */
