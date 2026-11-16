@@ -1933,3 +1933,9 @@ V9 adds about 3 to 8 s of `COPY`; a run still fits the 30 min cadence many times
 - **Health answers `DOWN` in about 4 s, against compose's 5 s timeout.** Each probe pays the 2 s wait twice, so the margin is about 1 s. On a loaded host a probe could reach the timeout; compose would still read the app as unhealthy, just not with a status. Two ways to widen the margin, for the user (neither is built):
   - Leave Boot's `db` component out of the API port's `/health` group. The inventory's component already reports `DOWN` when PostgreSQL is out of reach, and the management port's `/actuator/health` keeps `db`. A probe then pays the wait once, about 2 s.
   - Raise compose's health-check timeout.
+
+## End-of-plan fix round 1 — re-review verdicts
+
+- Functional re-review of round 1 (`close-1-rereview-functional.md`): F-I1, I1, I2 fixed; N1 (Important, destination-only search over the bound), N2 and N3 (Minor). The user chose A for N1 and N3 (2026-11-16, about 08:07).
+- Risk re-review at `231e451` (`close-1-rereview-risk.md`): **APPROVED**; I1, I2, F-I1 fixed, measured under bursts of up to 416 searches. Minors for closing round 3: M1 (a skipped refresh logs INFO on every stale search), M2 (the refresh lock's 2 min bound is shorter than a refresh's worst case).
+- Functional second re-review of the fixes (`close-1-rereview-2-functional.md`): **APPROVED**; N1, N2, N3 fixed, the rebase on round 2 changed nothing of substance. Not a finding: `/health` answers DOWN in about 4 s against compose's 5 s timeout (two 2 s waits); the reviewer would leave Boot's `db` out of the API port's `/health` group, a decision for the user.
