@@ -1,6 +1,6 @@
 /**
  * The city of each of the dataset's 32 airports, by IATA code: the aggregator's catalogue
- * (`V2__airport_catalogue.sql`), which `airports.test.ts` keeps this list in step with.
+ * (`V2__airport_catalogue.sql`), which `suggestions.test.ts` keeps this list in step with.
  */
 export const AIRPORT_CITIES: ReadonlyMap<string, string> = new Map([
   ['MAD', 'Madrid'],

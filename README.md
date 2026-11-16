@@ -33,7 +33,7 @@ The frontend is an npm project in `frontend/` (Node from `frontend/.nvmrc`), out
 
 ## Airports in the dataset
 
-The mock network has 32 airports, from `mock-gds`'s [`StandardCatalogue`](mock-gds/src/main/java/com/flightaggregator/mockgds/reference/StandardCatalogue.java). Hubs connect to every other hub; a spoke connects through its hub; a long-haul airport through its gateway hubs. The aggregator's catalogue is [`V2__airport_catalogue.sql`](adapters/persistence/src/main/resources/db/migration/V2__airport_catalogue.sql), and the dashboard's list of airports (`frontend/src/search/airports.ts`) must match it; `frontend/src/search/airports.test.ts` checks that both, and this table, hold the same codes.
+The mock network has 32 airports, from `mock-gds`'s [`StandardCatalogue`](mock-gds/src/main/java/com/flightaggregator/mockgds/reference/StandardCatalogue.java). Hubs connect to every other hub; a spoke connects through its hub; a long-haul airport through its gateway hubs. The aggregator's catalogue is [`V2__airport_catalogue.sql`](adapters/persistence/src/main/resources/db/migration/V2__airport_catalogue.sql), and the dashboard's list of airports (`frontend/src/search/airports.ts`) must match it; `frontend/src/search/suggestions.test.ts` checks that both, and this table, hold the same codes.
 
 | Code | City | Country | Role in the mock network |
 |---|---|---|---|
@@ -69,6 +69,25 @@ The mock network has 32 airports, from `mock-gds`'s [`StandardCatalogue`](mock-g
 | GRU | Sao Paulo | Brazil | Long-haul, through LIS, MAD |
 | DXB | Dubai | United Arab Emirates | Long-haul, through LHR, FRA |
 | NRT | Tokyo | Japan | Long-haul, through FRA, CDG |
+
+## Airlines in the dataset
+
+The mock network has 12 airlines, from the same [`StandardCatalogue`](mock-gds/src/main/java/com/flightaggregator/mockgds/reference/StandardCatalogue.java): a network airline flies from its hub, a low-cost one between its bases. The aggregator keeps no airline catalogue, so an unknown airline code is not rejected: it just matches no flight. The dashboard's list of airlines (`frontend/src/itinerary/carriers.ts`) must match the mock's; `frontend/src/search/suggestions.test.ts` checks that both hold the same codes and names, and this table the same codes.
+
+| Code | Name | Type | Hub or bases |
+|---|---|---|---|
+| IB | Iberia | Network | MAD |
+| UX | Air Europa | Network | MAD |
+| BA | British Airways | Network | LHR |
+| AF | Air France | Network | CDG |
+| LH | Lufthansa | Network | FRA |
+| KL | KLM | Network | AMS |
+| TP | TAP Air Portugal | Network | LIS |
+| AZ | ITA Airways | Network | FCO |
+| LX | Swiss | Network | ZRH |
+| FR | Ryanair | Low-cost | LPA, MAN, EDI, EIN, BER, NAP, FAO, BOD, OPO, VCE, HAM |
+| U2 | easyJet | Low-cost | CDG, AMS, LIS, GVA |
+| VY | Vueling | Low-cost | BCN, PMI, IBZ |
 
 ## Run the mock providers
 

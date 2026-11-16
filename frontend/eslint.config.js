@@ -31,7 +31,7 @@ export default defineConfig(
   // What runs in Node rather than in the browser: the tool configs, the end-to-end specs and the
   // drift tests.
   {
-    files: ['*.{js,ts}', 'e2e/**/*.ts', 'src/api/schema.test.ts', 'src/search/airports.test.ts'],
+    files: ['*.{js,ts}', 'e2e/**/*.ts', 'src/api/schema.test.ts', 'src/search/suggestions.test.ts'],
     languageOptions: { globals: globals.node },
   },
   // Plain JavaScript (this file) has no type information.

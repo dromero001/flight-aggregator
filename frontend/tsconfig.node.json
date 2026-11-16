@@ -23,6 +23,6 @@
     "playwright.config.ts",
     "e2e",
     "src/api/schema.test.ts",
-    "src/search/airports.test.ts"
+    "src/search/suggestions.test.ts"
   ]
 }

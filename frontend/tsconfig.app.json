@@ -23,5 +23,5 @@
   },
   "include": ["src"],
   // Node tests (they read files): type-checked by tsconfig.node.json.
-  "exclude": ["src/api/schema.test.ts", "src/search/airports.test.ts"]
+  "exclude": ["src/api/schema.test.ts", "src/search/suggestions.test.ts"]
 }
