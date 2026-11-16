@@ -1275,3 +1275,82 @@ Before the tag, the user asked that the delivery be checked against the statemen
 **Keyset against offset, measured** on the same 1,013,333 rows, sorted by price, warm: `OFFSET 999000 LIMIT 21` took 2.1 to 2.7 s and read about 1.0 million buffers; `OFFSET 500000` 1.3 s; a keyset seek to the same row 0.9 to 1.2 ms and 126 buffers.
 
 Documentation fixed from the audit: `SOLUTION.md` §1 claimed Spring annotations in the application layer, which has none (`application` depends only on `domain`); §2 now links leg deduplication to itinerary identity; §4 compares keyset with offset with the figures above; §7 states how "100,000 to 1,000,000 combinations daily" and "real time" were read.
+
+## G1 — evidence
+
+Review group G1, "search and API: what an evaluator can touch", built on 2026-11-16 by the user's decision of about 15:05 (the extras listed in [the backlog's G1 note](../extras-backlog.md#built-on-2026-11-16-g1)), in a worktree off `main` at `ecadaa4`, one test at a time, a commit after each green cycle. Two refactors under unchanged tests: the rate limit's wiring moved from `WebConfig` to `RateLimitConfig`, and the search's known parameter names are read from `SearchParameters`' record components (the self-review's one finding: the first version kept a second list of the names, where the mock providers already take their known settings from their records).
+
+### Cycle 1 — refuse unknown query parameters
+- Test: `SearchControllerTest.answersAProblemNamingEachUnknownParameter` (`GET /api/itineraries?orign=MAD&destination=JFK&page=2`).
+- Red: `java.lang.AssertionError: Status expected:<400> but was:<200>`.
+- Green: `SearchParameters.refuseUnknown` (the list `NAMES` of the seven parameters) called by `SearchController` with the request's parameter names; detail "Unknown parameters: orign, page. The search takes origin, destination, maxPrice, carrier, sort, limit and cursor.". `:adapters:web:test` green; `OpenApiContractTest` 36/36 (contract unchanged: springdoc ignores `HttpServletRequest`).
+- Callers checked (cycle 1): the dashboard sends only `SearchCriteria` (origin, destination, carrier, maxPrice, sort) and `cursor`, and openapi-fetch skips undefined values; the e2e specs send `limit` and `sort` only.
+
+### Cycle 2 — HEAD /api/itineraries is public
+- Decision by the spec: §6.6 makes the search public; RFC 9110 §9.3.2 defines HEAD as that GET without a body; `RateLimitInterceptor` and its test already count a HEAD as a search. So HEAD is permitted (not the claim dropped).
+- Test: `SecurityTest.searchByHeadNeedsNoToken`.
+- Red: `java.lang.AssertionError: Status expected:<200> but was:<401>`.
+- Green: `SecurityConfig` permits `HEAD /api/itineraries`. `SecurityTest` and `PublicAccessOverHttpTest` green. README and search-api.md name HEAD.
+
+### Cycle 3 — 503 when no pooled connection frees within the wait
+- Test: `JdbcItineraryReaderTest.answersUnavailableWhenNoPooledConnectionFreesInTime` (a `DelegatingDataSource` that throws Hikari's timeout, `SQLTransientConnectionException`).
+- Red: `Expecting actual throwable to be an instance of: InventoryUnavailableException but was: org.springframework.transaction.CannotCreateTransactionException: Could not open JDBC Connection for transaction`.
+- Green: `BoundedSnapshot.read` maps a `CannotCreateTransactionException` whose cause is `SQLTransientConnectionException` to `InventoryUnavailableException` (WARN line), which `ProblemResponses` already answers 503 + `Retry-After: 60`: one mapping, the existing one. Any other cause is rethrown. `:adapters:persistence:test`, `:application:test`, `HealthWithoutPostgresTest`, `InventoryHealthIndicatorTest` green.
+
+### Cycle 4 — problem details for Spring MVC's own errors
+- Existing handling checked: `ProblemResponses` (`@RestControllerAdvice`, not a `ResponseEntityExceptionHandler`), so Boot's `ProblemDetailsExceptionHandler` registers alongside it with no overlap. Boot 4.1.2 keeps the property `spring.mvc.problemdetails.enabled` (metadata of spring-boot-webmvc-4.1.2).
+- Test: `FrameworkProblemsTest.answersAMethodTheEndpointDoesNotTakeWithAProblem` (`DELETE /api/admin/status` with an admin JWT).
+- Red: `java.lang.AssertionError: Content type not set`.
+- Green: `spring.mvc.problemdetails.enabled: true` in application.yaml. Then `answersAPathTheApiDoesNotServeWithAProblem` (404) added as a characterisation of the same switch: green with no further change.
+
+### Cycle 5 — an exact ProblemDetail schema
+- Checked first: Spring 7.0.9's `ProblemDetail.type` is null by default and its Jackson mixin is `@JsonInclude(NON_EMPTY)`, so a problem holds `title`, `status`, `detail`, `instance` only; `instance` is the request's path (a URI reference).
+- Test: `OpenApiContractTest.describesTheProblemAsTheApiWritesIt` (the schema's members and required list equal the members of a real 400 body; `instance` is `uri-reference`).
+- Red: `Expecting actual: ["detail", "instance", "properties", "status", "title", "type"] to contain exactly in any order: ["detail", "instance", "status", "title"] but the following elements were unexpected: ["properties", "type"]`.
+- Green: `ProblemDetailSchema` (`OpenApiCustomizer`, web adapter) registered in `WebConfig`; `RateLimitResponses` refers to its `NAME`. `documentsTheProblemOfABadRequest` kept to its `$ref` check (its member list named `type`). Contract regenerated (`-Dopenapi.write=true`), `npm run api:generate`; `OpenApiContractTest` 37/37, `:adapters:web:test` green, `npm run verify` exit 0 (158 tests).
+
+### Cycle 6 — contract metadata
+- Test: `OpenApiContractTest.namesTheApiAndServesItFromItsOwnHost` (title, version `1.0.0`, a description, one server `/`).
+- Red: `expected: "Flight aggregator API" but was: "OpenAPI definition"`.
+- Green: an `OpenAPI` bean in `WebConfig` (info + relative server), merged by springdoc with the controllers. Contract regenerated; `OpenApiContractTest` 38/38, `PublicAccessOverHttpTest` 7/7 (Swagger UI still served); `npm run api:generate` leaves `schema.d.ts` unchanged; `npm run verify` exit 0.
+
+### Cycle 7 — `currency` as the enum ["EUR"]
+- Test: `OpenApiContractTest.documentsEuroAsThePricesOnlyCurrency`.
+- Red: `Expecting actual: [] to contain exactly (and in same order): ["EUR"]`.
+- Green: `ItineraryResponse.Price.currency` annotated `allowableValues = EURO`, the constant `Price.of` writes. Contract regenerated (39/39), `schema.d.ts` now `currency: 'EUR'`; `:adapters:web:test` green; `npm run verify` exit 0.
+
+### Cycle 8 — every rate-limited action has a limit (startup check)
+- Test: `RateLimitServiceTest.refusesLimitsThatLeaveAnActionOut` (limits with SEARCH only).
+- Red: `java.lang.AssertionError: Expecting code to raise a throwable.`
+- Green: `RateLimitService`'s constructor refuses a map missing any `RateLimitedAction`: "Every rate-limited action needs a limit; none is set for [REPRICE]". The service is a bean, so the application stops at startup. `:application:test` green.
+
+### Cycle 9 — a limit admits at least one request
+- Test: `RateLimitTest.refusesFewerThanOneRequest` (0 and -1).
+- Red: `java.lang.AssertionError: Expecting code to raise a throwable.` (both cases).
+- Green: `RateLimit`'s compact constructor: "A rate limit must admit at least 1 request, not 0". `:application:test` green.
+
+### Cycle 10 — rate limits as settings
+- Refactor first, under unchanged tests: the rate limit's beans moved from `WebConfig` to `RateLimitConfig` (`WebConfigTest` renamed `RateLimitConfigTest`), green, committed. Then `RateLimitConfigTest` moved to an `ApplicationContextRunner` over application.yaml (still green on the constants).
+- Test 1: `RateLimitConfigTest.readsEachLimitFromTheSettings` (`rate-limit.actions.search.requests=3`, `window=PT10S`).
+  - Red: `expected: ["admitted", "admitted", "admitted", "rejected"] but was: ["admitted", "admitted", "admitted", "admitted"]`.
+  - Green: `RateLimitProperties` (`@ConfigurationProperties(prefix = "rate-limit", ignoreUnknownFields = false)`, `Map<RateLimitedAction, RateLimit> actions`), `@EnableConfigurationProperties` on `RateLimitConfig`, the constants moved to application.yaml (60 and 10 a minute).
+- Test 2: `RateLimitConfigTest.stopsStartupWithoutALimitForEachAction` (no settings). The null guard written with test 1 was removed first.
+  - Red: `Expecting message to be: "Every rate-limited action needs a limit; none is set for [SEARCH, REPRICE]" but was: "Cannot invoke "java.util.Map.keySet()" because "limits" is null"`.
+  - Green: the guard restored (`actions == null` binds as no limit). 4/4.
+
+### Cycle 11 — a limit without a window is refused by name
+- Test: `RateLimitTest.refusesAMissingWindow`.
+- Red: `Expecting actual throwable to be an instance of: java.lang.IllegalArgumentException but was: java.lang.NullPointerException: Cannot invoke "java.time.Duration.toMillis()"`.
+- Green: `RateLimit` checks a null window first: "A rate limit needs a window". `:application:test` green.
+- Characterisation: `RateLimitConfigTest.stopsStartupOnASettingThatNamesNoLimit` (`rate-limit.actions.search.requets=3`) passed at once (Boot's `ignoreUnknownFields = false`); mutation to `true` made it fail (`Expecting: <Started application ...`), reverted.
+
+### Gates
+- `./gradlew build`: BUILD SUCCESSFUL, 1,131 tests, none failed or skipped.
+- `npm run verify` in `frontend/`: exit 0, 158 tests; `npm run api:check` exit 0 (`schema.d.ts` regenerated with each contract change).
+- Self-review with `thermo-nuclear-code-quality-review`: one finding (the duplicated parameter names), fixed as above; nothing left open.
+
+### New user-facing text
+- `400` detail of an unknown search parameter: "Unknown parameters: orign, page. The search takes origin, destination, maxPrice, carrier, sort, limit and cursor." (the names sent, in order).
+- Startup failures: "Every rate-limited action needs a limit; none is set for [REPRICE]", "A rate limit must admit at least 1 request, not 0", "A rate limit needs a window".
+- `WARN` log line: "A read of the inventory got no pooled connection within the pool's wait".
+- A pool timeout answers the existing `503` detail, "The flights could not be read in time: try again after the seconds in Retry-After."; Spring MVC's own errors carry Spring's default titles and details.
