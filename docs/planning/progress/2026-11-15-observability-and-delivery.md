@@ -1247,3 +1247,19 @@ New user-facing text, for the user's approval: "Loading…" (admin screen; the s
 Self-review (`thermo-nuclear-code-quality-review`): no blocker. Minor, left: the index of the first new card stays remembered after a "Load more" page that adds no card (every itinerary already shown); it focuses nothing until a later page reaches that index, which a first page of at most 20 never does.
 
 Gates: `npm run verify` exit 0 (169 tests); `./gradlew build` BUILD SUCCESSFUL in 1 min 59 s, exit 0. No live stack check was run: the lock's query is tested against PostgreSQL with ShedLock's own provider, and the e2e suite needs the default ports the running stack holds. `dashboard.md`, `search-api.md` and the README's admin line describe the changes; the built rows of `extras-backlog.md` moved to a "Built on 2026-11-16 (G2)" note.
+
+### G2 — the user's copy decisions and the review's Minors (round 2)
+
+The review approved G2 (functional and code). The user decided on 2026-11-16: "First ingestion in progress." instead of "Ingestion in progress." while the first run goes on ("Ingestion in progress" in place of the next ingestion stays); the next-day mark reads "+1 day", "+2 days" from two days on, on the summary and on each leg; the admin screen's first read says "Loading status…", as "Loading flights…" and "Signing in…" do. The review's Minors: `hoursAndMinutes` moves to `time/relative.ts`; a leg's mark is styled as the summary's; the lock adapter gets a test that kills the mutation `WHERE (name = ? OR true)`.
+
+15. "says the first ingestion is in progress" expects "First ingestion in progress.". Red: `Unable to find an element with the text: First ingestion in progress..` Green: the copy.
+16. The card's two mark tests expect "+1 day". Red: `Unable to find an element with the text: +1 day.` (summary) and the leg's text without it. Green: `laterDayMark` writes "+N day".
+17. `format.test.ts` "marks an arrival two local days later in the plural". Red: `Expected: "+2 days" Received: "+2 day"`. Green: "+1 day", else "+N days".
+18. "says it is loading until the first status arrives" expects "Loading status…". Red: `Unable to find an element with the text: Loading status….` Green: the copy.
+19. New `time/relative.test.ts` for `hoursAndMinutes` (18, 90, 120 minutes). Red: `TypeError: hoursAndMinutes is not a function`. Green: the function moved from `StatusPage.tsx` to `relative.ts`.
+20. "styles a leg's day mark as the summary's". Red: no element with the text "+1 day" in the legs (bare text). Green: one `DayMark` component and style for both; the card's `.days` keeps only its place in the route line.
+21. `JdbcIngestionLockTest.isNotHeldWhileOnlyAnotherLockIsHeld`. The behaviour existed, so the red was shown by the reviewer's mutation: `Expecting value to be false but was true`; the adapter was restored and the test passes.
+
+No accessible label is attached to the mark: it is plain text, read as "+1 day". No end-to-end spec asserts the mark or the changed lines (grep of `frontend/e2e`); the README and `SOLUTION.md` do not quote them.
+
+Gates: `npm run verify` exit 0 (174 tests); `./gradlew build` BUILD SUCCESSFUL in 55 s (up-to-date modules not rerun), exit 0.
