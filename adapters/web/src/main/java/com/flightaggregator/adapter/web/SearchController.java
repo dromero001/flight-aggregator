@@ -78,7 +78,11 @@ public final class SearchController {
               description = "The order of the results",
               schema =
                   @Schema(
-                      allowableValues = {"price", "departure", "duration"},
+                      allowableValues = {
+                        SearchParameters.PRICE,
+                        SearchParameters.DEPARTURE,
+                        SearchParameters.DURATION
+                      },
                       defaultValue = SearchParameters.DEFAULT_SORT))
           @RequestParam(name = "sort", required = false)
           String sort,
