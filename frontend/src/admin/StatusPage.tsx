@@ -37,7 +37,9 @@ function failure(error: Error): string {
 function Report({ report, now }: { report: StatusReport; now: Date }) {
   // The API schedules the next run from the end of the last one: without it, none has ended.
   if (report.nextIngestionAt === null) {
-    return <p>No ingestion has run yet.</p>;
+    return (
+      <p>{report.ingestionRunning ? 'Ingestion in progress.' : 'No ingestion has run yet.'}</p>
+    );
   }
   return (
     <>
