@@ -25,13 +25,14 @@ export class ApiError extends Error implements ApiErrorFields {
 
 /**
  * `Retry-After` in seconds: whole seconds, as the API sends it, or an HTTP date (RFC 9110), which a
- * proxy may send instead. Anything else is left out, so no screen shows "NaN seconds".
+ * proxy may send instead. Anything else is left out, so no screen shows "NaN seconds" or "0
+ * seconds". Every HTTP date starts with its day's name; checking for it keeps out what
+ * `Date.parse` alone would read as a date, such as "-5" (May 2001).
  */
 function retryAfterSeconds(value: string | null): number | undefined {
   if (value === null) return undefined;
-  const seconds = Number(value);
-  if (!Number.isNaN(seconds)) return seconds;
-  const date = Date.parse(value);
+  if (/^\d+$/.test(value)) return Number(value);
+  const date = /^[A-Za-z]/.test(value) ? Date.parse(value) : Number.NaN;
   return Number.isNaN(date) ? undefined : Math.max(0, Math.ceil((date - Date.now()) / 1000));
 }
 
