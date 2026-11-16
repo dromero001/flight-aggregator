@@ -27,11 +27,13 @@ Three reviewer subagents, defined in `.claude/agents/`, each with one concern:
 - **At the end of every plan:** all three on the whole plan's diff, adding `risk-reviewer` (security, data loss, silent failures, half-applied state, concurrency, resilience).
 - A task moves on only when both of its reviewers say `APPROVED`; a plan closes only when all three do. Findings are fixed, or the user decides to accept them; record which in the progress report.
 - From 2026-11-16 (the user's decision, for speed): the leaf tasks of plan 6 that no other task builds on (Tasks 6, 7 and 8) are integrated without a per-task review, after their gates and the controller's `./gradlew build`; the end-of-plan triple review covers them. Every other task keeps its per-task review.
+- From 2026-11-16, about 10:02 (the user's decision, for speed): work is reviewed by group: each task keeps TDD and its gates, and one double reviewer (functional, then code) covers the whole group's range; one fix round only for a Critical or Important finding.
 - A Minor finding never opens a fix round of its own: it is recorded and fixed in the end-of-plan review (the user's decision of 2026-11-15, to make the usage limits last). Only Critical and Important findings open a round.
 - Why this split: `docs/ai/README.md`, "Review protocol".
 
 ## Pushing
 - Only to the personal account: run `gh api user --jq .login` and push only if it prints `dromero001`. On a machine with direnv (the Mac), run it as `direnv exec . gh api user --jq .login`, because direnv selects the personal account there.
+- From the delivery groups G3 and G4a on (the user's decision of 2026-11-16, about 18:15), a task or group reaches `main` through a pull request merged with a merge commit, carrying its review verdicts as a comment, so each increment is visible on GitHub; `wip/*` branches stay on GitHub as the record of each task's work.
 - After every push, watch the CI run of the pushed head until it ends, and fix a red run before anything else: `gh run watch --exit-status <run id>`, with the id from `gh run list --workflow CI --commit <sha> --limit 1` (prefix both with `direnv exec .` on the Mac).
 
 ## Working from two machines

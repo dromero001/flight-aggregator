@@ -91,7 +91,6 @@ The double review left these Minors unfixed, by the project's rule (a Minor open
 | G3 | CI runs `api:check` twice (its named step, then again inside `npm run verify`) |
 | G3 | The concurrency tests of the shared renewal wait on a real 50 ms timer |
 | G4a | `ComposeFileTest` checks Valkey's flags by sequence instead of the exact command |
-| G4a | Twelve `provider.calls` series can never be non-zero |
 | G4a | `RefreshMetrics.record` takes the whole report for its outcome, and `FAILED` is written in two classes |
 | G4a | `ProviderReport.Status.of` takes an `Optional` parameter |
 | G4a | `ingestion.md` did not say that a skipped refresh whose claim release throws counts as `FAILED` (corrected in the documentation audit of 2026-11-16) |
