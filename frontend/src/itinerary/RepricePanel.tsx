@@ -69,7 +69,8 @@ export function RepricePanel({ result, shownPrice }: RepricePanelProps) {
           {data.outcome === 'ALTERNATIVE' && (
             <>
               <p>{data.notice ?? ALTERNATIVE_NOTICE}</p>
-              <LegList legs={data.itinerary.legs} label="Alternative legs" />
+              {/* Captioned, so its legs are not read as the chosen ones above. */}
+              <LegList legs={data.itinerary.legs} label="Alternative legs" captioned />
             </>
           )}
           <div className={styles.offer}>

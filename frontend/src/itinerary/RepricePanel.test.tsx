@@ -271,6 +271,19 @@ test('shows the alternative inside the card with its notice', async () => {
   expect(summary.getByText('€412.60')).toBeInTheDocument();
 });
 
+test('captions the alternative legs, to tell them from the chosen ones', async () => {
+  const panel = await openCard(() =>
+    HttpResponse.json({ outcome: 'ALTERNATIVE', itinerary: alternative() }),
+  );
+
+  const caption = await within(panel).findByText('Alternative legs');
+  expect(caption).toBeVisible();
+  expect(within(panel).getByRole('list', { name: 'Alternative legs' })).toHaveAttribute(
+    'aria-labelledby',
+    caption.id,
+  );
+});
+
 test('shows the notice of spec 6.5 when an alternative comes without one', async () => {
   // The contract marks `notice` optional.
   const panel = await openCard(() =>
