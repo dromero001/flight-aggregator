@@ -722,3 +722,15 @@ The tests run over features that exist, so each was shown red by a labelled muta
 - **Cache Playwright's browsers in the e2e job** (`actions/cache` on `~/.cache/ms-playwright`, keyed by the Playwright version). Value: a minute or two less per run with three browsers. Cost: one step. Left out unless you approve.
 - **Choose the browsers by an environment variable** (for example `E2E_BROWSERS=chromium,webkit`). Value: `npm run e2e` on a machine where a browser does not start (Firefox on this Mac). Cost: a few lines in the config. Left out unless you approve.
 - **Screenshots and traces on failure** (`use: { screenshot: 'only-on-failure', trace: 'retain-on-failure' }`). Value: a failed CI run shows the page, not only the error. Cost: one line; bigger artefacts. Left out unless you approve.
+
+## Task 10 — review
+
+The double review (`.superpowers/sdd/2026-11-15-dashboard/task-10-review.md`) answered functional APPROVED and code APPROVED, with no Critical or Important finding. The reviewer ran `npm run verify` (111 tests) and the whole suite on a fresh stack in `mcr.microsoft.com/playwright:v1.64.1-noble` (31 of 31 in 2.3 min, three browsers and the rate-limit test), reproduced Firefox's start failure on macOS 27, and saw a background refresh of MAD in flight during "Load more" on a warm stack (it passed that time). The departures (`re-price.spec.ts`, browser-by-browser order with the rate-limit test once at the end, Alt+Tab for macOS WebKit) are justified; `b5f577c` tests the decided behaviour. Minors for the end-of-plan review:
+- F-M1: on the Mac `npm run e2e` exits 1 at Firefox and skips WebKit and the rate-limit test; Task 11's run uses the Linux Playwright image.
+- F-M2 (for the user): plan 5's decision says the 409 comes "only while a run is really running", but the scheduled run keeps its one-minute lock minimum, so a press within about 30 s after a short scheduled run still gets the 409.
+- F-M3: the plan's "Chromium only, project order" decision line predates E6.
+- F-M4: the duration half of the sort test was never shown red on its own; the report's "13 tests" are 10 tests and 13 mutations.
+- C-M1: the admin test's `toPass` retries on any failure (a broken button costs 70 s; a slow 202 could start a second run).
+- C-M2: the 16-project dependency chain skips every later project after one failure.
+- C-M3: the keyboard test's "Load more" can race a refresh of MAD on a stack older than 10 min.
+- C-M4: the card-reading helpers are split between `cards.ts` and `search.spec.ts`.
