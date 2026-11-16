@@ -1409,3 +1409,43 @@ CI run 43896079441 on `3d9dbd1` (docs only) failed in the `frontend` job: `Admin
 ## E10 — the delivered version tagged
 
 CI run 43903138832 on `dc58627`: `backend`, `frontend`, `images` and `e2e` green. Annotated tag `v1.0.0` on `dc58627`, pushed. Later commits (this record included) touch only the planning docs.
+
+## G4a — evidence
+
+The user's choice of about 17:55 (extras backlog, "Decided on 2026-11-16"): six backend extras, built test-first in a worktree on `8e9451c`, branch `wip/g4a-extras`. One test at a time; the failure seen, then what made it pass.
+
+### Valkey with `--save ""` (plan 5 Task 13's extra)
+- `ComposeFileTest.savesNoSnapshotOfTheCache`. Red: `Expecting actual: ["valkey-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"] to contain sequence: ["--save", ""]`. Green: `"--save", ""` on Valkey's command in `compose.yaml`; `boundsValkeysMemoryAndEvictsTheLeastRecentlyUsedKey` now checks its two flag pairs by sequence rather than the whole list.
+
+### A `NOTHING_FRESH` refresh at `WARN` (plan 5 Task 7's extra)
+- `BackgroundRefreshTest.logsARefreshWithNothingFreshAtWarn`. Red: `Expecting actual: [(INFO, "The refresh of a stale origin ended")] to contain exactly ... [(WARN, ...)]`. Green: the same line, started at `WARN` for `NOTHING_FRESH`. `CEILING_EXCEEDED` stays at `INFO`: only `NOTHING_FRESH` was approved; the other is left to the user.
+
+### Each kept provider's failure reason in a refresh's report (plan 5 Task 7's extra)
+- `RefreshStaleRouteServiceTest.keepsAFailedProvidersStoredOffersOfTheOrigin`, each case with its expected `FailureReason` (`TIMEOUT`, `REJECTED`, `EMPTY_DOWNLOAD`). Red: compile error, `cannot find symbol` `RefreshReport.ProviderRefresh`. Green: `RefreshReport.providers` is `Map<Provider, ProviderRefresh>`, `ProviderRefresh(Optional<FailureReason> failure)` with its status derived from it, built from the run's own `CheckedDownload.failure()`. Shown red by mutation too: every reason mapped to `UNEXPECTED` gave four failures, `expected: {..., BETA=ProviderRefresh[failure=Optional[TIMEOUT]]} but was: {..., BETA=ProviderRefresh[failure=Optional[UNEXPECTED]]}`. Restored.
+- `BackgroundRefreshTest.logsTheReport`, Beta kept on `TIMEOUT`. Red: the line ended `beta.status=KEPT`, expected `beta.status=KEPT beta.failure=TIMEOUT`. Green: `<provider>.failure` for a kept provider, the key a run's line uses. No stack trace: the refresh's report holds the reason, not the cause.
+- Refactor after the review: the status derived from a failure (`KEPT` exactly when there is one) was written three times (`ProviderReport`, `ProviderRun`, `ProviderRefresh`); it is now `ProviderReport.Status.of(failure)`.
+
+### Refresh metrics and skipped refreshes, one meter (plan 5 Task 7's extra; plan 5 closing round 1)
+`refresh.runs{outcome}` counts every refresh asked for: `REFRESHED`, `NOTHING_FRESH`, `CEILING_EXCEEDED`, `FAILED` (an exception) or `SKIPPED` (another refresh held the lock). `refresh.duration{outcome}` times every one but `SKIPPED`, from before the lock until the report. One meter rather than two: the outcome tag carries a skip as naturally as `ingestion.runs` carries `FAILED` beside the report's outcomes, and the skips then read beside what the refreshes did. No panel and no alert (not approved).
+- `RefreshMetricsTest.countsAndTimesARefreshUnderItsOutcome`. Red: compile error (`RefreshMetrics`), then against an empty stub `MeterNotFoundException: No meter with name 'refresh.runs' was found`. Green: counter and timer under the report's outcome.
+- `RefreshMetricsTest.countsAndTimesAFailedRefreshAsFailed`. Red: `MeterNotFoundException` (empty `recordFailed`). Green: `FAILED`.
+- `RefreshMetricsTest.countsASkippedRefreshWithoutTimingIt`. Red: `MeterNotFoundException` (empty `recordSkipped`). Green: `SKIPPED` counted, no timer.
+- `RefreshMetricsTest.registersEveryOutcomeAtZeroBeforeTheFirstRefresh`. Red: `Expecting actual: [] to contain exactly in any order: [("REFRESHED", 0.0), ("NOTHING_FRESH", 0.0), ("CEILING_EXCEEDED", 0.0), ("FAILED", 0.0), ("SKIPPED", 0.0)]`. Green: the constructor registers both meters for every `RefreshReport.Outcome` and `FAILED`, and the counter for `SKIPPED`.
+- `BackgroundRefreshTest.metersEachRefreshUnderItsOutcome` (the clock moved 37 s on inside the refresh). Red: compile error, then `expected: 1.0 but was: 0.0` with the metrics taken and unused. Green: `metrics.record(report, between(startedAt, clock.now()))` before the report's line; `RefreshConfig` builds the bean.
+- `BackgroundRefreshTest.metersAFailedRefreshAsFailed` and `countsASkippedRefresh`. Red: `expected: 1.0 but was: 0.0` each. Green: `recordFailed` in the catch, `recordSkipped` after the claim is given back, each before its line (a release that throws is then one `FAILED`, never both).
+- `RefreshConfigTest` went red on the module run, `No qualifying bean of type 'io.micrometer.core.instrument.MeterRegistry'`: its context now has a `SimpleMeterRegistry`.
+
+### The three counters at zero at startup, Grafana's `unless … offset 1h` dropped (E-T6-1)
+Every tag list comes from the enums, in the code and in the tests.
+- `IngestionMetricsTest.registersEveryRunOutcomeAtZeroBeforeTheFirstRun`. Red: `Expecting actual: [] to contain exactly in any order: [("PUBLISHED", 0.0), ("NOTHING_TO_PUBLISH", 0.0), ("CEILING_EXCEEDED", 0.0), ("FAILED", 0.0)]`. Green: `ingestion.runs` registered for each `IngestionReport.Outcome` and `FAILED`.
+- `LoggedDiscardedRecordsTest.registersEveryProviderAndReasonAtZeroBeforeTheFirstRecord`. Red: `Expecting actual: [] ...` (27 expected). Green: `Provider` × `DiscardReason` registered. `countsAndLogsEachDiscardedRecord` then failed, `Expected size: 2 but was: 27`; it now says "nothing else counted" by the sum of every series, 3.
+- `CountedFlightProviderTest.registersEveryOperationAndOutcomeAtZeroBeforeTheFirstCall`. Red: `Expecting actual: [] ...`. Green: `download`, `origin-download` and `quote` × (`OK` + every `FailureReason`), and `quote` × `NOT_SOLD`, registered when the provider is wrapped.
+- `IngestionJobTest.logsARunSkippedBecauseAnotherInstanceHoldsTheLock` went red on the module run, `Expecting empty but was: [CumulativeCounter@…, ×4]`; it now says every registered outcome stays at zero.
+- `GrafanaProvisioningTest.countsNoSeriesInFullTheHourItAppears` (no panel expression holds `offset`). Red: the runs and discarded-records expressions, `(x unless x offset 1h) or increase(x[1h])`. Green: both are `sum by (…) (increase(x[1h]))`, and the three panels' descriptions drop the "counts in full" and "from the second run on" caveats.
+
+Docs: `ingestion.md` (the refresh's line, its `failure` field, `refresh.runs` and `refresh.duration` in the meters table, the counters registered at zero), `observability.md` (the dashboard's counters, the tested-by row, the Prometheus-restart limitation), `search-api.md` (Valkey writes no snapshot).
+
+Not checked on a running stack: the panels were read only through the provisioning test. The startup run counts once Prometheus has scraped the zeros before the run's first increment (a 15 s scrape, a run of about 30 s).
+
+### Gates
+- `./gradlew build` from the worktree root on `9765ada`: BUILD SUCCESSFUL, exit 0, 1,152 tests, none failed or skipped.
