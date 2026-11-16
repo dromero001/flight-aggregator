@@ -13,7 +13,9 @@ import com.flightaggregator.bootstrap.ingestion.IngestionJob;
 import com.flightaggregator.bootstrap.ingestion.IngestionMetrics;
 import com.flightaggregator.bootstrap.observability.LoggedDiscardedRecords;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
+import java.util.concurrent.ThreadFactory;
 import net.javacrumbs.shedlock.core.LockingTaskExecutor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -37,9 +39,18 @@ class IngestionConfig {
       ItineraryRepository itineraries,
       IngestionStatusStore statuses,
       Clock clock,
-      @Value("${ingestion.max-itineraries}") long maxItineraries) {
+      @Value("${ingestion.max-itineraries}") long maxItineraries,
+      ThreadFactory contextThreads) {
     return new IngestInventoryService(
-        providers, offers, airports, discarded, itineraries, statuses, clock, maxItineraries);
+        providers,
+        offers,
+        airports,
+        discarded,
+        itineraries,
+        statuses,
+        clock,
+        maxItineraries,
+        contextThreads);
   }
 
   @Bean
@@ -49,7 +60,11 @@ class IngestionConfig {
 
   @Bean
   IngestionJob ingestionJob(
-      IngestInventory ingestion, IngestionMetrics metrics, LockingTaskExecutor locks, Clock clock) {
-    return new IngestionJob(ingestion, metrics, locks, clock);
+      IngestInventory ingestion,
+      IngestionMetrics metrics,
+      LockingTaskExecutor locks,
+      Clock clock,
+      ObservationRegistry observations) {
+    return new IngestionJob(ingestion, metrics, locks, clock, observations);
   }
 }

@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
@@ -38,12 +39,17 @@ final class ProviderDownloads {
   private final List<FlightProvider> providers;
   private final AirportCatalogue catalogue;
   private final DiscardedRecords discardedRecords;
+  private final ThreadFactory threads;
 
-  /** The providers are downloaded and checked in {@code Provider} order; two of one name fail. */
+  /**
+   * The providers are downloaded and checked in {@code Provider} order; two of one name fail. Each
+   * download runs on a thread of {@code threads}, created as it is submitted.
+   */
   ProviderDownloads(
       List<FlightProvider> providers,
       AirportCatalogue catalogue,
-      DiscardedRecords discardedRecords) {
+      DiscardedRecords discardedRecords,
+      ThreadFactory threads) {
     Set<Provider> seen = EnumSet.noneOf(Provider.class);
     for (FlightProvider provider : providers) {
       if (!seen.add(provider.provider())) {
@@ -54,6 +60,7 @@ final class ProviderDownloads {
         providers.stream().sorted(Comparator.comparing(FlightProvider::provider)).toList();
     this.catalogue = catalogue;
     this.discardedRecords = discardedRecords;
+    this.threads = threads;
   }
 
   /**
@@ -64,7 +71,7 @@ final class ProviderDownloads {
   List<CheckedDownload> downloadEach(
       Function<FlightProvider, ProviderDownload> download, BiConsumer<Provider, List<Leg>> usable) {
     List<Future<Outcome>> downloads = new ArrayList<>();
-    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+    try (ExecutorService executor = Executors.newThreadPerTaskExecutor(threads)) {
       for (FlightProvider provider : providers) {
         downloads.add(executor.submit(() -> download(provider, download)));
       }

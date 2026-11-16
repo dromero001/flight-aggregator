@@ -7,6 +7,8 @@ import com.flightaggregator.application.port.out.Clock;
 import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.IngestionLauncher;
 import com.flightaggregator.bootstrap.observability.CorrelationId;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
@@ -47,17 +49,27 @@ public final class IngestionJob implements IngestionLauncher {
    */
   private static final Duration SCHEDULED_LOCK_AT_LEAST_FOR = Duration.ofMinutes(1);
 
+  /** The observation of one run: its span is the root of the run's trace. */
+  public static final String RUN_OBSERVATION = "ingestion.run";
+
   private final IngestInventory ingestion;
   private final IngestionMetrics metrics;
   private final LockingTaskExecutor locks;
   private final Clock clock;
+  private final ObservationRegistry observations;
 
+  /** Each run, scheduled or on demand, is observed as {@code ingestion.run}: one trace (§6.10). */
   public IngestionJob(
-      IngestInventory ingestion, IngestionMetrics metrics, LockingTaskExecutor locks, Clock clock) {
+      IngestInventory ingestion,
+      IngestionMetrics metrics,
+      LockingTaskExecutor locks,
+      Clock clock,
+      ObservationRegistry observations) {
     this.ingestion = ingestion;
     this.metrics = metrics;
     this.locks = locks;
     this.clock = clock;
+    this.observations = observations;
   }
 
   /**
@@ -105,6 +117,11 @@ public final class IngestionJob implements IngestionLauncher {
    * least {@code lockAtLeastFor}, even after a shorter run ends.
    */
   private Run runUnderTheLock(Duration lockAtLeastFor, Runnable onceLocked) {
+    return Observation.createNotStarted(RUN_OBSERVATION, observations)
+        .observe(() -> tryUnderTheLock(lockAtLeastFor, onceLocked));
+  }
+
+  private Run tryUnderTheLock(Duration lockAtLeastFor, Runnable onceLocked) {
     // Removed in the finally, after the catch, so that a failed run's ERROR line carries it too.
     MDC.put(CorrelationId.MDC_KEY, UUID.randomUUID().toString());
     Instant startedAt = clock.now();

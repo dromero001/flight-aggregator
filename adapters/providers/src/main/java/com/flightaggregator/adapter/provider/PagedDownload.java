@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeoutException;
 
 /**
@@ -24,9 +25,9 @@ import java.util.concurrent.TimeoutException;
  * repeats, a page count announced past the maximum, or going past the maximum of pages fails it
  * with {@code PAGINATION_LIMIT}; a page that is not of its format fails it with {@code
  * MALFORMED_PAGE}; and the time budget, {@code downloadTimeout}, fails it with {@code TIMEOUT}
- * (§6.1). The page loop runs on a virtual thread under a {@link TimeLimiter} of that budget, which
- * interrupts it past the budget; the page in flight is bounded by its own request timeout, and no
- * further page is requested.
+ * (§6.1). The page loop runs on a thread of its own, created by {@code pages} on the caller's
+ * thread, under a {@link TimeLimiter} of that budget, which interrupts it past the budget; the page
+ * in flight is bounded by its own request timeout, and no further page is requested.
  */
 final class PagedDownload {
 
@@ -39,10 +40,12 @@ final class PagedDownload {
   private final Provider provider;
   private final ResilienceSettings settings;
   private final TimeLimiter timeLimiter;
+  private final ThreadFactory threads;
 
-  PagedDownload(Provider provider, ResilienceSettings settings) {
+  PagedDownload(Provider provider, ResilienceSettings settings, ThreadFactory pages) {
     this.provider = requireNonNull(provider, "provider");
     this.settings = requireNonNull(settings, "settings");
+    this.threads = requireNonNull(pages, "pages");
     this.timeLimiter =
         TimeLimiter.of(
             TimeLimiterConfig.custom()
@@ -58,7 +61,7 @@ final class PagedDownload {
    */
   ProviderDownload download(PageSource source) {
     FutureTask<ProviderDownload> task = new FutureTask<>(() -> pages(source));
-    Thread.ofVirtual().start(task);
+    threads.newThread(task).start();
     try {
       return timeLimiter.executeFutureSupplier(() -> task);
     } catch (PageMalformed e) {
