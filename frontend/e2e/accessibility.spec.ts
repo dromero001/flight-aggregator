@@ -54,9 +54,15 @@ test('searches, loads more and opens a card with the keyboard only', async ({
   const next = nextControlKey(browserName);
   await page.goto('/');
 
-  // Search: the first control is "From", and Enter submits the filters.
+  // Search: the first control is "From". In Chromium and Firefox, Enter in it submits the filters.
+  // WebKit's suggestion list (the field's <datalist>) takes that Enter: in Safari the first Enter
+  // only closes the matching suggestions, and WebKit on Linux never submits from the field. So a
+  // WebKit keyboard user moves on to "Search", as this test does there.
   await tabTo(page, next, page.getByLabel('From'));
   await page.keyboard.type('MAD');
+  if (browserName === 'webkit') {
+    await tabTo(page, next, page.getByRole('button', { name: 'Search' }));
+  }
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/\?origin=MAD$/);
   await expectEveryCardFrom(page, 'MAD');
