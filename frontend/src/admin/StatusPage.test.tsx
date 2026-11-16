@@ -216,7 +216,7 @@ test('says the first ingestion is in progress', async () => {
 
   renderAsAdmin(<StatusPage />);
 
-  expect(await screen.findByText('Ingestion in progress.')).toBeInTheDocument();
+  expect(await screen.findByText('First ingestion in progress.')).toBeInTheDocument();
   expect(screen.queryByText('No ingestion has run yet.')).not.toBeInTheDocument();
 });
 
