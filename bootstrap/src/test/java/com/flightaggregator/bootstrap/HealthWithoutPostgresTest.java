@@ -23,12 +23,14 @@ import org.testcontainers.utility.DockerImageName;
 
 /**
  * Q8-A's one cause of {@code DOWN}, on a real server: with PostgreSQL stopped, the API port's
- * {@code /health} (plan 7 Task 2) answers Boot's 503 {@code DOWN} within the 5 s compose gives its
- * health check (the {@code app} service's {@code timeout}), so the orchestrator reads a status, not
- * a timeout. Right after the stop, a probe finds pooled connections that fail at once; the slow
- * case is the one after, when the pool holds none and every read waits for a new one, so the probes
- * are timed from then on. The test stops a PostgreSQL of its own, never the one the other test
- * classes share, and closes its context afterwards.
+ * {@code /health} (plan 7 Task 2) answers Boot's 503 {@code DOWN} well within the 5 s compose gives
+ * its health check (the {@code app} service's {@code timeout}), so the orchestrator reads a status,
+ * not a timeout. A probe waits 2 s for one pooled connection, the inventory's: Boot's {@code db}
+ * component, which would add a second wait, is left out of that group (the user's decision of
+ * 2026-11-16), so 3 s bounds it. Right after the stop, a probe finds pooled connections that fail
+ * at once; the slow case is the one after, when the pool holds none and every read waits for a new
+ * one, so the probes are timed from then on. The test stops a PostgreSQL of its own, never the one
+ * the other test classes share, and closes its context afterwards.
  */
 @AggregatorTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -36,8 +38,11 @@ import org.testcontainers.utility.DockerImageName;
 @DirtiesContext
 class HealthWithoutPostgresTest {
 
-  /** The {@code timeout} of the {@code app} service's health check in {@code compose.yaml}. */
-  private static final Duration COMPOSE_HEALTH_CHECK_TIMEOUT = Duration.ofSeconds(5);
+  /**
+   * One 2 s wait for a pooled connection and a margin, well under the 5 s {@code timeout} of the
+   * {@code app} service's health check in {@code compose.yaml}.
+   */
+  private static final Duration PROBE_BOUND = Duration.ofSeconds(3);
 
   interface Containers {
 
@@ -57,7 +62,7 @@ class HealthWithoutPostgresTest {
   @LocalServerPort private int port;
 
   @Test
-  void answers503DownWithinTheComposeHealthCheckTimeout() throws Exception {
+  void answers503DownAfterOneConnectionWait() throws Exception {
     assertThat(health().statusCode()).isEqualTo(200);
 
     DockerClientFactory.instance()
@@ -78,7 +83,7 @@ class HealthWithoutPostgresTest {
 
       assertThat(health.statusCode()).as("probe %d", probe).isEqualTo(503);
       assertThat(health.body()).as("probe %d", probe).contains("\"status\":\"DOWN\"");
-      assertThat(took).as("probe %d", probe).isLessThan(COMPOSE_HEALTH_CHECK_TIMEOUT);
+      assertThat(took).as("probe %d", probe).isLessThan(PROBE_BOUND);
     }
   }
 
