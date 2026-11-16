@@ -994,3 +994,24 @@ The six Minors of the re-review verdicts above and T2 F-1, fixed in one worktree
 - Image test on the final image: 12 of 12 `ok`.
 - End to end, on a stack just started (`docker compose -p p6last up --build -d --wait`, healthy at 08:13:36 UTC), in `mcr.microsoft.com/playwright:v1.64.1-noble` (`--network host --ipc=host`, a copy of `frontend/` at `140152f` without `node_modules`): exit 0, **34 passed in 3.1 min** (Chromium 11, Firefox 11, WebKit 11, the rate-limit test 1). `runs an ingestion on demand` took 41.4 s, 41.7 s and 1.0 min. The stack was taken down with `-v`.
 - Thermo-nuclear self-review of the whole diff: the existing mechanisms are used (the URL's own normalisation through `toSearchParams`/`parseSearch`, TanStack's `errorUpdateCount`, `oidc-client-ts`'s `User.expired`); the 429 check lives in one helper, `rateLimitWait`, shared by the message and the wait; the wait is a small hook beside `useNow` in `src/time/`. No file passes 1,000 lines (`SearchPage.test.tsx` 770). Nothing new fails silently: an unrenewable token that has not expired shows the screen's 401 sentence. Left as is: a `Retry-After` above about 24.8 days would overflow `setTimeout` and bring "Load more" back at once; the API sends a minute at most, and a click then only meets the 429 again.
+
+## Last round fix (2026-11-16)
+
+The last round's review (functional and code, on `c9e5b68..ff5fff9`) asked for changes on one Important finding, F-1 / C-1, and recorded three code Minors (C-m1 to C-m3), fixed here with it. F-m1 (a test written after its code) asked for no fix.
+
+| Id | Fix | Commit |
+|---|---|---|
+| F-1 / C-1 | A next page's rate-limit wait is keyed by the failure itself (`useWaitOver(search.error, …)`, `waitId: unknown`), not by `errorUpdateCount`, which restarts per search and after a reset; a new search's first rate-limited "Load more" now waits | `7a28e30` |
+| C-m1 | `apiError.ts`: no screen shows "NaN seconds" or a negative wait; a wait already over (`0`, a past date) reads 0 | `3940d7a` |
+| C-m2 | nginx comment and `dashboard.md`: the slowest re-price is three attempts of 2.5 s plus 0.6 s of backoff, about 18.1 s; 20 s still covers it | `3940d7a` |
+| C-m3 | `rateLimitWait` moved into `apiError.ts`, used by `ResultsList` and `RepricePanel` (a pure move) | `8366dd9` |
+
+### Red → green evidence
+
+- **F-1 / C-1**, `SearchPage.test.tsx` `"waits for a new search's own rate-limited next page"`, written first: search MAD, "Load more" answered 429 with `Retry-After: 30`, the wait ends; search BCN, "Load more" answered 429 again; the 429 sentence shows, "Load more" is not offered, requests `MAD:null, MAD:page-2, BCN:null, BCN:page-2`. Red on `ff5fff9`: `Unable to find role="alert"`, with "Load more" still in the page (BCN's first failure had `errorUpdateCount` 1, equal to the wait MAD had ended). Green: the wait keyed by `search.error`; each failed request throws a new `ApiError`. 38 of 38 in the file.
+- **C-m3**, covered by the existing tests (`RepricePanel.test.tsx` `'shows the re-price limit with its seconds'`, the 429 without a wait, the search's 429 tests). Mutation: `rateLimitWait` matching 999 instead of 429 → `'shows the re-price limit with its seconds'` red; restored.
+- C-m1 and C-m2 change comments and docs only.
+
+### Gates
+- `npm run verify` in `frontend/` before each commit: exit 0, 140 tests in 20 files. Frontend and docs only: no `./gradlew build` (the controller runs it before integrating). The nginx change is a comment, so the image test was not re-run.
+- Thermo-nuclear self-review: the fix removes the counter rather than adding a mechanism; `unknown` is the hook's honest contract (any identity names a wait); the 429 check now lives once, in `apiError.ts`. No file passes 1,000 lines (`SearchPage.test.tsx` about 800).
