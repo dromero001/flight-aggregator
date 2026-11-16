@@ -108,7 +108,10 @@ class JdbcItineraryRepositoryLoadTest {
         .list();
   }
 
-  /** Q6: each sort order, keyed by id, alone and behind an origin and destination prefix. */
+  /**
+   * Q6: each sort order, keyed by id, alone, behind an origin and destination prefix, and behind an
+   * origin alone (Q6-C, plan 5's end-of-plan review, I1).
+   */
   @Test
   void indexesEverySortOrderOnBothSlots() {
     publish(NOW, List.of(direct(1, "2026-11-25T07:15:00Z")));
@@ -117,9 +120,12 @@ class JdbcItineraryRepositoryLoadTest {
         List.of(
             "departure, id",
             "duration_seconds, id",
+            "origin, departure, id",
             "origin, destination, departure, id",
             "origin, destination, duration_seconds, id",
             "origin, destination, price, id",
+            "origin, duration_seconds, id",
+            "origin, price, id",
             "price, id");
     assertThat(sortIndexes("itinerary_a")).isEqualTo(expected);
     assertThat(sortIndexes("itinerary_b")).isEqualTo(expected);

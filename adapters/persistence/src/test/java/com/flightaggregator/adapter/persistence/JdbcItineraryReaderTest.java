@@ -232,6 +232,65 @@ class JdbcItineraryReaderTest {
         .containsExactlyElementsOf(ids(matchesAll));
   }
 
+  /**
+   * Plan 5's end-of-plan review (I1): an origin without a destination, sorted by price, is read
+   * through an index that starts with the origin, so a long-haul origin, whose trips are the
+   * dearest, is not found by walking every cheaper trip first. At this volume a sequential scan
+   * would be cheaper, so the session turns it off to ask which index the planner picks for this
+   * statement.
+   */
+  @Test
+  void readsAnOriginByPriceThroughAnIndexStartingWithTheOrigin() throws SQLException {
+    List<Itinerary> trips = new ArrayList<>();
+    IntStream.rangeClosed(1, 40)
+        .forEach(
+            n -> {
+              String departure = "2026-11-21T%02d:%02d:00+01:00".formatted(6 + n / 4, n % 4 * 15);
+              trips.add(trip(leg("IB", n, "MAD", "LHR", departure, 120, String.valueOf(50 + n))));
+              trips.add(trip(leg("JL", n, "NRT", "LHR", departure, 720, String.valueOf(900 + n))));
+            });
+    publish(trips.toArray(Itinerary[]::new));
+    KeysetQuery query =
+        KeysetQuery.of(Slot.B, filters("NRT", null, null, null), Optional.empty(), 21, NOW);
+
+    assertThat(indexKeysScannedBy(query)).containsExactly("origin, price, id");
+  }
+
+  /**
+   * The key columns of the indexes the planner scans for a query, e.g. {@code price, id}, with
+   * sequential scans turned off in its session.
+   */
+  private List<String> indexKeysScannedBy(KeysetQuery query) throws SQLException {
+    List<String> plan = new ArrayList<>();
+    try (Connection session = dataSource.getConnection();
+        Statement settings = session.createStatement()) {
+      settings.execute("SET enable_seqscan = off");
+      try (var explain = session.prepareStatement("EXPLAIN " + query.sql())) {
+        for (int i = 0; i < query.parameters().size(); i++) {
+          explain.setObject(i + 1, query.parameters().get(i));
+        }
+        try (ResultSet lines = explain.executeQuery()) {
+          while (lines.next()) {
+            plan.add(lines.getString(1));
+          }
+        }
+      }
+    }
+    return plan.stream()
+        .flatMap(line -> Stream.of(line.split("Index Scan using ")).skip(1))
+        .map(scan -> scan.substring(0, scan.indexOf(' ')))
+        .map(
+            index ->
+                jdbc.sql(
+                        "SELECT substring(indexdef FROM 'USING btree \\((.*)\\)')"
+                            + " FROM pg_indexes WHERE indexname = ?")
+                    .param(index)
+                    .query(String.class)
+                    .single())
+        .distinct()
+        .toList();
+  }
+
   /** Search shows only departures after now (§4.1); at +01:00, NOW is 11:00 local. */
   @Test
   void hidesDepartedItineraries() {
