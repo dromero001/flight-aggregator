@@ -49,17 +49,16 @@ function bearerToken(auth: AuthClient): Middleware {
       if (response.status !== 401) {
         return undefined;
       }
-      // A refused renewal (Keycloak's own session ended) or a renewed token refused too: one
-      // more sign-in, never another round of renewals. The page leaves for Keycloak.
       const renewed = await auth.signinSilent().catch(() => null);
-      if (renewed) {
-        const repeated = await options.fetch(withToken(request, renewed.access_token));
-        if (repeated.status !== 401) {
-          return repeated;
-        }
+      if (!renewed) {
+        // Keycloak's own session ended: one more sign-in. The page leaves for Keycloak.
+        await auth.signinRedirect();
+        return undefined;
       }
-      await auth.signinRedirect();
-      return undefined;
+      // A renewed token refused too means the API does not accept this issuer's tokens: a new
+      // sign-in would get the same kind of token without asking for anything, and loop. The 401
+      // goes to the screen instead (the user's decision of 2026-11-16).
+      return options.fetch(withToken(request, renewed.access_token));
     },
   };
 }
