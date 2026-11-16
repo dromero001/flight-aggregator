@@ -12,7 +12,10 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
 
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(String(baseURL) + '/api/itineraries');
+      // A hung connection (nginx up, the app stalled) must not outlast the deadline.
+      const response = await fetch(String(baseURL) + '/api/itineraries', {
+        signal: AbortSignal.timeout(POLL_INTERVAL_MS),
+      });
       last = 'HTTP ' + String(response.status);
       if (response.ok) {
         const page = (await response.json()) as { itineraries?: unknown[] };

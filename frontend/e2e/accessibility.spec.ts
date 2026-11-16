@@ -71,8 +71,11 @@ test('searches, loads more and opens a card with the keyboard only', async ({
     timeout: REPRICE_ANSWERED_WITHIN_MS,
   });
 
-  // Load more, past the opened card and the other 19.
+  // Load more, past the opened card and the other 19. On a stack up for over 10 minutes, the MAD
+  // search may start a refresh that publishes before this page is read (search-api.md, "The
+  // stale-route refresh"): the page is then flagged and may append fewer than 20 (Q4-A), so the
+  // test asks only that cards were appended.
   await tabTo(page, next, page.getByRole('button', { name: 'Load more' }));
   await page.keyboard.press('Enter');
-  await expect(page.getByText('Showing 40 flights')).toBeVisible();
+  await expect.poll(() => page.getByRole('article').count()).toBeGreaterThan(20);
 });

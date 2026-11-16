@@ -1,30 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectEveryCardFrom } from './cards.js';
-
-/** The cards' prices, in the order shown ("€1,234.50" read as 1234.5, for comparison only). */
-async function shownPrices(page: Page): Promise<number[]> {
-  const texts = await page.getByRole('article').allInnerTexts();
-  return texts.map((text) => {
-    const amount = /€([\d,]+\.\d{2})/.exec(text);
-    if (!amount) throw new Error(`No price on the card: ${text}`);
-    return Number(amount[1].replaceAll(',', ''));
-  });
-}
+import { expectEveryCardFrom, shownPrices, shownTimes } from './cards.js';
 
 function isNonDecreasing(values: number[]): boolean {
   return values.every((value, index) => index === 0 || values[index - 1] <= value);
-}
-
-/** Each card's departure and arrival instants, read from its first two `<time dateTime>`. */
-async function shownTimes(page: Page): Promise<{ departure: number; arrival: number }[]> {
-  const cards = await page.getByRole('article').all();
-  return Promise.all(
-    cards.map(async (card) => {
-      const instant = async (index: number) =>
-        Date.parse((await card.locator('time').nth(index).getAttribute('datetime')) ?? '');
-      return { departure: await instant(0), arrival: await instant(1) };
-    }),
-  );
 }
 
 /** The API's page size when no `limit` is sent, which the dashboard never sends. */

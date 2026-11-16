@@ -3,7 +3,8 @@ import { defineConfig, devices } from '@playwright/test';
 // The specs run against the compose stack (docker compose up --build), through nginx.
 // One worker, no retries, and the real rate limits. The projects run in this order, each one after
 // the previous: the admin run changes the generation and the rate-limit test spends the window, so
-// both go last.
+// both go last. Playwright has no order-only dependency: a failed project also skips every project
+// after it, so a red run reports the first failure, and the later browsers as "did not run".
 const specs = ['smoke', 'search', 're-price', 'accessibility', 'admin'];
 
 // Each browser runs every spec above before the next browser starts (plan 6 E6). Run back to back,
