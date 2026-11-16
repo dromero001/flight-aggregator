@@ -569,3 +569,16 @@ None.
   - Boot's mechanisms used: `management.server.port`, a health group's additional path, `EndpointRequest.toAdditionalPaths`, Micrometer's Prometheus registry at the BOM's version, `@LocalManagementPort`. The one hand-written piece, the management-server matcher, is justified under "Deviations" and in its Javadoc.
   - Nothing fails silently: `ComposeFileTest` fails if the app publishes no port at all, so an empty list cannot pass it; the mutations above show each moved test failing for its own reason.
   - Sizes: `SecurityConfig` 84 lines, `ManagementPortTest` 127, `ComposeFileTest` 263, `FlightAggregatorApplicationTest` 384; `SecurityTest` lost 39 lines. No file crosses 1,000 lines.
+
+## Task 2 — review
+
+One double reviewer (functional, then code), 2026-11-16 about 08:00, on `2e4839c..b1c56d5`. **Functional: APPROVED. Code: APPROVED.** No Critical or Important finding; the Minors below wait for plan 7's closing round. The TDD evidence holds, including the five mutations recorded after the reboot (each would fail its test).
+
+| Id | Where | Finding | Suggested fix |
+|---|---|---|---|
+| F1 | `SecurityConfig.java:51-54` | `/health` is permitted for every HTTP method, where plan 5 allowed GET only; an anonymous `POST /health` gets 405 instead of 401 (no data exposed) | `.withHttpMethod(HttpMethod.GET)` on Boot's matcher |
+| F2 | tests | No test on this task proves `DOWN` answers 503 on `/health`; covered only through the root status mapping the group inherits | Plan 5 closing round 1's `HealthWithoutPostgresTest` covers it once moved to `/health` on the API port |
+| C1 | `ComposeFileTest.java:157-179` | Compose's port syntax parsed by hand; a range such as `127.0.0.1:8070-8090:8070-8090` would publish 8079 and pass | Pin the app's exact port list, like the test next to it, and delete the parser |
+| C2 | `deploy/prometheus/prometheus.yaml:22` | The scrape target's 8079 copies `application.yaml:87`; no test ties them | A small assertion, or Task 7's end-to-end run owns it |
+
+The implementer's points, as judged: the hand-written management-server check in `SecurityConfig` is kept (Boot's `toAnyEndpoint()` would open `/actuator/**` on the API port if both servers ever shared a port); `EXPOSE 8080` stays as is (an exposed 8079 would be published by `docker run -P`); plan 5 closing round 1's `HealthWithoutPostgresTest` moves to `/health` on the API port (not the management port), and its Hikari setting in `application.yaml` is merged by hand, whichever lands second.
