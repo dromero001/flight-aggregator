@@ -36,19 +36,26 @@ public final class CountedFlightProvider implements FlightProvider {
 
   private static final String OK = "OK";
   private static final String NOT_SOLD = "NOT_SOLD";
-  private static final String REJECTED = "REJECTED";
 
   private final FlightProvider provider;
+
+  /**
+   * The provider's name, asked once: neither {@link #provider()} nor a count asks the limited
+   * delegate again, so the counting path makes no call of it besides the counted one.
+   */
+  private final Provider name;
+
   private final MeterRegistry meters;
 
   public CountedFlightProvider(FlightProvider provider, MeterRegistry meters) {
     this.provider = provider;
+    this.name = provider.provider();
     this.meters = meters;
   }
 
   @Override
   public Provider provider() {
-    return provider.provider();
+    return name;
   }
 
   /** The provider it counts, so a log line names it. */
@@ -76,7 +83,7 @@ public final class CountedFlightProvider implements FlightProvider {
         quote -> quote.isPresent() ? OK : NOT_SOLD,
         unexpected ->
             LOG.atError()
-                .addKeyValue("provider", provider.provider().name())
+                .addKeyValue("provider", name.name())
                 .setCause(unexpected)
                 .log("A provider's quote failed unexpectedly"));
   }
@@ -94,7 +101,7 @@ public final class CountedFlightProvider implements FlightProvider {
       count(operation, e.reason().name());
       throw e;
     } catch (RejectedExecutionException e) {
-      count(operation, REJECTED);
+      count(operation, FailureReason.REJECTED.name());
       throw e;
     } catch (RuntimeException e) {
       count(operation, FailureReason.UNEXPECTED.name());
@@ -108,13 +115,7 @@ public final class CountedFlightProvider implements FlightProvider {
   private void count(String operation, String outcome) {
     meters
         .counter(
-            "provider.calls",
-            "provider",
-            provider.provider().name(),
-            "operation",
-            operation,
-            "outcome",
-            outcome)
+            "provider.calls", "provider", name.name(), "operation", operation, "outcome", outcome)
         .increment();
   }
 }

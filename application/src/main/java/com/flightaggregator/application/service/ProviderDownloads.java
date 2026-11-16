@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
@@ -140,6 +141,8 @@ final class ProviderDownloads {
       return new Outcome.Downloaded(provider.provider(), download.apply(provider));
     } catch (ProviderUnavailableException e) {
       return new Outcome.Failed(provider.provider(), e.reason(), e);
+    } catch (RejectedExecutionException e) {
+      return new Outcome.Failed(provider.provider(), FailureReason.REJECTED, e);
     } catch (RuntimeException e) {
       return new Outcome.Failed(provider.provider(), FailureReason.UNEXPECTED, e);
     }

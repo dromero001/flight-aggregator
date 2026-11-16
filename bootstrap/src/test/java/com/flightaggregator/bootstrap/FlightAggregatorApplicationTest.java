@@ -302,6 +302,19 @@ class FlightAggregatorApplicationTest {
     assertThat(application.getProperty("management.server.port")).hasToString("8079");
   }
 
+  /**
+   * The providers' concurrency limit is proxied with class proxies, Boot's default: under an
+   * interface proxy, {@code @ConcurrencyLimit} reads the interface's methods and loses the
+   * exemptions of {@code provider()}, {@code toString()} and the run's {@code download()} ({@code
+   * ConcurrencyLimitScopeTest}), so nothing in the application's configuration may turn them off
+   * (plan 5 Task 2, C2).
+   */
+  @Test
+  void proxiesWithClassProxies() {
+    assertThat(environment.getProperty("spring.aop.proxy-target-class", Boolean.class, true))
+        .isTrue();
+  }
+
   private long generation() {
     return jdbc.sql("SELECT generation FROM inventory_publication").query(Long.class).single();
   }

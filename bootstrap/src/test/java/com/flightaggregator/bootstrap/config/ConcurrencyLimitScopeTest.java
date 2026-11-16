@@ -7,6 +7,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.aop.AopAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -172,6 +173,77 @@ class ConcurrencyLimitScopeTest {
                     first.exempt();
                     second.other();
                   });
+            });
+  }
+
+  /**
+   * An interface the limited class implements whole, as {@code PagedProvider} implements {@code
+   * FlightProvider}, its exempt method included.
+   */
+  interface Named extends Operations {
+    String name();
+  }
+
+  /** The class-level limit, with {@code name()} exempt as {@code provider()} is. */
+  @ConcurrencyLimit(limit = 1, policy = ThrottlePolicy.REJECT)
+  static class NamedWithAnExemption implements Named {
+
+    private final Gate gate;
+
+    NamedWithAnExemption(Gate gate) {
+      this.gate = gate;
+    }
+
+    @Override
+    public void hold() {
+      gate.hold();
+    }
+
+    @Override
+    public void other() {}
+
+    @Override
+    @ConcurrencyLimit(-1)
+    public String name() {
+      return "named";
+    }
+  }
+
+  @Configuration(proxyBeanMethods = false)
+  @EnableResilientMethods
+  static class InterfaceConfig {
+
+    @Bean
+    Gate gate() {
+      return new Gate();
+    }
+
+    @Bean
+    Named named(Gate gate) {
+      return new NamedWithAnExemption(gate);
+    }
+  }
+
+  /**
+   * Why the application keeps Boot's class proxies (plan 5 Task 2, F4): under an interface proxy
+   * the limit reads the interface's method, which carries no exemption, so {@code name()} is
+   * rejected while {@code hold()} uses the limit up, as {@code provider()} would be.
+   */
+  @Test
+  void losesAMethodsExemptionUnderAnInterfaceProxy() {
+    runner
+        .withPropertyValues("spring.aop.proxy-target-class=false")
+        .withUserConfiguration(InterfaceConfig.class)
+        .run(
+            context -> {
+              Named named = context.getBean(Named.class);
+              assertThat(AopUtils.isJdkDynamicProxy(named)).isTrue();
+              whileHeld(
+                  named,
+                  context.getBean(Gate.class),
+                  () ->
+                      assertThatThrownBy(named::name)
+                          .isInstanceOf(InvocationRejectedException.class));
             });
   }
 
