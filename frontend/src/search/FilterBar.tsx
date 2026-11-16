@@ -2,6 +2,8 @@ import { useState, type SubmitEvent } from 'react';
 import styles from './FilterBar.module.css';
 import {
   FILTER_FIELDS,
+  parseSearch,
+  toSearchParams,
   type FieldErrors,
   type FilterField,
   type SearchCriteria,
@@ -47,9 +49,11 @@ export function FilterBar({ criteria, errors, onSubmit }: FilterBarProps) {
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit(draft);
-    // The inputs show what was searched, normalised (" mad " is MAD): the URL's values, which
-    // the line above has changed when the search is a new one.
-    setDraft(fromUrl);
+    // The inputs show what was searched, normalised (" mad " is MAD), as the URL will read it.
+    // Not the URL's current values: the router applies a new search's URL in a transition, after
+    // this render, so they would show the previous search for a moment.
+    const searched = parseSearch(toSearchParams({ ...draft, sort: criteria.sort })).criteria;
+    setDraft(draftFrom(searched));
   }
 
   return (
