@@ -38,4 +38,7 @@ Extras that a review turned into a finding are not here: they are fixed in the c
 | A "Loading…" line on the first status read | Task 8 | no blank screen | one state, one test |
 | Stop polling after a 403 | Task 8 | no request every 10 s for a non-admin | query option, test |
 | Hours in "Next ingestion in N min" for intervals over an hour | Task 8 | readable times | formatter, test |
+| Cache Playwright's browsers in the CI `e2e` job | Task 10 | faster CI | a cache step |
+| Choose the end-to-end browsers with an environment variable (`E2E_BROWSERS`), so `npm run e2e` works where a browser does not start (Firefox on macOS 27) | Task 10 | local runs on any Mac | config, docs |
+| Keep screenshots and traces of failed end-to-end tests | Task 10 | easier diagnosis of CI failures | config, artefacts |
 | E3, airport and airline suggestions in the filters (approved, but needs a catalogue endpoint no task builds) | plan 6 | no IATA codes to know | an endpoint, a combobox, accessibility tests |
