@@ -1420,3 +1420,133 @@ The double review (`.superpowers/sdd/2026-11-15-search-api/task-12-review.md`) a
 ## A flaky provider test on CI (controller, 2026-11-16)
 
 CI failed on `dcf88a2` in `AlphaProviderTest.failsAQuoteWithAMalformedRecord`: `expected: MALFORMED_PAGE but was: TIMEOUT` (read from the run's `backend-reports` artifact). The test gives each request 500 ms, and a cold CI runner took longer to answer the first request; the same test passed three times in a row locally, and Task 12 does not touch the providers. Fix, test code only: the Alpha, Beta and Gamma provider tests give each request 5 s; the one test of the download's own budget (`endsTheDownloadWithinItsBudgetEvenWhenEveryRequestIsWithinItsOwn`) keeps 500 ms for both limits, so it still proves the budget. No production code changed; `:adapters:providers:test --rerun` and `./gradlew build` green.
+
+## Task 13 — evidence
+
+The compose stack with Valkey, the complete OpenAPI contract, and the search measured on the real volume, from `main` at `dcf88a2`, fast-forwarded to `a29cbd0` (the provider tests' 5 s, test code only) before the first commit. One test at a time; each red was seen for the expected reason. The measures ran on 2026-11-16 between 03:25 and 03:54 UTC on an Apple-silicon Mac (arm64), Docker Desktop 29.9.2 with 10 CPUs and 7.7 GiB, under the compose project `p5t13`, taken down with its volumes at the end. The scripts and raw outputs stayed in the session's scratch folder; every number below was read from them.
+
+### Step 1: the contract is complete
+
+The served contract lacked only the admin side's security: no bearer scheme, and no 401 or 403 on the admin operations (Task 12's extra, left to this step). Every other endpoint, parameter, body and problem with `Retry-After` was already pinned by the tests of Tasks 9, 10 and 12.
+
+Cycles (`OpenApiContractTest`):
+- `documentsEveryEndpointWithItsBodyAndEachStatus` (each operation's exact set of statuses, and its success body): red on the two admin rows = `Expecting actual: ["200"] to contain exactly in any order: ["200", "401", "403"] but could not find the following elements: ["401", "403"]`, and the same from `["202", "409"]` for the ingestions. Green = class-level `@ApiResponse` 401 and 403 on `AdminController`.
+- `requiresTheBearerSchemeOnTheAdminOperationsOnly` (a `bearer` scheme, `http`, `bearer`, `JWT`, required on the admin operations and absent from search and re-price): red on all four rows = `Expecting actual: [] to contain exactly (and in same order): ["bearer"]` (no `securitySchemes`). Green = `@SecurityScheme(name = "bearer", type = HTTP, scheme = "bearer", bearerFormat = "JWT")` and `@SecurityRequirement` on `AdminController`.
+- The regenerated file showed springdoc giving `GET /api/admin/status`'s 401 and 403 the `StatusResponse` body, which Spring Security never writes. `documentsTheAdminChallengesWithoutABody`: red on the two status rows = `Expecting value to be false but was true`. Green = `content = @Content` on both annotations.
+- Refactor under green: the two parameterised tests asserted the path list and the scheme on every row; these became `documentsEveryEndpoint` and `definesTheBearerSchemeAsAJwt` (renamed `documentsEachEndpointsBodyAndEveryStatus` keeps the rows). `documentsEveryEndpoint`'s assertion had never been red on its own; mutation "`@Hidden` on `status()`": `could not find the following elements: ["/api/admin/status"]`. Restored.
+- `docs/architecture/openapi.json` regenerated with `-Dopenapi.write=true`, and `frontend/src/api/schema.d.ts` with `npm ci` then `npm run api:generate`: each admin operation gains `401` and `403` with `content?: never`.
+- Checked on the stack: `curl -i /api/admin/status` answers `401`, `WWW-Authenticate: Bearer resource_metadata=...`, `Content-Length: 0`; a malformed token, `401` with `error="invalid_token"`. No account lacks `ADMIN`, so the 403 is shown by `SecurityTest` only (README, Task 11).
+
+### Step 2: Valkey in compose
+
+The compose change was first written before its tests. It was then set aside (`compose.yaml` back to `HEAD`) and rebuilt one test at a time with `ComposeFileTest`, the way this repository already pins compose. The file the stack ran is the final one.
+- `runsTheValkeyImageTheTestsRun`: red = `NullPointerException: Cannot invoke "java.util.Map.get(Object)" because the return value of "java.util.Map.get(Object)" is null` (no `valkey` service). Green = the service: `ValkeyImage.NAME` (`valkey/valkey:9.1.3-trixie@sha256:3add1a33…`, Task 5's), not published, `restart: unless-stopped` as every service, and a `valkey-cli ping | grep -q PONG` health check.
+- `boundsValkeysMemoryAndEvictsTheLeastRecentlyUsedKey`: red = `expected: ["valkey-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"] but was: null`. Green = that `command` (§6.2).
+- `startsTheAppOnValkeyOnceValkeyAndKeycloakAreHealthy`: red = `Expecting map: {...} to contain entries: ["SPRING_DATA_REDIS_HOST"="valkey"]`. Green = `SPRING_DATA_REDIS_HOST: valkey`, and `depends_on` `valkey` and `keycloak` with `service_healthy`. Task 11's resource-server setting (`SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI`) was already there; the issuer keeps `application.yaml`'s default, the public name.
+- `docker compose config -q` passes.
+
+### Step 3: run and measure
+
+**Start.** `docker compose -p p5t13 up --build -d --wait`: 96 s, all eleven services healthy. The app started at 03:27:16, once Keycloak and Valkey were healthy, in 3.2 s.
+
+**Load time against plan 4's.** From the app's `Ingestion run ended` line:
+
+| Run | Itineraries | Duration | Plan 4 |
+|---|---|---|---|
+| 1, at startup | 1,033,722 | 27.5 s | 14.4 s (first), 11.9 to 12.0 s after |
+| 2, `POST /api/admin/ingestions` | 1,033,722 | 23.8 s | |
+| 3, the same | 1,033,722 | 25.9 s | |
+
+Run 3 was sampled every 50 ms through `pg_locks` and `pg_stat_activity` (the backend holding the publication row): `COPY` 15.0 s, then `ANALYZE itinerary_b` 5.1 s. The downloads, the offer store, and the slot's truncate and partitions took the first 6 s. So the six sort indexes per slot (Q6-B, maintained during the `COPY`) and the `ANALYZE` (plan 4's note) double plan 4's run, which still fits the 30 min cadence many times over. The app container stayed at 400 to 455 MiB under `-Xmx512m` through the runs and the refreshes.
+
+**`EXPLAIN (ANALYZE, BUFFERS)` (Q6).** The statement `KeysetQuery` builds, `SELECT legs FROM itinerary_b WHERE departure > now() [filters] [AND (key, id) > (k, i)] ORDER BY key, id LIMIT 21`, for each sort × {no filter, `origin = 'MAD'`, `origin = 'MAD' AND destination = 'LHR'` (7,518 rows), `single_carrier = 'IB'` (5,639 rows)}, page 1 and page 50 (the seek position read as the 980th row of that order). PostgreSQL 18 with its defaults (`shared_buffers` 128 MB; the slot is 1.3 GB in 39 partitions). Execution time in ms, in four passes: right after run 1; again; after a refresh of Madrid had left 530,603 dead rows in the slot, before autovacuum reached them; again.
+
+| Sort | Filter | Page | After the run | Again | Dead rows | Again |
+|---|---|---|---|---|---|---|
+| price | none | 1 | 5.4 | 1.5 | 4.2 | 2.4 |
+| price | none | 50 | 0.4 | 0.3 | 3.2 | 0.3 |
+| price | origin | 1 | 1.0 | 0.7 | 2.7 | 2.7 |
+| price | origin | 50 | 1.8 | 1.5 | 12.8 | 3.4 |
+| price | origin + destination | 1 | 4.6 | 0.7 | 3.0 | 5.3 |
+| price | origin + destination | 50 | 0.5 | 0.4 | 145.8 | 0.5 |
+| price | carrier | 1 | 0.7 | 0.6 | 0.8 | 0.7 |
+| price | carrier | 50 | 9.2 | 5.9 | 45.3 | 9.5 |
+| departure | none | 1 | 0.3 | 0.3 | 0.3 | 0.2 |
+| departure | none | 50 | 0.4 | 0.3 | 0.5 | 0.3 |
+| departure | origin | 1 | 76.7 | 41.8 | 321.2 | 98.7 |
+| departure | origin | 50 | 15.5 | 10.7 | 18.6 | 13.2 |
+| departure | origin + destination | 1 | 4.3 | 0.7 | 4.8 | 3.7 |
+| departure | origin + destination | 50 | 0.5 | 0.3 | 0.7 | 0.8 |
+| departure | carrier | 1 | 3.8 | 2.7 | 4.9 | 4.0 |
+| departure | carrier | 50 | 13.2 | 14.7 | 30.3 | 14.3 |
+| duration | none | 1 | 5.5 | 0.6 | 3.8 | 11.9 |
+| duration | none | 50 | 0.3 | 0.2 | 0.4 | 0.3 |
+| duration | origin | 1 | 1.6 | 1.3 | 3.3 | 1.5 |
+| duration | origin | 50 | 0.8 | 0.6 | 5.6 | 1.5 |
+| duration | origin + destination | 1 | 0.5 | 0.7 | 3.8 | 0.6 |
+| duration | origin + destination | 50 | 0.4 | 0.3 | 4.7 | 0.3 |
+| duration | carrier | 1 | 0.7 | 0.8 | 0.9 | 0.8 |
+| duration | carrier | 50 | 5.9 | 5.8 | 26.4 | 5.1 |
+
+- Every plan is a `Limit` over a `Merge Append` of index scans, one per day partition, on the sort order's index: `(key, id)` without a route, `(origin, destination, key, id)` with one. No sequential scan. The seek is an `Index Cond` on `ROW(key, id) > ROW(...)`.
+- The slowest is departure order with an origin and no destination (42 ms warm, 77 ms cold, 99 to 321 ms over dead rows): the `Merge Append` opens the departure index of all 39 partitions, and each walks until its first Madrid row (59,634 buffers). Q6-B's route indexes need a destination too. It stays well inside the read's 2 s bound, so no index is proposed.
+- A refresh's dead rows cost the first reader most (it sets hint bits and marks dead index entries, the `written` buffers): up to 321 ms. The second pass is back near the first two columns. Autovacuum vacuumed and analyzed every leaf partition of the slot on its own, from 03:52:20 to 03:53:42 (the refresh ended at 03:51:50); a pass after it gave 0.3 to 27.8 ms, and 155 ms for departure order from Madrid with the cache emptied by the vacuum.
+
+**Over HTTP.** First pages of the twelve sort × filter searches: 9 to 60 ms uncached (the very first request after startup, 104 ms), then 4.6 to 6.8 ms from the cache (12 `search:*` keys in Valkey after the first pass). Fifty pages through their cursors, as "Load more": `sort=price` gave 1,000 rows, 1,000 distinct, median 5.0 ms, page 50 7.0 ms; `sort=departure&origin=MAD` gave 1,000 rows, 1,000 distinct, median 16.8 ms, max 57.2 ms. The first walk, started in the same minute as the 24 first-page requests, met a `429` at its 37th page: the limit counting as designed.
+
+**The stale-origin refresh (Q2; Task 7's F2 and C1).** Run 1 published at 03:27:16 (`published_at` is the run's start). At 03:37:21, `GET /api/itineraries?origin=MAD` (200 in 34 ms) claimed Madrid and started its refresh. The publication row's holders were sampled every 20 ms (`pg_locks`, `RowShareLock` on `inventory_publication`, joined to `pg_stat_activity`, `pg_stat_clear_snapshot()` before each sample):
+
+| Refresh | Search to `ended` line | Itineraries rewritten | Row held | `DELETE` | Build and `COPY` |
+|---|---|---|---|---|---|
+| MAD alone (generation 2) | 15.0 s | 530,603 | 13.9 s | 1.5 s | 12.4 s |
+| CDG, with LIS and LHR at once (generation 3) | 14.8 s | 327,102 | 14.0 s | 3.2 s | 10.7 s |
+| MAD again, after run 3 (generation 6) | 18.7 s | 530,603 | not sampled | | |
+
+- The download of one origin from the three providers took about 1 s (the search at 03:37:21.8, the rewrite's transaction at 03:37:22.8); the rest is the rewrite. The refresh builds the whole inventory and pushes each itinerary with a leg from the origin into the `COPY` as it is built, so the build happens while the row is held (C1, measured: about 12 of the 14 s).
+- A refresh of a hub rewrites half the inventory: Madrid's 530,603 rows are 51 % of 1,033,722, because every trip with any leg from Madrid is rewritten, the connections through it included.
+- **Three origins at once** (LIS, LHR and CDG at 03:38:25): CDG took the row. LIS's refresh failed at 03:38:31.5 (`55P03`, `canceling statement due to lock timeout`, one `ERROR` line). LHR's failed at 03:38:36.5, after 8.2 s: its `FOR UPDATE` queued behind LIS's tuple lock, and its 5 s lock timeout started again when LIS gave up. So a queue of refreshes waits up to 5 s per refresh ahead of it, and each one that waits 5 s for the row fails. LIS and LHR stayed unmarked, to be asked again once their claims expire (2 min).
+- Uncached searches during the burst (`sort=departure&maxPrice=500&carrier=FR`, one a second): 64 to 409 ms while the refreshes ran, 18 to 51 ms after.
+- The app container held 436 to 454 MiB during the refreshes.
+
+**Re-price (Q4, Q9).** Each with `curl -X POST`, timed:
+- Every provider up: `e2cf4f40-…` (Alpha's IB1219 at 100.12) answered `PRICE_CHANGED` 110.17 in 0.20 s (the mock's drift), then `CONFIRMED` 110.17 in 0.31 s; the stored row read 110.17 with a new `quoted_at`, and the generation did not change (Q5-A). Other re-prices with every provider up: 0.13 to 1.03 s.
+- Beta failing every request (an uncommitted override, `MOCKGDS_PROVIDERS_BETA_ERRORRATE: "1"`, `up -d --no-deps mock-gds`): `7978e26a-…` (Beta's BA1178, also sold by the two others) answered `PRICE_CHANGED` 166.52 (was 132.78) from another provider's offer, in 5.8 s (Beta's attempts first); `c65421e9-…` (Beta's IB1219, sold by no other provider) answered `ALTERNATIVE` `efae7616-…` at 106.19 with the exact §6.5 notice, in 1.5 s; `4b8876ee-…` `PRICE_CHANGED` in 0.55 s.
+- Every provider stopped (`docker compose stop mock-gds`): three re-prices answered `503`, `Retry-After: 60` and the exact §6.5 `detail`, in **13.8 s**, 1.35 s and 0.02 s; none of the three stored rows changed. The first passed the 10 s budget by one quote in flight: the budget stops new quotes, and a quote already started is bounded by its provider's own timeouts (Q9). `provider.calls{operation=quote}` showed why: Alpha `TIMEOUT` (the JVM had cached the stopped container's address, so each attempt waited out the 2.5 s request timeout). Then the breakers opened (Alpha 03:32:29, Gamma 03:32:31; Beta's was open already), and the next re-prices failed at once on `CIRCUIT_OPEN`.
+- Once `mock-gds` was back, the breakers went half-open and closed on the next calls (`HALF_OPEN` to `CLOSED` at 03:37:22), and health went from `DEGRADED` back to `UP`.
+
+**Search with Valkey stopped.** `docker compose stop valkey` at 03:39:31: Lettuce's reconnection lines and one `WARN` from `ValkeyFailures` (`Valkey is unavailable: searches run without the result cache, refresh claims and request counts until it answers again`). Then 12 searches of the cached first page answered in 3.8 to 10.7 ms (5 with Valkey up: 4.4 to 28.9 ms), and two uncached ones in 15 and 29 ms: no 250 ms command timeout was paid, since a disconnected client rejects commands at once. `/actuator/health` was `DEGRADED`, HTTP 200. `docker compose start valkey`: Lettuce reconnected within a second, `Valkey answers again` (INFO) came with the next search, and health was `UP`.
+
+**Rate limit.** Once Valkey's `rate:*` keys had expired, 61 searches sent within one second (03:40:31): 60 answered `200`, the 61st `429` with `Retry-After: 59`, `application/problem+json`, and the `detail` *"Too many requests from this address: try again after the seconds in Retry-After."* A first attempt, at the start of a clock minute, gave 52 `200`s and 9 `429`s: a window starts at the first request it counts (`PEXPIRE … NX`), not at the clock minute, and the searches of the previous half minute were in it.
+
+**Admin and health.** `GET /api/admin/status` with a client-credentials token: generation 3, `publishedAt` 03:27:16, `nextIngestionAt` 03:57:44, each provider `UP` and `CLOSED` with its legs and discarded records. `POST /api/admin/ingestions`: `202` in 7 ms, then `409` *"An ingestion is already running."* at once. Ten `GET /actuator/health` (each runs the status use case, Task 12's C-m4): 3.3 to 14.7 ms.
+
+**Taken down:** `docker compose -p p5t13 down -v` removed the containers, the network and the volumes; nothing named `p5t13` was left.
+
+### Step 4: docs
+
+- `docs/architecture/search-api.md` (new): the endpoints, errors and contract; search with keyset, cursor and generation; the cache; the refresh; re-price; the rate limit; Valkey down; the admin side and health; and the measures above in short.
+- `README.md`: Valkey in "Run the aggregator", a run's 25 to 30 s instead of 12 to 15, the search's address; the Architecture index lists `search-api.md` (plan 5 and `openapi.json` were listed already). `docs/architecture/README.md` links it and the contract. `docs/architecture/ingestion.md`'s "Running it" gains plan 5's run time.
+- `docs/planning/roadmap.md`: plan 5 links its plan and reads "Plan 5: tasks done, end-of-plan review pending".
+
+### Gates and self-review
+
+- `./gradlew build` exit 0 before each commit. Tests: `domain` 91, `application` 109, `adapters/persistence` 123, `adapters/web` 69, `adapters/providers` 197, `bootstrap` 201 (17 new cases: 14 in `OpenApiContractTest`, 3 in `ComposeFileTest`), architecture 39, `mock-gds` 201; none failed or skipped. `npm run verify` in `frontend/` exit 0 (89 tests) with the regenerated `schema.d.ts`. The three commits were then rebased on `main` at `396bc6c` (plan 6 Task 8, frontend only) with no conflict: `npm ci`, `npm run api:generate` (no change to `schema.d.ts`) and `npm run verify` exit 0 (111 tests), and `./gradlew build` exit 0.
+- Thermo-nuclear self-review of the diff:
+  - The contract's security lives in one place, on the controller it describes, with springdoc's own annotations: no customizer, no second place to keep in step. The 401 and 403 are class-level, so a new admin operation inherits them. `content = @Content` is springdoc's documented way to say "no body".
+  - The tests check each operation's whole set of statuses, so a status added or lost anywhere fails one row; the invariants (the paths, the scheme) are asserted once, not per row.
+  - Compose follows its existing tests' pattern (`ComposeFile`, the image constant the tests run).
+  - Nothing can fail silently or be left half-applied: the change is documentation, configuration and tests.
+  - No file near 1,000 lines (`OpenApiContractTest` 373, `ComposeFileTest` 194).
+
+### Extras for the user to decide
+
+- **Valkey without snapshots or a volume.** The image declares `/data` a volume and, with no `--save`, Valkey writes RDB snapshots of the cache there; each `up` leaves an anonymous volume that `down` without `-v` keeps. `--save ""` and a `tmpfs` on `/data`, as Prometheus has, would keep the cache a cache. Cost: two lines and a `ComposeFileTest` row. Left out unless you approve.
+- **One refresh at a time, or a refresh that waits like a run.** Measured: a refresh holds the publication row about 14 s, so any second refresh in that time fails at its 5 s lock timeout (two of three in the burst), and its origin waits 2 min for its claim to expire. Options already named by Task 7: the refresh waits 60 s as a run does; refreshes take turns through a lock; or a refresh that finds the row held skips at once (`NOWAIT`), with no `ERROR` line. Cost: a constant or a lock, and tests in persistence and bootstrap. Left out unless you approve.
+- **Build before taking the row (Task 7's C1).** About 12 of the 14 s held are the build and the `COPY`. Building first (into a temporary table, or into memory for one origin), then deleting and inserting under the row, would shorten the hold to the `DELETE` and the insert. Cost: a second copy path in the repository, and its tests. Left out unless you approve.
+- **A GIN index on `legs`** (Q2-B: "if Task 13 measures it slow"): measured, the `DELETE` is 1.5 to 3.2 s of a 14 s hold, so the index would save little and slow every run's `COPY`. Not proposed; recorded to close the question.
+
+### Concerns
+
+- **The first `503` with every provider down took 13.8 s.** It keeps Q9 as written (no quote starts after 10 s), but a client waits the budget plus one quote in flight, up to about 18 s. If "503 within the budget" means the answer, the quote in flight would have to be cancelled at the budget (a time limit on the whole re-price). For the user.
+- **A refresh rewrites every trip with a leg from its origin,** half the inventory for a hub. With the 10 min threshold, each busy origin can be refreshed every 10 min, each rewrite holding the row about 14 s: meanwhile a run waits (up to its 60 s) and re-prices store nothing (`BUSY`). Every case measured here worked; this is the cost Q2-B accepted, now with numbers.
+- **E2 (Swagger UI) is approved, but no task built it.** Task 9 recorded it; this task's scope is the contract file, so it stays out. For the controller or the user.
