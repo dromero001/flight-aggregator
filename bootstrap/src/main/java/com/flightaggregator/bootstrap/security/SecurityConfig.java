@@ -44,6 +44,10 @@ class SecurityConfig {
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/itineraries")
                     .permitAll()
+                    // A HEAD is the search without its body (RFC 9110), answered by the same
+                    // endpoint and counted by the same rate limit.
+                    .requestMatchers(HttpMethod.HEAD, "/api/itineraries")
+                    .permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/itineraries/*/reprice")
                     .permitAll()
                     // The health status on the API's own port, the additional path of
