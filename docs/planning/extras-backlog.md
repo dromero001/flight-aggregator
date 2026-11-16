@@ -42,3 +42,9 @@ Extras that a review turned into a finding are not here: they are fixed in the c
 | Choose the end-to-end browsers with an environment variable (`E2E_BROWSERS`), so `npm run e2e` works where a browser does not start (Firefox on macOS 27) | Task 10 | local runs on any Mac | config, docs |
 | Keep screenshots and traces of failed end-to-end tests | Task 10 | easier diagnosis of CI failures | config, artefacts |
 | E3, airport and airline suggestions in the filters (approved, but needs a catalogue endpoint no task builds) | plan 6 | no IATA codes to know | an endpoint, a combobox, accessibility tests |
+
+## Plan 7, observability and delivery
+
+| Extra | Proposed by | Value | Cost |
+|---|---|---|---|
+| Measure the Valkey cache hit ratio under a realistic, synthetic search load, so `SOLUTION.md` can cite a figure instead of saying it is unmeasured. Out by the user's decision of 2026-11-16: too big a change at this stage of the project, with the delivery due the same day | Task 9 (the draft's review point 2) | evidence for Valkey's place | a load script with a realistic route mix, a measured run, the figure and its method in the docs |
