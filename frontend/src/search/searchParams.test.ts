@@ -30,7 +30,7 @@ test('reports each invalid value as a field error', () => {
     carrier: 'Enter a 2-character airline code, like IB',
     maxPrice: 'Enter an amount in euros above 0, like 150 or 149.99',
   });
-  for (const maxPrice of ['0', '1e3', 'abc', '1.234', '0.00', '1234567890']) {
+  for (const maxPrice of ['0', '1e3', 'abc', '1.234', '0.00', '1234567890', '55,555', '1,2,3']) {
     expect(parseSearch(new URLSearchParams({ maxPrice })).errors).toHaveProperty('maxPrice');
   }
   expect(parseSearch(new URLSearchParams({ maxPrice: '0.50', origin: 'LHR' })).errors).toEqual({});
@@ -62,4 +62,21 @@ test('normalises codes and amounts', () => {
     sort: 'departure',
   });
   expect(errors).toEqual({});
+});
+
+test.each([
+  ['55,5', '55.5'],
+  ['149,99', '149.99'],
+])('reads the decimal comma of %j as a dot', (maxPrice, expected) => {
+  const { criteria, errors } = parseSearch(new URLSearchParams({ maxPrice }));
+
+  expect(criteria.maxPrice).toBe(expected);
+  expect(errors).toEqual({});
+});
+
+test('keeps an amount with more than one comma as typed, and rejects it', () => {
+  const { criteria, errors } = parseSearch(new URLSearchParams({ maxPrice: '1,2,3' }));
+
+  expect(criteria.maxPrice).toBe('1,2,3');
+  expect(errors).toEqual({ maxPrice: 'Enter an amount in euros above 0, like 150 or 149.99' });
 });

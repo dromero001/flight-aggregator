@@ -45,9 +45,14 @@ const RULES: Record<FilterField, Rule> = {
   },
 };
 
+/** A decimal comma ("55,5") read as a dot; text with more than one comma is left for validation. */
+function withDecimalPoint(amount: string): string {
+  return amount.split(',').length === 2 ? amount.replace(',', '.') : amount;
+}
+
 function normalise(field: FilterField, raw: string | null): string {
   const value = (raw ?? '').trim();
-  return field === 'maxPrice' ? value : value.toUpperCase();
+  return field === 'maxPrice' ? withDecimalPoint(value) : value.toUpperCase();
 }
 
 export function parseSearch(params: URLSearchParams): {

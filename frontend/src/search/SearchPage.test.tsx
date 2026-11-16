@@ -735,6 +735,17 @@ test('searches the airports of the cities typed in From and To by their codes', 
   expect(screen.getByLabelText('To')).toHaveValue('JFK');
 });
 
+test('searches a maximum price typed with a decimal comma with a dot', async () => {
+  const user = userEvent.setup();
+  renderAt('/');
+  await user.type(screen.getByLabelText('Max price'), '55,5');
+
+  await user.click(screen.getByRole('button', { name: 'Search' }));
+
+  expect(screen.getByLabelText('location')).toHaveTextContent('?maxPrice=55.5');
+  expect(screen.getByLabelText('Max price')).toHaveValue('55.5');
+});
+
 test('keeps the searched values in the inputs while a new search is applied', async () => {
   // The router applies the new URL in a transition, after the submit's own render.
   const user = userEvent.setup();
