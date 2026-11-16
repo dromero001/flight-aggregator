@@ -15,8 +15,9 @@ import java.util.stream.Stream;
  * One keyset page of a slot (§5.4), as SQL made of fixed fragments and the values of its {@code ?}
  * parameters: the departures after now (§4.1), each filter present (§4: Max Price inclusive,
  * Carrier on {@code single_carrier}), the rows after the seek position, in the sort key and then
- * id. The sort key and id are the last columns of one of V5's indexes, so the seek and the order
- * are an index scan. The table comes from {@link Slot}; no value is ever written into the text.
+ * id. The sort key and id are the last columns of one of V5's or V8's indexes (an origin alone, an
+ * origin and destination, or neither in front), so the seek and the order are an index scan. The
+ * table comes from {@link Slot}; no value is ever written into the text.
  */
 record KeysetQuery(String sql, List<Object> parameters) {
 
