@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ApiError } from '../api/apiError';
+import { ApiError, rateLimitWait } from '../api/apiError';
 import type { RepriceResponse } from '../api/types';
 import { price } from './format';
 import { LegList } from './LegList';
@@ -19,13 +19,12 @@ const CANNOT_CONFIRM = "We can't confirm the price right now. Please try again i
  * price could not be confirmed now.
  */
 function failure(error: Error): string {
-  if (error instanceof ApiError) {
-    if (error.status === 404) {
-      return 'This flight is no longer available. Search again for current flights.';
-    }
-    if (error.status === 429 && error.retryAfterSeconds !== undefined) {
-      return `Too many price checks from your connection. Try again in ${String(error.retryAfterSeconds)} seconds.`;
-    }
+  if (error instanceof ApiError && error.status === 404) {
+    return 'This flight is no longer available. Search again for current flights.';
+  }
+  const wait = rateLimitWait(error);
+  if (wait !== undefined) {
+    return `Too many price checks from your connection. Try again in ${String(wait)} seconds.`;
   }
   return CANNOT_CONFIRM;
 }
