@@ -51,6 +51,9 @@ export default defineConfig({
   use: {
     // The dashboard as compose publishes it; E2E_BASE_URL points at a stack on other ports.
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
+    // Kept in outputDir for a failed test only, which CI uploads with the report.
+    screenshot: 'only-on-failure',
+    trace: 'retain-on-failure',
   },
   projects: projects.map((project, index) => ({
     ...project,
