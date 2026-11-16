@@ -26,7 +26,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.micrometer.tracing.test.autoconfigure.AutoConfigureTracing;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -35,6 +34,7 @@ import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -43,6 +43,9 @@ import org.springframework.test.context.DynamicPropertySource;
  * traceparent}. Tracing is on, as in production, and the spans are kept in memory. The providers
  * are {@link OneFlightProviders}: a run publishes IB3170 Madrid-London, and its re-price asks Alpha
  * for one quote.
+ *
+ * <p>No other class shares its context, so it is closed after the class, and its connections do not
+ * count against the shared PostgreSQL's limit.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -54,7 +57,7 @@ import org.springframework.test.context.DynamicPropertySource;
     })
 @ImportTestcontainers(PostgresContainers.class)
 @AutoConfigureTracing
-@AutoConfigureMetrics
+@DirtiesContext
 class TracingEndToEndTest {
 
   @RegisterExtension static final WireMockExtension PROVIDERS = OneFlightProviders.server();

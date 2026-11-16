@@ -54,8 +54,10 @@ dependencies {
     testImplementation(libs.spring.security.test)
     testImplementation(libs.spring.boot.resttestclient)
     testImplementation(libs.spring.boot.restclient)
-    // Tracing on in a test, and its spans kept in memory (TracingEndToEndTest).
-    testImplementation(libs.spring.boot.starter.opentelemetry.test)
+    // Tracing on in a test (@AutoConfigureTracing), and its spans kept in memory. Not Boot's
+    // OpenTelemetry test starter: it also brings the metrics test module, which turns every
+    // other test's metrics export off (ManagementPortTest's scrape answered 404).
+    testImplementation(libs.spring.boot.micrometer.tracing.test)
     testImplementation(libs.opentelemetry.sdk.testing)
 }
 
