@@ -82,6 +82,10 @@ Every implementer below writes its report in its own worktree, at `.superpowers/
 
 Lessons for every brief: each subagent uses a private scratch folder of its own (one overwrote another's mutation script in the shared scratchpad). The guard fix is on `main` since `71184d9`, so a plus sign after a plain push no longer blocks; a destructive command quoted as text (for example in a script written by a heredoc) is still blocked, so write such text with a file.
 
+## Priority (the user's decision of 2026-11-16, about 08:20)
+
+- **The search application working first, monitoring and traces after.** Order: plan 5's closing rounds (2, then 1 rebased on it, then 3) re-reviewed and on `main`; plan 6's closing round re-reviewed and on `main`; the controller's hands-on run of search, re-price and the dashboard on a fresh stack, and the user's try by hand. Only then plan 7: Task 4 and Task 6 (already approved or in review) are integrated after plans 5 and 6 close, and Tasks 5 and 7 start then. Reviews already running finish, but no new plan 7 implementer starts before plans 5 and 6 are closed.
+
 ## Speed rules (the user's decision of 2026-11-16, about 00:30)
 
 - Plan 6 Tasks 6, 7 and 8: no per-task review; integrate after `npm run verify` and the controller's `./gradlew build`; the end-of-plan triple review covers them. Every other task keeps its per-task review.
