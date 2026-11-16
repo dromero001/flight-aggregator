@@ -1,6 +1,7 @@
 package com.flightaggregator.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 import com.flightaggregator.application.port.in.Admission;
 import com.flightaggregator.application.port.in.RateLimit;
@@ -23,6 +24,21 @@ class RateLimitServiceTest {
 
   private final InMemoryRequestCounter counter = new InMemoryRequestCounter();
   private final RateLimitService limits = new RateLimitService(counter, LIMITS);
+
+  /**
+   * Every rate-limited action has a limit, or the service is not built: the application stops at
+   * startup, naming the action, instead of failing its first request (G1, the user's decision of
+   * 2026-11-16).
+   */
+  @Test
+  void refusesLimitsThatLeaveAnActionOut() {
+    Map<RateLimitedAction, RateLimit> searchOnly =
+        Map.of(RateLimitedAction.SEARCH, new RateLimit(3, Duration.ofMinutes(1)));
+
+    assertThatIllegalArgumentException()
+        .isThrownBy(() -> new RateLimitService(counter, searchOnly))
+        .withMessage("Every rate-limited action needs a limit; none is set for [REPRICE]");
+  }
 
   @Test
   void admitsUpToTheLimitInAWindow() {
