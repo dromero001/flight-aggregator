@@ -53,7 +53,8 @@ class RefreshConfig {
       RefreshStaleRoute refreshes,
       LockingTaskExecutor locks,
       RefreshCoordination coordination,
-      Clock clock) {
-    return new BackgroundRefresh(refreshes, locks, coordination, clock);
+      Clock clock,
+      ThreadFactory contextThreads) {
+    return new BackgroundRefresh(refreshes, locks, coordination, clock, contextThreads);
   }
 }

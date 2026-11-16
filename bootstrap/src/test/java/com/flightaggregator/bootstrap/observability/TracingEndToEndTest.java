@@ -6,7 +6,6 @@ import static org.awaitility.Awaitility.await;
 import com.flightaggregator.bootstrap.PostgresContainers;
 import com.flightaggregator.bootstrap.ingestion.IngestionJob;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
-import com.github.tomakehurst.wiremock.stubbing.ServeEvent;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
@@ -224,11 +223,7 @@ class TracingEndToEndTest {
 
   /** The trace id of every provider request, read from its {@code traceparent}; null if none. */
   private static List<String> traceparents() {
-    return PROVIDERS.getAllServeEvents().stream()
-        .map(ServeEvent::getRequest)
-        .map(request -> request.getHeader("traceparent"))
-        .map(header -> header == null ? null : header.split("-")[1])
-        .toList();
+    return OneFlightProviders.traceIds(PROVIDERS);
   }
 
   /** The trace id of the one exported span of that name. */
