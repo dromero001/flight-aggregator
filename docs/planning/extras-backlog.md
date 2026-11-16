@@ -21,6 +21,14 @@ The user decided on 2026-11-16, about 15:05, to build these before delivery; the
 
 Also built in G1, though not a backlog row: an anonymous `HEAD /api/itineraries` is answered as the public search it is (spec §6.6), where it was a `401`. The row "E3, airport and airline suggestions" is gone from plan 6's table: E3 was built on 2026-11-16.
 
+## Decided on 2026-11-16, about 17:55 (G3 and G4a, after the `v1.0.0` tag)
+
+The user chose to build two more groups before delivery, in parallel worktrees, with **one double review (functional, then code) over the whole range** and one fix round only for a Critical or Important; the final commit gets the tag `v1.1.0` once its CI is green (`v1.0.0` stays on `dc58627`). Each row leaves its table when it reaches `main`.
+
+- **G3, dashboard, end to end and CI:** a date on the alternative's legs; one shared renewal for concurrent 401s; `npm run dev` signs in; `openapi-typescript --check` instead of `schema.test.ts`; Playwright's browsers cached in CI; screenshots and traces of failed end-to-end tests kept; `E2E_BROWSERS`; `E2E_BASE_URL`.
+- **G4a, backend logs and metrics:** Valkey with `--save ""`; a `NOTHING_FRESH` refresh at WARN; each kept provider's failure reason in a refresh's report; refresh metrics; a counter of skipped refreshes; the three counters registered at zero at startup, and Grafana's `unless … offset 1h` terms dropped.
+- **Not chosen:** G4b (health before the first run, rescheduling from the last run, awaiting a manual run on shutdown) and G5 (M1, M4); every other row stays in the backlog.
+
 ## Plan 5, search API
 
 | Extra | Proposed by | Value | Cost |
