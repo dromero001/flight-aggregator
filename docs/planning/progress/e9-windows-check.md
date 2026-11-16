@@ -71,3 +71,7 @@ Each failure was logged as one `ERROR` line with its cause. Before the first pub
 3. **The README's token command needs `python3`, which a stock Windows does not have** (the name runs the Microsoft Store alias), and the `jq` alternative is not shipped either. *Proposal:* a command with no extra tool, for example `| sed -E 's/.*"access_token":"([^"]+)".*/\1/'`, or a PowerShell variant with `Invoke-RestMethod`.
 4. **The README does not say how much memory Docker needs.** Measured here: the containers peak at about 2.8 GB; with the VM capped at 2 GB the first attempt could not even finish pulling on a busy host. *Proposal:* state "Docker needs about 4 GB of memory" in "Run the aggregator", and that the first `--build` takes several minutes (23 here).
 5. *Minor:* Grafana logs two errors at startup for the missing `provisioning/plugins` and `provisioning/alerting` folders; empty folders (or not mounting them) would silence them.
+
+## Afterwards
+
+Finding 1 was fixed on 2026-11-16 by the user's decision: Keycloak's health check now has a `start_period` of 300 s (`compose.yaml`, pinned by `ComposeFileTest.waitsFiveMinutesForKeycloakToStartBeforeCallingItUnhealthy`), so one `docker compose up --build` boots the stack on a machine like this one. Findings 2 to 5 are documented in the README's "Requirements" (minimum hardware and what to do on an older machine).

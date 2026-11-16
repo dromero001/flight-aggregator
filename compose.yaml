@@ -149,7 +149,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 40s
+      # Keycloak took about 250 s to start on a 4-core laptop (the Windows check, E9). The start
+      # period ends as soon as the check passes, so a fast machine waits no longer.
+      start_period: 300s
 
   mock-gds:
     restart: unless-stopped

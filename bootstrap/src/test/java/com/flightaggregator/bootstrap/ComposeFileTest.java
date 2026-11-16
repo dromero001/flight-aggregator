@@ -9,6 +9,7 @@ import com.flightaggregator.bootstrap.security.KeycloakImage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -102,6 +103,25 @@ class ComposeFileTest {
     assertThat((Map<String, Object>) app.get("depends_on"))
         .containsEntry("valkey", Map.of("condition", "service_healthy"))
         .containsEntry("keycloak", Map.of("condition", "service_healthy"));
+  }
+
+  /**
+   * Keycloak started in about 250 s on a 4-core laptop (the Windows check, E9); a health check that
+   * gives up sooner fails the first {@code docker compose up --build} and leaves the app and the
+   * dashboard unstarted. A start period ends as soon as the check passes, so a fast machine waits
+   * no longer.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void waitsFiveMinutesForKeycloakToStartBeforeCallingItUnhealthy() throws IOException {
+    Map<String, Object> healthcheck =
+        (Map<String, Object>) ComposeFile.services().get("keycloak").get("healthcheck");
+
+    assertThat(seconds(healthcheck.get("start_period"))).isGreaterThanOrEqualTo(300);
+  }
+
+  private static long seconds(Object composeDuration) {
+    return Duration.parse("PT" + composeDuration.toString().toUpperCase()).toSeconds();
   }
 
   @Test

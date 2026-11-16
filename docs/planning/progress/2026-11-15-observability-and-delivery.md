@@ -1393,3 +1393,7 @@ The review of G1's branch: **Functional APPROVED, Code APPROVED**, and the user 
 ### Gates after the rebase
 - `./gradlew build`: BUILD SUCCESSFUL, 1,138 tests, none failed or skipped.
 - `npm run verify` in `frontend/`: exit 0, 174 tests in 22 files.
+
+## Keycloak's start period (E9 finding 1)
+
+The requirements audit noted that the statement asks the stack to "boot flawlessly" with one command, which a slow machine's first start missed (Keycloak unhealthy after about 140 s). **The user's decision (about 16:01): lengthen it** and update the documentation written for the earlier choice. `ComposeFileTest.waitsFiveMinutesForKeycloakToStartBeforeCallingItUnhealthy` (Keycloak's `start_period` at least 300 s): red `Expecting actual: 40L to be greater than or equal to: 300L`; green with `start_period: 300s`. The README's step 2 of "On an older or slower machine" and the [Windows record](e9-windows-check.md#afterwards) say so.
