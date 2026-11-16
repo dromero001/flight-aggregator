@@ -6,6 +6,8 @@ import com.flightaggregator.application.port.in.SortOrder;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Carrier;
 import com.flightaggregator.domain.Money;
+import java.lang.reflect.RecordComponent;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -30,9 +32,14 @@ record SearchParameters(
     String limit,
     String cursor) {
 
-  /** Every parameter the search takes, in the order the contract lists them. */
+  /**
+   * Every parameter the search takes: this record's components, which {@link SearchController}
+   * binds one to one, so the list cannot drift from them.
+   */
   static final List<String> NAMES =
-      List.of("origin", "destination", "maxPrice", "carrier", "sort", "limit", "cursor");
+      Arrays.stream(SearchParameters.class.getRecordComponents())
+          .map(RecordComponent::getName)
+          .toList();
 
   static final String AIRPORT = "^[A-Za-z]{3}$";
   static final String CARRIER = "^[A-Za-z0-9]{2}$";
