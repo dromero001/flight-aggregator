@@ -24,6 +24,8 @@ import com.flightaggregator.application.port.out.FailureReason;
 import com.flightaggregator.application.port.out.Publication;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
 import java.io.IOException;
 import java.sql.SQLException;
@@ -135,6 +137,50 @@ class IngestionJobTest {
                     .isSameAs(outOfMemory));
     assertThat(runs("FAILED")).isEqualTo(1);
     assertThat(meters.get("ingestion.consecutive.failures").gauge().value()).isEqualTo(1);
+  }
+
+  /**
+   * A failed run's span ends with the run's failure as its error, so Tempo shows the run failed and
+   * not only its ERROR line.
+   */
+  @Test
+  void endsAFailedRunsObservationWithItsError() {
+    IllegalStateException failure = new IllegalStateException("database down");
+    ObservationRegistry observations = ObservationRegistry.create();
+    List<Observation.Context> stopped = new ArrayList<>();
+    observations
+        .observationConfig()
+        .observationHandler(
+            new ObservationHandler<>() {
+              @Override
+              public boolean supportsContext(Observation.Context context) {
+                return true;
+              }
+
+              @Override
+              public void onStop(Observation.Context context) {
+                stopped.add(context);
+              }
+            });
+    IngestionJob job =
+        new IngestionJob(
+            () -> {
+              throw failure;
+            },
+            metrics,
+            new DefaultLockingTaskExecutor(configuration -> Optional.of(() -> {})),
+            () -> STARTED_AT,
+            observations);
+
+    job.run();
+
+    assertThat(stopped)
+        .singleElement()
+        .satisfies(
+            context -> {
+              assertThat(context.getName()).isEqualTo(IngestionJob.RUN_OBSERVATION);
+              assertThat(context.getError()).isSameAs(failure);
+            });
   }
 
   /** A failed run is timed like any other, under its outcome, from the run's start to its end. */

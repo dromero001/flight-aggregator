@@ -49,7 +49,10 @@ public final class IngestionJob implements IngestionLauncher {
    */
   private static final Duration LOCK_AT_LEAST_FOR = Duration.ZERO;
 
-  /** The observation of one run: its span is the root of the run's trace. */
+  /**
+   * The observation of one run: the root span of a run on demand, under Spring's {@code task
+   * ingestionJob.run} for a scheduled one. A failed run's span ends with its error.
+   */
   public static final String RUN_OBSERVATION = "ingestion.run";
 
   private final IngestInventory ingestion;
@@ -58,7 +61,10 @@ public final class IngestionJob implements IngestionLauncher {
   private final Clock clock;
   private final ObservationRegistry observations;
 
-  /** Each run, scheduled or on demand, is observed as {@code ingestion.run}: one trace (§6.10). */
+  /**
+   * Each run, scheduled or on demand, is observed as {@code ingestion.run}, the root of a run on
+   * demand's trace and, for a scheduled run, under Spring's {@code task ingestionJob.run} (§6.10).
+   */
   public IngestionJob(
       IngestInventory ingestion,
       IngestionMetrics metrics,
@@ -121,11 +127,12 @@ public final class IngestionJob implements IngestionLauncher {
    * that ran, or failed, was not.
    */
   private boolean runUnderTheLock(Runnable onceLocked) {
-    return Observation.createNotStarted(RUN_OBSERVATION, observations)
-        .observe(() -> tryUnderTheLock(onceLocked));
+    Observation run = Observation.createNotStarted(RUN_OBSERVATION, observations);
+    return run.observe(() -> tryUnderTheLock(run, onceLocked));
   }
 
-  private boolean tryUnderTheLock(Runnable onceLocked) {
+  /** A failure is caught here, so it is recorded on the run's observation, which ends with it. */
+  private boolean tryUnderTheLock(Observation observation, Runnable onceLocked) {
     // Removed in the finally, after the catch, so that a failed run's ERROR line carries it too.
     MDC.put(CorrelationId.MDC_KEY, UUID.randomUUID().toString());
     Instant startedAt = clock.now();
@@ -146,6 +153,7 @@ public final class IngestionJob implements IngestionLauncher {
       // A runtime exception or an error: the run throws no checked exception, though ShedLock's
       // signature declares one.
       LOG.atError().setCause(e).log("An ingestion run failed");
+      observation.error(e);
       metrics.recordFailedRun(Duration.between(startedAt, clock.now()));
       if (e instanceof Error error) {
         // The JVM may be in trouble: counted and logged, then left to the scheduler, never kept.
