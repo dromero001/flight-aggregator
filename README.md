@@ -12,9 +12,32 @@ How it is built and why, with its assumptions and limitations: [SOLUTION.md](SOL
 - **At least 4 GB of memory for Docker.** Measured with `docker stats` on 2026-11-16 ([progress](docs/planning/progress/2026-11-15-observability-and-delivery.md#task-10--delivery-docs)): a stack just started from a clean clone used about 1.85 GB, and a stack running for hours used 1.8 to 2.3 GiB over nine minutes that included an ingestion run, its containers' peaks adding up to 2.6 GiB. The aggregator, Keycloak and Grafana take about half a gigabyte each. The rest leaves room for the image build, which was not measured. In Docker Desktop, this is its memory limit.
 - **Free host ports:** 3000, 3001, 8080, 8081, 8180 and 9090, each published on `127.0.0.1` only ([the services](#run-the-aggregator)). Only 3000 and 8180 are fixed, because Keycloak's hostname, the realm's redirect URIs and the token issuer name them; the others can be moved in a `compose.override.yaml` (for example `ports: !override ["127.0.0.1:18080:8080"]` under `app`). If 8180 is taken, Keycloak does not start, and neither do the aggregator and the dashboard, which wait for it.
 - **Linux with SELinux enforcing** (Fedora, RHEL): the configuration files are mounted read-only without a relabel, so Keycloak and the telemetry services cannot read them. Relabel the folder once with `chcon -R -t container_file_t deploy`, or, for a demo only, run `sudo setenforce 0`.
-- **amd64 or arm64.** Every image `compose.yaml` pins, and every base image of the three Dockerfiles, is a multi-arch image with both. The stack has run on macOS arm64 (the author's Mac) and on Linux amd64 (CI's `e2e` job builds and starts it from a clean checkout on every push).
+- **amd64 or arm64.** Every image `compose.yaml` pins, and every base image of the three Dockerfiles, is a multi-arch image with both. The stack has run on macOS arm64 (the author's Mac), on Linux amd64 (CI's `e2e` job builds and starts it from a clean checkout on every push) and on Windows 11 amd64 with Docker Desktop's WSL 2 backend ([Windows check](docs/planning/progress/e9-windows-check.md)).
 
-<!-- E9: Windows notes go here -->
+### Minimum hardware
+
+The stack is eleven containers, two Java builds and a million-row ingestion, so the machine matters more than the operating system. Measured on 2026-11-16:
+
+| | Minimum | Recommended | Where it was measured |
+|---|---|---|---|
+| CPU | 4 cores | 8 cores or Apple silicon | A 4-core Ryzen 5 3500U laptop ran the stack, slowly; the author's Apple-silicon Mac and CI's runner run it at the speeds this README quotes |
+| Memory for Docker | 4 GB | 6 GB or more | The containers peak at 2.6 to 2.8 GB (above, and the [Windows check](docs/planning/progress/e9-windows-check.md)); a 2 GB limit could not even finish pulling the images |
+| Host memory | 8 GB | 16 GB | The 6.9 GB Windows laptop needed its other workloads closed |
+| Free disk | a few GB | | Images, the three volumes and the build cache |
+
+On a machine at the recommended level the first `docker compose up --build` takes a few minutes and a run about a minute ([Observability](#observability)). On the 4-core laptop the first build took 23 minutes and a run 4 to 6 minutes ([Windows check](docs/planning/progress/e9-windows-check.md)).
+
+### On an older or slower machine
+
+The stack works below the recommended level, but its first start can need a hand. What to do, in order:
+
+1. **Give Docker the memory and close the rest.** In Docker Desktop, Settings → Resources: at least 4 GB of memory (6 GB if you can) and every CPU you can spare. Close other heavy applications before the first build.
+2. **If the first `docker compose up --build` ends with `keycloak` unhealthy,** Keycloak took longer to start than its health check allows (about 250 s on the Windows laptop, against about 140 s), so the aggregator and the dashboard were not started. The images are built by then: run `docker compose up -d --wait` again, and the stack starts in about a minute.
+3. **If the dashboard still shows no flights a few minutes after the start,** the first ingestion run may have failed. Look for it with `docker compose logs app | grep "ingestion run failed"`. A `canceling statement due to statement timeout` means the run's database write took longer than its 5-minute bound; a `lock timeout` means a stale-route refresh held the inventory at that moment. Either way the next run, 30 minutes later, tries again; to try now, use "Run ingestion now" on `http://localhost:3000/admin` or the [admin call](#admin-access) `POST /api/admin/ingestions`, with the machine otherwise idle. Until a run publishes, a search answers with no flights; after that, a failed run leaves the last published inventory in place.
+4. **On Windows, get the admin token without Python.** The token command in [Admin access](#admin-access) uses `python3`, which a stock Windows lacks (the name opens the Microsoft Store). Use the `jq` variant it mentions (`winget install jqlang.jq`), or, in Git Bash with no extra tool, end the command with `| sed -E 's/.*"access_token":"([^"]+)".*/\1/'` instead of the `python3` part.
+5. **Run the commands in Git Bash on Windows.** The README's commands are bash; the checkout's line endings are right whatever `core.autocrlf` says, because `.gitattributes` forces LF on every script and mounted file ([Windows check](docs/planning/progress/e9-windows-check.md)).
+
+These cost only time: none of them changes what the stack does. The user chose to document them rather than lengthen the health checks and the database bounds for slower machines (2026-11-16).
 
 ## Run the aggregator
 
@@ -259,6 +282,7 @@ The pipeline, the alert rules, the dashboard's panels, what is not collected and
   - [2026-11-15, plan 5 (search API)](docs/planning/progress/2026-11-15-search-api.md)
   - [2026-11-15, plan 6 (dashboard)](docs/planning/progress/2026-11-15-dashboard.md)
   - [2026-11-15, plan 7 (observability and delivery)](docs/planning/progress/2026-11-15-observability-and-delivery.md)
+  - [2026-11-16, E9: the clean-clone check on Windows](docs/planning/progress/e9-windows-check.md)
 
 ### 3. AI usage — how the agent was steered
 - [How this project uses AI](docs/ai/README.md): the process, the skills, plugins and hooks, and why each one
