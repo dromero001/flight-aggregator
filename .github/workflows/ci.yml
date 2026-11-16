@@ -98,6 +98,17 @@ jobs:
         working-directory: .
         run: docker compose up --build -d --wait
       - run: npm ci
+      # The browsers are cached by Playwright's version, which decides the builds it needs: on a hit,
+      # `playwright install` finds them and only installs the system packages they need.
+      - name: Playwright version
+        id: playwright
+        run: |
+          version=$(node -p "require('@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run e2e
       # cancelled() too: a job that hits timeout-minutes is cancelled, and its reports matter most.
