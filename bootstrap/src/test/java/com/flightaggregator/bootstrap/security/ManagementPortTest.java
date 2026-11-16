@@ -2,7 +2,7 @@ package com.flightaggregator.bootstrap.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.flightaggregator.bootstrap.PostgresContainers;
+import com.flightaggregator.bootstrap.AggregatorTest;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -17,7 +17,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalManagementPort;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.context.annotation.Bean;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -31,18 +30,7 @@ import tools.jackson.databind.json.JsonMapper;
  * gives the management server a random port too, since {@code application.yaml} sets a different
  * one.
  */
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {
-      "providers.alpha.base-url=http://localhost:1/",
-      "providers.alpha.api-key=alpha-key",
-      "providers.beta.base-url=http://localhost:1/",
-      "providers.beta.api-key=beta-key",
-      "providers.gamma.base-url=http://localhost:1/",
-      "providers.gamma.api-key=gamma-key",
-      "ingestion.schedule.enabled=false"
-    })
-@ImportTestcontainers(PostgresContainers.class)
+@AggregatorTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class ManagementPortTest {
 
   /** The bearer token that {@link AdminTokens} reads as one with the ADMIN realm role. */
