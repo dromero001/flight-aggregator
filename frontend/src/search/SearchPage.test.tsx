@@ -267,8 +267,26 @@ test('shows a failure without a problem body', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Flights could not be loaded. Search again in a moment.',
   );
-  // A 5xx may pass, so it is retried as TanStack does by default: three more times.
+  // A 5xx without Retry-After may pass, so it is retried as TanStack does by default: three more
+  // times.
   expect(requests).toBe(4);
+});
+
+test('does not retry a failure that says when to ask again', async () => {
+  let requests = 0;
+  server.use(
+    http.get(SEARCH, () => {
+      requests += 1;
+      return problem(503, 'The inventory could not be read in time.', { 'Retry-After': '60' });
+    }),
+  );
+  renderAt('/?origin=MAD');
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Flights could not be loaded. Search again in a moment.',
+  );
+  // Asking again at once would not be answered sooner than Retry-After says.
+  expect(requests).toBe(1);
 });
 
 test('tries a failed search again', async () => {
