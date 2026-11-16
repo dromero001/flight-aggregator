@@ -29,7 +29,7 @@ record SearchParameters(
 
   static final String AIRPORT = "^[A-Za-z]{3}$";
   static final String CARRIER = "^[A-Za-z0-9]{2}$";
-  static final String AMOUNT = "^[0-9]{1,9}(\\.[0-9]{1,2})?$";
+  static final String AMOUNT = "^(?!0+(\\.0{1,2})?$)[0-9]{1,9}(\\.[0-9]{1,2})?$";
   static final String PRICE = "price";
   static final String DEPARTURE = "departure";
   static final String DURATION = "duration";
@@ -64,11 +64,7 @@ record SearchParameters(
   }
 
   private static Optional<Money> maxPrice(String amount) {
-    Optional<Money> euros = matching(amount, AMOUNT, MAX_PRICE_RULE).map(Money::euros);
-    if (euros.filter(money -> money.compareTo(Money.ZERO) == 0).isPresent()) {
-      throw new InvalidParameterException(MAX_PRICE_RULE);
-    }
-    return euros;
+    return matching(amount, AMOUNT, MAX_PRICE_RULE).map(Money::euros);
   }
 
   private static Optional<Carrier> carrier(String code) {

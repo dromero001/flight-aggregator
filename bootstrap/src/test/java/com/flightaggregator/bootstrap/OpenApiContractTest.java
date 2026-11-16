@@ -9,6 +9,8 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -317,7 +319,8 @@ class OpenApiContractTest {
     assertThat(schema(parameters, "origin", "pattern")).isEqualTo("^[A-Za-z]{3}$");
     assertThat(schema(parameters, "destination", "pattern")).isEqualTo("^[A-Za-z]{3}$");
     assertThat(schema(parameters, "carrier", "pattern")).isEqualTo("^[A-Za-z0-9]{2}$");
-    assertThat(schema(parameters, "maxPrice", "pattern")).isEqualTo("^[0-9]{1,9}(\\.[0-9]{1,2})?$");
+    assertThat(schema(parameters, "maxPrice", "pattern"))
+        .isEqualTo("^(?!0+(\\.0{1,2})?$)[0-9]{1,9}(\\.[0-9]{1,2})?$");
     assertThat(parameters.get("sort").at("/schema/enum").valueStream().map(JsonNode::asString))
         .containsExactly("price", "departure", "duration");
     assertThat(schema(parameters, "sort", "default")).isEqualTo("price");
@@ -326,6 +329,24 @@ class OpenApiContractTest {
     assertThat(schema(parameters, "limit", "maximum")).isEqualTo("100");
     assertThat(schema(parameters, "limit", "default")).isEqualTo("20");
     assertThat(schema(parameters, "cursor", "maxLength")).isEqualTo("200");
+  }
+
+  /**
+   * The contract's {@code maxPrice} pattern states the whole rule the search applies, "above 0"
+   * included, so a client that checks a value against it is never answered 400 (plan 5 Task 9, C2).
+   */
+  @Test
+  void documentsAMaximumPriceAboveZero() throws Exception {
+    Map<String, JsonNode> parameters = new LinkedHashMap<>();
+    contract()
+        .at("/paths/~1api~1itineraries/get/parameters")
+        .forEach(parameter -> parameters.put(parameter.path("name").asString(), parameter));
+    Pattern maxPrice = Pattern.compile(schema(parameters, "maxPrice", "pattern"));
+
+    assertThat(Stream.of("0", "0.0", "0.00", "000.00", "000000000"))
+        .noneMatch(amount -> maxPrice.matcher(amount).matches());
+    assertThat(Stream.of("0.01", "0.5", "1", "150", "149.99", "999999999.99"))
+        .allMatch(amount -> maxPrice.matcher(amount).matches());
   }
 
   /** The re-price's id as the endpoint reads it: an itinerary id in its canonical form. */
