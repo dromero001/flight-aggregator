@@ -12,8 +12,13 @@ import io.opentelemetry.sdk.testing.exporter.InMemoryLogRecordExporter;
 import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.data.SpanData;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -21,6 +26,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.micrometer.tracing.test.autoconfigure.AutoConfigureTracing;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -37,6 +43,7 @@ import org.springframework.test.context.DynamicPropertySource;
  * count against the shared PostgreSQL's limit.
  */
 @SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
       "providers.alpha.api-key=alpha-key",
       "providers.beta.api-key=beta-key",
@@ -75,6 +82,7 @@ class LogExportTest {
   @Autowired private InMemorySpanExporter spans;
   @Autowired private SdkLoggerProvider loggers;
   @Autowired private SdkTracerProvider tracer;
+  @LocalServerPort private int port;
 
   @BeforeEach
   void startFromAnEmptyInventoryWithTheProvidersAnswering() {
@@ -99,6 +107,56 @@ class LogExportTest {
     assertThat(ended.getSpanContext().getTraceId()).isEqualTo(runTrace());
     assertThat(ended.getAttributes().get(AttributeKey.stringKey(CorrelationId.MDC_KEY)))
         .isNotBlank();
+  }
+
+  /**
+   * A line's key-value pairs travel as the record's attributes, so a provider that failed is still
+   * named with its reason: Beta, which sells nothing here, is kept with {@code EMPTY_DOWNLOAD}.
+   */
+  @Test
+  void exportsTheKeyValuePairsOfALine() {
+    job.run();
+
+    assertThat(exported())
+        .filteredOn(
+            record ->
+                record.getBodyValue().asString().startsWith("Kept the last good offers")
+                    && "BETA"
+                        .equals(record.getAttributes().get(AttributeKey.stringKey("provider"))))
+        .extracting(record -> record.getAttributes().get(AttributeKey.stringKey("reason")))
+        .containsExactly("EMPTY_DOWNLOAD");
+  }
+
+  /**
+   * Telemetry now leaves the process (Review Focus 5): no record of a run or of an admin call holds
+   * a provider's key or the caller's bearer token, in its body or in any attribute.
+   */
+  @Test
+  void exportsNoSecretInAnyLogRecord() throws Exception {
+    String token = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9.c2lnbmF0dXJl";
+    job.run();
+    try (HttpClient http = HttpClient.newHttpClient()) {
+      http.send(
+          HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/admin/status"))
+              .header("Authorization", "Bearer " + token)
+              .build(),
+          HttpResponse.BodyHandlers.discarding());
+    }
+
+    List<LogRecordData> exported = exported();
+    assertThat(exported).isNotEmpty();
+    assertThat(exported)
+        .flatExtracting(LogExportTest::texts)
+        .allSatisfy(
+            text -> assertThat(text).doesNotContain("alpha-key", "beta-key", "gamma-key", token));
+  }
+
+  /** The record's body and every attribute value, as text. */
+  private static List<String> texts(LogRecordData record) {
+    return Stream.concat(
+            Stream.of(record.getBodyValue().asString()),
+            record.getAttributes().asMap().values().stream().map(String::valueOf))
+        .toList();
   }
 
   private List<LogRecordData> exported() {

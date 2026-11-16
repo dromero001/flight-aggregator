@@ -13,6 +13,8 @@
   <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
     <!-- The run's or refresh's id (CorrelationId), as the record's attribute correlation.id. -->
     <captureMdcAttributes>correlation.id</captureMdcAttributes>
+    <!-- A line's key-value pairs (a provider, its reason, a run's outcome) as the record's attributes. -->
+    <captureKeyValuePairAttributes>true</captureKeyValuePairAttributes>
   </appender>
 
   <root level="INFO">
