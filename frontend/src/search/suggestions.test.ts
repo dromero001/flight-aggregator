@@ -22,11 +22,11 @@ function codesIn(text: string, pattern: RegExp): string[] {
 }
 
 /** The codes of the first column of the README's table under `## {title}`. */
-function readmeCodes(title: string, code: RegExp): string[] {
+function readmeCodes(title: string): string[] {
   const section = readFileSync(readme, 'utf8')
     .split(/^## /m)
     .find((text) => text.startsWith(`${title}\n`));
-  return codesIn(section ?? '', new RegExp(`^\\| (${code.source}) \\|`, 'gm'));
+  return codesIn(section ?? '', /^\| ([A-Z0-9]+) \|/gm);
 }
 
 test("the dashboard's airports, the aggregator's catalogue and the README hold the same codes", () => {
@@ -35,7 +35,7 @@ test("the dashboard's airports, the aggregator's catalogue and the README hold t
   expect(catalogueCodes).toHaveLength(32);
   expect([...AIRPORT_CITIES.keys()].sort()).toEqual(catalogueCodes);
   expect(
-    readmeCodes('Airports in the dataset', /[A-Z]{3}/),
+    readmeCodes('Airports in the dataset'),
     'README.md\'s "Airports in the dataset" table',
   ).toEqual(catalogueCodes);
 });
@@ -54,7 +54,7 @@ test("the dashboard's airlines, the mock's catalogue and the README hold the sam
   expect(mockAirlines).toHaveLength(12);
   expect([...CARRIER_NAMES].sort()).toEqual(mockAirlines);
   expect(
-    readmeCodes('Airlines in the dataset', /[A-Z0-9]{2}/),
+    readmeCodes('Airlines in the dataset'),
     'README.md\'s "Airlines in the dataset" table',
   ).toEqual(mockCodes);
 });
