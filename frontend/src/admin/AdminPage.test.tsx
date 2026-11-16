@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { expect, test, vi } from 'vitest';
 import App from '../App';
@@ -47,6 +48,19 @@ test('signs in with the served settings', async () => {
     await screen.findByRole('heading', { level: 1, name: 'Provider status' }),
   ).toBeInTheDocument();
   expect(createAuthClient).toHaveBeenCalledWith(CONFIG);
+});
+
+test('signs out through Keycloak', async () => {
+  // E4: ends Keycloak's session too, so the next visit asks for the password again.
+  server.use(http.get('*/config.json', () => HttpResponse.json(CONFIG)));
+  const auth = fakeAuth();
+  auth.getUser.mockResolvedValue(adminUser());
+  createAuthClient.mockReturnValue(auth);
+  renderAdmin();
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
+
+  expect(auth.signoutRedirect).toHaveBeenCalledOnce();
 });
 
 test('has no accessibility violations once signed in', async () => {

@@ -25,6 +25,15 @@ function AdminScreen({ config }: { config: AppConfig }) {
   return (
     <AdminSession auth={auth}>
       <h1>Provider status</h1>
+      {/* Ends Keycloak's session as well, which then sends the browser back to /admin. */}
+      <button
+        type="button"
+        onClick={() => {
+          void auth.signoutRedirect();
+        }}
+      >
+        Sign out
+      </button>
     </AdminSession>
   );
 }

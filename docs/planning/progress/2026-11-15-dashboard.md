@@ -568,3 +568,19 @@ Client `dashboard` in `deploy/keycloak/flight-aggregator-realm.json`, per Q7 and
 ### Extras for the user to decide
 - **Let `npm run dev` sign in.** Value: the admin screen works on the dev server too. Cost: either `server: { port: 3000, strictPort: true }` in `vite.config.ts` (clashes with the compose `frontend` while both run) or a second redirect `http://localhost:5173/admin*` and web origin in the realm. Left out unless you approve.
 - **One renewal for concurrent 401s** (a shared in-flight `signinSilent()`). Value: one refresh grant instead of two when the status poll and "Run ingestion now" expire together. Cost: a few lines in `bearerToken` and one test. Left out unless you approve.
+
+### E4: "Sign out" (approved extra, assigned to Task 7)
+
+Its own commit after Task 7's. `AuthClient` gains `signoutRedirect()` (the `UserManager` method), and `createAuthClient` sets `post_logout_redirect_uri` `${origin}/admin`.
+
+Red → green in `AdminPage.test.tsx`:
+- `'signs out through Keycloak'` (signed in, a click on "Sign out"): red `Unable to find role="button" and name "Sign out"`. Green: a "Sign out" button under the h1, inside `AdminSession` (so only a signed-in admin sees it), calling `auth.signoutRedirect()`; called once.
+
+The realm's post-logout redirect, shown with the real Keycloak and the same throwaway Playwright run (sign in, reload, "Sign out"):
+- Without the attribute, Keycloak already accepted `/admin` (an empty "valid post logout redirect URIs" falls back to the redirect URIs), so the realm states it explicitly and narrower: `post.logout.redirect.uris` `http://localhost:3000/admin` (not the `/admin*` pattern).
+- Red by mutation, to show the attribute governs it: with `http://localhost:3000/` the sign-out stopped at Keycloak's logout endpoint with "We are sorry... Invalid redirect uri".
+- Green with `http://localhost:3000/admin` (`docker compose up keycloak --wait --force-recreate` each time): "Sign out" → Keycloak's logout endpoint (with the `id_token_hint` `oidc-client-ts` sends) → `http://localhost:3000/admin` → a new sign-in → Keycloak's login form (`#username` present): its session ended, so the password is asked again, which is what E4 is for ("the demo can show the login again").
+
+Choice to review: the post-logout target is `/admin`, not the search page, so the demo lands on the login form at once; `/` would need its own allowed URI. If `signoutRedirect()` rejects (it builds the URL from the discovery document already read at sign-in, so only an unreachable Keycloak before any sign-in could), the rejection reaches the console and the button does nothing visible.
+
+Checks: `npm run verify` exit 0 (70 tests in 15 files); `./gradlew build` exit 0 (`BUILD SUCCESSFUL in 1m 15s`; the realm file changed again, and `:bootstrap:test` ran, with `RealmClientCredentialsTest`). Self-review (thermo-nuclear): one button and one setting, no new state; the end-session call is the library's own (`signoutRedirect`, with `id_token_hint`), not a hand-built logout URL.

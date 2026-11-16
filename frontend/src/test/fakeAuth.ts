@@ -29,5 +29,6 @@ export function fakeAuth() {
       Promise.resolve(adminUser()),
     ),
     signinSilent: vi.fn<AuthClient['signinSilent']>(() => Promise.resolve(null)),
+    signoutRedirect: vi.fn<AuthClient['signoutRedirect']>(() => Promise.resolve()),
   } satisfies AuthClient;
 }
