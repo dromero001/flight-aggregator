@@ -41,11 +41,11 @@ public final class IngestionJob implements IngestionLauncher {
   private static final Duration LOCK_AT_MOST_FOR = Duration.ofMinutes(29);
 
   /**
-   * A scheduled run's minimum, so that another instance cannot run again straight after a short
-   * run. A run on demand has none (the user's decision after Task 12's review): its lock is
-   * released when it ends, so "Run ingestion now" is refused only while a run really runs.
+   * No minimum, for a scheduled run as for a run on demand (the user's decisions after Task 12's
+   * review and of 2026-11-16): the lock is released when the run ends, so "Run ingestion now" is
+   * refused only while a run really runs.
    */
-  private static final Duration SCHEDULED_LOCK_AT_LEAST_FOR = Duration.ofMinutes(1);
+  private static final Duration LOCK_AT_LEAST_FOR = Duration.ZERO;
 
   private final IngestInventory ingestion;
   private final IngestionMetrics metrics;
@@ -69,15 +69,15 @@ public final class IngestionJob implements IngestionLauncher {
    */
   @Scheduled(initialDelay = 0, fixedDelayString = "${ingestion.interval}")
   public void run() {
-    runUnderTheLock(SCHEDULED_LOCK_AT_LEAST_FOR, () -> {});
+    runUnderTheLock(() -> {});
   }
 
   /**
-   * A run on demand (§6.8, "Run ingestion now"), the scheduled run's in all but its thread and its
-   * lock's minimum: it runs on a virtual thread of its own, holds the lock only until it ends, and
-   * this returns once it holds the lock, or at once with {@code false} when another run holds it. A
-   * run that fails before it holds the lock, the database out of reach for instance, is logged and
-   * counted as any failed run, and this throws.
+   * A run on demand (§6.8, "Run ingestion now"), the scheduled run's in all but its thread: it runs
+   * on a virtual thread of its own, holds the lock until it ends, and this returns once it holds
+   * the lock, or at once with {@code false} when another run holds it. A run that fails before it
+   * holds the lock, the database out of reach for instance, is logged and counted as any failed
+   * run, and this throws.
    */
   @Override
   public boolean launch() {
@@ -87,7 +87,7 @@ public final class IngestionJob implements IngestionLauncher {
         .start(
             () -> {
               try {
-                if (runUnderTheLock(Duration.ZERO, () -> locked.complete(true)) == Run.SKIPPED) {
+                if (runUnderTheLock(() -> locked.complete(true)) == Run.SKIPPED) {
                   locked.complete(false);
                 }
               } finally {
@@ -101,10 +101,10 @@ public final class IngestionJob implements IngestionLauncher {
 
   /**
    * One run, if it gets the lock, {@code onceLocked} first; otherwise it logs at {@code INFO} that
-   * it skipped the run and returns at once (ShedLock's {@code TaskResult}). The lock is held at
-   * least {@code lockAtLeastFor}, even after a shorter run ends.
+   * it skipped the run and returns at once (ShedLock's {@code TaskResult}). The lock is released
+   * when the run ends.
    */
-  private Run runUnderTheLock(Duration lockAtLeastFor, Runnable onceLocked) {
+  private Run runUnderTheLock(Runnable onceLocked) {
     // Removed in the finally, after the catch, so that a failed run's ERROR line carries it too.
     MDC.put(CorrelationId.MDC_KEY, UUID.randomUUID().toString());
     Instant startedAt = clock.now();
@@ -115,7 +115,7 @@ public final class IngestionJob implements IngestionLauncher {
                 onceLocked.run();
                 return ingestOnce();
               },
-              new LockConfiguration(startedAt, LOCK, LOCK_AT_MOST_FOR, lockAtLeastFor));
+              new LockConfiguration(startedAt, LOCK, LOCK_AT_MOST_FOR, LOCK_AT_LEAST_FOR));
       if (!run.wasExecuted()) {
         LOG.info("Skipped an ingestion run: another run holds its lock");
         return Run.SKIPPED;
