@@ -66,6 +66,29 @@ class InventoryHealthIndicatorTest {
     assertThat(health.getDetails()).containsEntry("valkey", "DOWN");
   }
 
+  /**
+   * Q8-A: PostgreSQL out of reach is the one cause of DOWN. The status cannot be read then, and the
+   * failure is reported as DOWN with its cause, which Boot answers with 503, never escaping as a
+   * 500 from the health endpoint.
+   */
+  @Test
+  void isDownWhenTheInventoryCannotBeRead() {
+    IllegalStateException unreachable = new IllegalStateException("PostgreSQL is unreachable");
+    InventoryHealthIndicator indicator =
+        new InventoryHealthIndicator(
+            () -> {
+              throw unreachable;
+            },
+            () -> true);
+
+    Health health = indicator.health();
+
+    assertThat(health.getStatus()).isEqualTo(Status.DOWN);
+    assertThat(HttpCodeStatusMapper.getDefault().getStatusCode(health.getStatus())).isEqualTo(503);
+    assertThat(health.getDetails())
+        .containsEntry("error", "java.lang.IllegalStateException: PostgreSQL is unreachable");
+  }
+
   private static StatusReport report(ProviderStatus... providers) {
     return new StatusReport(
         7,
