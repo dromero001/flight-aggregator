@@ -4,6 +4,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.ok;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 import com.flightaggregator.bootstrap.PostgresContainers;
 import com.flightaggregator.bootstrap.ingestion.IngestionJob;
@@ -11,22 +12,35 @@ import com.flightaggregator.domain.Provider;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import com.github.tomakehurst.wiremock.stubbing.ServeEvent;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.data.EventData;
 import io.opentelemetry.sdk.trace.data.SpanData;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.micrometer.tracing.test.autoconfigure.AutoConfigureTracing;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.context.ImportTestcontainers;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -48,6 +62,7 @@ import org.springframework.test.context.DynamicPropertySource;
     })
 @ImportTestcontainers(PostgresContainers.class)
 @AutoConfigureTracing
+@AutoConfigureMetrics
 class TracingEndToEndTest {
 
   /** Reset before each test by the extension itself. */
@@ -56,6 +71,9 @@ class TracingEndToEndTest {
       WireMockExtension.newInstance()
           .options(WireMockConfiguration.options().dynamicPort())
           .build();
+
+  /** The trace of a caller that sends its own {@code traceparent}, W3C's example. */
+  private static final String CALLERS_TRACE = "4bf92f3577b34da6a3ce929d0e0e4736";
 
   /** Three days ahead, so that the leg is still sellable whenever the tests run. */
   private static final LocalDate DAY = LocalDate.now(ZoneOffset.UTC).plusDays(3);
@@ -82,6 +100,8 @@ class TracingEndToEndTest {
   @Autowired private JdbcClient jdbc;
   @Autowired private InMemorySpanExporter spans;
   @Autowired private SdkTracerProvider tracer;
+  @Autowired private ApplicationContext context;
+  @LocalServerPort private int port;
 
   @BeforeEach
   void startFromAnEmptyInventoryWithTheProvidersAnswering() {
@@ -111,6 +131,108 @@ class TracingEndToEndTest {
     assertThat(sent).containsOnly(traceOf("ingestion.run"));
   }
 
+  /** "Run ingestion now" runs on a thread of its own, which the run's span starts too. */
+  @Test
+  void aManualRunIsOneTraceToo() {
+    assertThat(job.launch()).isTrue();
+
+    // launch returns once the run holds its lock; its span is exported once it ends.
+    String run =
+        await()
+            .atMost(Duration.ofSeconds(30))
+            .ignoreExceptions()
+            .until(() -> traceOf("ingestion.run"), Objects::nonNull);
+    List<String> sent = traceparents();
+    assertThat(sent).hasSize(3).doesNotContainNull();
+    assertThat(sent).containsOnly(run);
+  }
+
+  /** A search called with a W3C {@code traceparent} is served within the caller's trace. */
+  @Test
+  void aSearchContinuesTheCallersTrace() throws Exception {
+    HttpResponse<String> search =
+        send(
+            HttpRequest.newBuilder(uri("/api/itineraries?origin=MAD"))
+                .header("traceparent", "00-" + CALLERS_TRACE + "-00f067aa0ba902b7-01")
+                .build());
+
+    assertThat(search.statusCode()).isEqualTo(200);
+    assertThat(exported())
+        .filteredOn(span -> span.getKind() == SpanKind.SERVER)
+        .extracting(SpanData::getTraceId)
+        .containsExactly(CALLERS_TRACE);
+  }
+
+  /** The re-price's server span and the quote it asks the provider share one trace. */
+  @Test
+  void aRepriceIsOneTraceWithItsQuotes() throws Exception {
+    job.run();
+    PROVIDERS.resetRequests();
+    spans.reset();
+
+    HttpResponse<String> reprice =
+        send(
+            HttpRequest.newBuilder(uri("/api/itineraries/" + theOneItinerary() + "/reprice"))
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build());
+
+    assertThat(reprice.statusCode()).isEqualTo(200);
+    String server =
+        exported().stream()
+            .filter(span -> span.getKind() == SpanKind.SERVER)
+            .map(SpanData::getTraceId)
+            .findFirst()
+            .orElseThrow();
+    List<String> sent = traceparents();
+    assertThat(sent).hasSize(1).doesNotContainNull();
+    assertThat(sent).containsOnly(server);
+  }
+
+  /**
+   * Telemetry now leaves the process (Review Focus 5): no span of a run or of an admin call holds a
+   * provider's key or the caller's bearer token.
+   */
+  @Test
+  void exportsNoSecretInAnySpan() throws Exception {
+    String token = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9.c2lnbmF0dXJl";
+    job.run();
+    send(
+        HttpRequest.newBuilder(uri("/api/admin/status"))
+            .header("Authorization", "Bearer " + token)
+            .build());
+
+    List<SpanData> exported = exported();
+    assertThat(exported).isNotEmpty();
+    assertThat(exported)
+        .flatExtracting(TracingEndToEndTest::attributeValues)
+        .allSatisfy(
+            value -> assertThat(value).doesNotContain("alpha-key", "beta-key", "gamma-key", token));
+  }
+
+  /**
+   * Metrics take one path, Prometheus's scrape (§6.6): the OpenTelemetry starter's OTLP meter
+   * registry is not built, so nothing pushes them. Metrics export is on in this test, as in
+   * production.
+   */
+  @Test
+  void pushesNoMetrics() {
+    // By name: the starter brings the OTLP registry at runtime only, not to the tests' compiler.
+    assertThat(context.getBeansOfType(MeterRegistry.class).values())
+        .extracting(registry -> registry.getClass().getName())
+        .isNotEmpty()
+        .doesNotContain("io.micrometer.registry.otlp.OtlpMeterRegistry");
+  }
+
+  /** Every attribute value of the span and of its events, as text. */
+  private static List<String> attributeValues(SpanData span) {
+    return Stream.concat(
+            Stream.of(span.getAttributes()),
+            span.getEvents().stream().map(EventData::getAttributes))
+        .flatMap(attributes -> attributes.asMap().values().stream())
+        .map(String::valueOf)
+        .toList();
+  }
+
   /** The trace id of every provider request, read from its {@code traceparent}; null if none. */
   private static List<String> traceparents() {
     return PROVIDERS.getAllServeEvents().stream()
@@ -135,6 +257,24 @@ class TracingEndToEndTest {
   private List<SpanData> exported() {
     tracer.forceFlush().join(10, TimeUnit.SECONDS);
     return spans.getFinishedSpanItems();
+  }
+
+  /** The id of the one itinerary the run published: IB3170 Madrid-London. */
+  private String theOneItinerary() {
+    String slot =
+        jdbc.sql("SELECT active_slot FROM inventory_publication").query(String.class).single();
+    return jdbc.sql("SELECT id FROM itinerary_" + slot).query(String.class).single();
+  }
+
+  private URI uri(String path) {
+    return URI.create("http://127.0.0.1:" + port + path);
+  }
+
+  /** Sent by a plain JDK client, which adds no trace header of its own. */
+  private static HttpResponse<String> send(HttpRequest request) throws Exception {
+    try (HttpClient http = HttpClient.newHttpClient()) {
+      return http.send(request, HttpResponse.BodyHandlers.ofString());
+    }
   }
 
   /** IB3170 Madrid-London, the one record of a listing and of a quote. */
