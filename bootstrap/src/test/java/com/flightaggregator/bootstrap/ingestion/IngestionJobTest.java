@@ -36,6 +36,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import net.javacrumbs.shedlock.core.DefaultLockingTaskExecutor;
@@ -397,6 +398,43 @@ class IngestionJobTest {
     assertThat(runThread.get()).isNotSameAs(Thread.currentThread());
     assertThat(runId.get()).isNotNull();
     assertThat(runs("NOTHING_TO_PUBLISH")).isEqualTo(1);
+  }
+
+  /**
+   * The user's decision after Task 12's review (C-I1): a run on demand holds the lock only while it
+   * runs, with no minimum, so "Run ingestion now" is accepted again as soon as the last one ended.
+   * The lock provider keeps the row until the time ShedLock asks it to, as the JDBC one does: the
+   * run's end, or its {@code lockAtLeastFor} when that is later; the clock never moves.
+   */
+  @Test
+  void acceptsALaunchRightAfterTheLastLaunchedRunEnded() throws InterruptedException {
+    AtomicReference<Instant> lockedUntil = new AtomicReference<>(Instant.MIN);
+    List<CountDownLatch> unlocks = List.of(new CountDownLatch(1), new CountDownLatch(1));
+    AtomicInteger locks = new AtomicInteger();
+    IngestionJob job =
+        new IngestionJob(
+            () -> unpublished(IngestionReport.Outcome.NOTHING_TO_PUBLISH),
+            metrics,
+            new DefaultLockingTaskExecutor(
+                configuration -> {
+                  if (STARTED_AT.isBefore(lockedUntil.get())) {
+                    return Optional.empty();
+                  }
+                  lockedUntil.set(configuration.getLockAtMostUntil());
+                  CountDownLatch unlocked = unlocks.get(locks.getAndIncrement());
+                  return Optional.of(
+                      () -> {
+                        lockedUntil.set(configuration.getLockAtLeastUntil());
+                        unlocked.countDown();
+                      });
+                }),
+            () -> STARTED_AT);
+
+    assertThat(job.launch()).isTrue();
+    assertThat(unlocks.getFirst().await(10, TimeUnit.SECONDS)).as("the first run ended").isTrue();
+
+    assertThat(job.launch()).as("a launch once the first run ended").isTrue();
+    assertThat(unlocks.getLast().await(10, TimeUnit.SECONDS)).as("the second run ended").isTrue();
   }
 
   /**
