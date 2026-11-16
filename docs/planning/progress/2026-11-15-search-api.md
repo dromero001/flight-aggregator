@@ -2076,3 +2076,10 @@ Minors, for the controller and the user:
 | C3 | `RateLimitResponses.java:49`: hard-coded `$ref` to `ProblemDetail`, resolved only because another annotation registers it; `OpenApiContractTest` would catch a break |
 | C4 | `ProviderTime.java:36`: the generic `timestamptz` reader `readInstant` lives in the provider-time class |
 | C5 | With a provider that keeps sending too much, every 2-minute claim expiry starts a refresh that copies up to the ceiling and rolls back, holding the publication row; one refresh at a time limits it (with F1, F2) |
+
+## After closing round 3: C1, F3, F5, F6
+
+- **C1** `RepriceItineraryService.quote`: the provider's adapter is looked up before the `try`; a provider with no adapter throws `IllegalStateException("No adapter is wired for provider X")` out of the re-price instead of being swallowed as a provider failing. Test `RepriceItineraryServiceTest.failsLoudlyForAnOfferOfAProviderWithNoAdapter`. Red, before the fix: `java.lang.AssertionError: Expecting code to raise a throwable.` (the NPE was swallowed, the re-price answered `Unconfirmable`). Green after the fix: `./gradlew :application:test` passes.
+- **F3** `search-api.md`: the `/health` group takes every component but `db` (`management.endpoint.health.group.api.exclude: db`).
+- **F5** `ingestion.md`: the `provider.calls` outcome is `OK`, `NOT_SOLD` or the `FailureReason`, among which `REJECTED`.
+- **F6** `application.yaml`: the Hikari comment is reflowed to at most 100 characters (lines 9 to 12 were over).

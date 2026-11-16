@@ -109,7 +109,7 @@ Metrics use low-cardinality tags only (`provider`, `reason`, `outcome`, `status`
 | `ingestion.consecutive.failures` | Runs in a row that failed: published nothing, ended with an exception, or published with no provider `FRESH`. It goes back to 0 only on a run that publishes with at least one fresh provider |
 | `ingestion.provider.downloads{provider,status,reason}` | Downloads, `FRESH` or `KEPT`, with the `FailureReason` (`none` when fresh) |
 | `ingestion.provider.retries{provider}` | Retries of a provider's requests, not counting the first attempts |
-| `provider.calls{provider,operation,outcome}` | Every provider call, ingestion's or not: `operation` is `download`, `origin-download` or `quote`; `outcome` is `OK`, `NOT_SOLD` (a quote of a flight no longer sold), the `FailureReason`, or `REJECTED` (over the provider's concurrency limit) |
+| `provider.calls{provider,operation,outcome}` | Every provider call, ingestion's or not: `operation` is `download`, `origin-download` or `quote`; `outcome` is `OK`, `NOT_SOLD` (a quote of a flight no longer sold), or the `FailureReason`, among which `REJECTED` (over the provider's concurrency limit) |
 | `ingestion.provider.last.fresh.seconds{provider}` | Age of the newest quote among the provider's stored offers, fresh or kept; restored by the first run after a restart, `NaN` while the provider has nothing stored |
 | `ingestion.records.discarded{provider,reason}` | Discarded records. `CONFLICTING` counts a fresh download's self-contradicting offers, once, on the run that downloaded them |
 | `resilience4j.circuitbreaker.*{name}` | Each provider's breaker (its state, calls and failure rate), named after the provider, by Resilience4j's Micrometer binding |
