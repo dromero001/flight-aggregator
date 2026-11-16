@@ -66,6 +66,16 @@ test('shows the generation, its publication and the next ingestion', async () =>
   expect(screen.getByText('Next ingestion in 18 min')).toBeInTheDocument();
 });
 
+test('gives the next ingestion in hours and minutes when it is over an hour away', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-15T09:12:00Z'));
+  serveStatus(statusReport({ nextIngestionAt: '2026-11-15T10:42:00Z' }));
+
+  renderAsAdmin(<StatusPage />);
+
+  expect(await screen.findByText('Next ingestion in 1 h 30 min')).toBeInTheDocument();
+});
+
 test('says when the next ingestion is due', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-11-15T09:30:20Z'));
