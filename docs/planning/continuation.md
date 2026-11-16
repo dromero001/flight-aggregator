@@ -97,7 +97,7 @@ Lessons for every brief: each subagent uses a private scratch folder of its own 
 
 1. As each of the four returns: push its branch as `wip/...`, update this file, dispatch its double review (one subagent acting as `functional-reviewer` then `code-reviewer`).
 2. As each is approved twice: rebase on `main`, `./gradlew build` with its exit status checked, fast-forward `main`, push, watch CI, update this file and the handoff page. Progress-report conflicts between parallel tasks are append-only: keep both sections, `main`'s first.
-3. Plan 5: Tasks 1–13 on `main`; E2 under review; then the end-of-plan triple review and the hands-on API run. Plan 6: Task 2 in flight, then 4 (and 7 after 2 and 3).
+3. Plan 5: Tasks 1–13 on `main`; E2 under review; then the end-of-plan triple review (with every recorded Minor), the user's two decisions on Task 13's concerns, and the controller's hands-on API run; then plan 7 Tasks 2 and 4. Plan 6: Task 10 in flight, then Task 11 and the end-of-plan triple review.
 4. Plan 7 Task 9: when the draft returns, the user reviews it (its Step 3). Plan 7 Task 3 (alert rules) starts once Task 1 is on `main`.
 
 ## Waiting on the user
