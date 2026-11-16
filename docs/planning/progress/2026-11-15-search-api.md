@@ -1598,3 +1598,8 @@ Gates:
 
 Extras for the user to decide:
 - **The "Authorize" button and a README line for it** once Task 13's bearer scheme is on `main`: Swagger UI then lets an admin paste the client-credentials token and try the admin operations. Value: the admin side tried from the UI. Cost: one README sentence. Left out unless you approve.
+
+## Extra E2 (Swagger UI) — review
+
+The double review (`.superpowers/sdd/2026-11-15-search-api/e2-review.md`) answered functional APPROVED and code APPROVED, with no Critical or Important finding. The reviewer rebuilt with `--rerun-tasks --no-build-cache` (1,017 tests), probed a real server with raw HTTP: anonymous GET opens exactly `/swagger-ui.html`, `/swagger-ui/**` and `/v3/api-docs/swagger-config`; `/v3/api-docs.yaml`, slash, case and suffix variants, `/actuator`, `/actuator/metrics` and `/api/admin/status` still answer 401; encoded, double-encoded, `;`, `//`, backslash and `%00` tricks are rejected with 400 before matching; other methods on the three paths answer 401 (TRACE 405). With Task 13 on `main`, Swagger UI shows the Authorize button. Minors for the end-of-plan review:
+- F-m1 / C-m1: no test pins "GET only" (removing `HttpMethod.GET` at `SecurityConfig.java:45` leaves the suite green; add an anonymous POST to `/v3/api-docs/swagger-config` answering 401); `PublicAccessOverHttpTest`'s Javadoc does not say the Swagger tests need a real server to follow springdoc's redirect.
