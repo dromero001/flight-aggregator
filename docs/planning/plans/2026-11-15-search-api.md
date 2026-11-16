@@ -384,6 +384,8 @@ The end-of-plan review (`.superpowers/sdd/2026-11-15-search-api/end-review-{func
 
 **Decided by the user on 2026-11-16, after the task's review (Important C-I1):** the manual run takes the same ShedLock lock (`ingestion`) but with `lockAtLeastFor` zero, so the lock is released when the run ends and the 409 "An ingestion is already running." is answered only while a run is really running; the scheduled run keeps its one-minute minimum. A scheduled run may start right after a manual one, which is harmless. This replaces "the same `LockConfiguration`" below for the manual entry.
 
+**And on 2026-11-16, after plan 6 Task 10's review found the rule still broken by the scheduled run:** the scheduled run's lock has no minimum either (`lockAtLeastFor` zero), so the 409 is answered only while a run is really running. The minimum guarded two instances against running one tick twice when their clocks drift more than a run lasts; a run lasts about 25 s and the interval is 30 min, so that risk is negligible.
+
 **Depends on:** 2 (the `CircuitBreakerRegistry` bean and `FlightProvider` as built there), 5 (Valkey's ping), 9 (the web module), 11 (the admin role); V7 is reserved for it. **Parallel:** with 10 (see its note) and with 7 once 2 is merged; not before 11.
 
 **Files:**
