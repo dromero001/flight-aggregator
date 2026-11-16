@@ -8,6 +8,12 @@ spring:
   threads:
     virtual:
       enabled: true
+  mvc:
+    problemdetails:
+      # An error Spring MVC answers itself (a method or a path the API does not serve, an unreadable
+      # request) is an RFC 9457 problem, as the API's own errors in ProblemResponses are (G1, the
+      # user's decision of 2026-11-16).
+      enabled: true
   datasource:
     hikari:
       # A request waits at most 2 s for a pooled connection, not Hikari's 30 s. With PostgreSQL
