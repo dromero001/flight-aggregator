@@ -2,6 +2,7 @@ import { focusManager, onlineManager, QueryClientProvider } from '@tanstack/reac
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
+import { Profiler } from 'react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { Itinerary, SearchResponse } from '../api/types';
@@ -60,7 +61,8 @@ function Location() {
   );
 }
 
-function renderAt(url: string) {
+/** Renders the page at `url`; `onCommit` runs after each render React commits to the page. */
+function renderAt(url: string, onCommit: () => void = () => undefined) {
   const queryClient = createQueryClient();
   // Retries keep the app's rule but not its wait, so a test does not sleep through them.
   const defaults = queryClient.getDefaultOptions();
@@ -68,7 +70,9 @@ function renderAt(url: string) {
   const rendered = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[url]}>
-        <SearchPage />
+        <Profiler id="search-page" onRender={onCommit}>
+          <SearchPage />
+        </Profiler>
         <Location />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -620,6 +624,22 @@ test('shows the normalised value when the search is already shown', async () => 
   await user.click(screen.getByRole('button', { name: 'Search' }));
 
   expect(screen.getByLabelText('From')).toHaveValue('MAD');
+});
+
+test('keeps the searched values in the inputs while a new search is applied', async () => {
+  // The router applies the new URL in a transition, after the submit's own render.
+  const user = userEvent.setup();
+  const shown: string[] = [];
+  renderAt('/', () => {
+    shown.push(screen.getByLabelText<HTMLInputElement>('From').value);
+  });
+  await user.type(screen.getByLabelText('From'), 'BCN');
+  shown.length = 0;
+
+  await user.click(screen.getByRole('button', { name: 'Search' }));
+
+  expect(screen.getByLabelText('location')).toHaveTextContent('?origin=BCN');
+  expect(new Set(shown)).toEqual(new Set(['BCN']));
 });
 
 test('restores the previous sort on back', async () => {
