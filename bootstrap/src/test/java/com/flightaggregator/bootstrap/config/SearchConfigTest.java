@@ -170,6 +170,11 @@ class SearchConfigTest {
     }
 
     @Override
+    public void release(Airport origin) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void refreshed(Airport origin, Instant at) {
       throw new UnsupportedOperationException();
     }

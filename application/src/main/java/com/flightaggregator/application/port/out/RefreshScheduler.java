@@ -11,7 +11,9 @@ public interface RefreshScheduler {
 
   /**
    * Starts the origin's refresh and returns at once, without waiting for it; it never throws, so
-   * the refresh's own failure is its own to report.
+   * the refresh's own failure is its own to report. One refresh runs at a time: one asked for while
+   * another runs is dropped before any download, and the origin's claim given back ({@link
+   * RefreshCoordination#release}), so a later search asks again.
    */
   void request(Airport origin);
 }

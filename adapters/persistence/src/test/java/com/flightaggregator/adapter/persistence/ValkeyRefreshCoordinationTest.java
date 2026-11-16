@@ -1,6 +1,7 @@
 package com.flightaggregator.adapter.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.tuple;
 
 import ch.qos.logback.classic.Level;
@@ -71,6 +72,34 @@ class ValkeyRefreshCoordinationTest {
     Thread.sleep(CLAIM_TTL.plusMillis(200));
 
     assertThat(coordination.claim(MADRID)).isTrue();
+  }
+
+  /**
+   * A claim given back, by a refresh that did not start, is free at once for the next caller,
+   * before it would expire; the other origins' claims stay (plan 5's end-of-plan review, I2).
+   */
+  @Test
+  void givesAClaimBackForTheNextCallerToTake() {
+    assertThat(coordination.claim(MADRID)).isTrue();
+    assertThat(coordination.claim(BARCELONA)).isTrue();
+
+    coordination.release(MADRID);
+
+    assertThat(coordination.claim(MADRID)).isTrue();
+    assertThat(coordination.claim(BARCELONA)).isFalse();
+  }
+
+  /**
+   * Valkey down, a claim given back is not deleted, and the caller goes on: the claim expires on
+   * its own. The delete neither throws nor holds the caller past the outage bound, which {@code
+   * whileDown} asserts.
+   */
+  @Test
+  void givesNothingBackWhileValkeyIsDown() {
+    assertThat(coordination.claim(MADRID)).isTrue();
+
+    assertThatNoException()
+        .isThrownBy(() -> ValkeyTestServer.whileDown(() -> coordination.release(MADRID)));
   }
 
   /**
