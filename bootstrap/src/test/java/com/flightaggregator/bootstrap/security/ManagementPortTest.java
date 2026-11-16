@@ -72,7 +72,31 @@ class ManagementPortTest {
     assertThat(json.readTree(anonymous.body()).path("status").asString()).isEqualTo("DEGRADED");
     assertThat(json.readTree(anonymous.body()).has("components")).isFalse();
     assertThat(admin.statusCode()).isEqualTo(200);
-    assertThat(json.readTree(admin.body()).path("components").path("db").path("status").asString())
+    assertThat(json.readTree(admin.body()).path("components").has("inventory")).isTrue();
+  }
+
+  /**
+   * Boot's {@code db} component is left out of the API port's {@code /health} (the user's decision
+   * of 2026-11-16): with PostgreSQL out of reach, a probe then waits for one pooled connection, the
+   * inventory's, not two, and the inventory's component reports {@code DOWN} by itself. The
+   * management port's health keeps it, for an administrator.
+   */
+  @Test
+  void keepsTheDatabaseComponentOnTheManagementPortsHealthOnly() throws Exception {
+    HttpResponse<String> api =
+        send(request(apiPort, "/health").header("Authorization", "Bearer " + ADMIN_TOKEN));
+    HttpResponse<String> management =
+        send(
+            request(managementPort, "/actuator/health")
+                .header("Authorization", "Bearer " + ADMIN_TOKEN));
+
+    assertThat(json.readTree(api.body()).path("components").has("db")).isFalse();
+    assertThat(
+            json.readTree(management.body())
+                .path("components")
+                .path("db")
+                .path("status")
+                .asString())
         .isEqualTo("UP");
   }
 

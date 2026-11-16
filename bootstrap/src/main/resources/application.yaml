@@ -7,9 +7,9 @@ spring:
   datasource:
     hikari:
       # A request waits at most 2 s for a pooled connection, not Hikari's 30 s. With PostgreSQL out of
-      # reach, a health probe pays this wait twice (Boot's db component and the inventory one each
-      # read it), so it answers 503 DOWN in about 4 s, inside the 5 s compose gives its health check,
-      # instead of a timeout after 60 s (plan 5's end-of-plan review, F-I1). 2 s rather than 1 s, so
+      # reach, a probe of /health pays this wait once (the inventory's component; Boot's db is left
+      # out of that group), so it answers 503 DOWN in about 2 s, inside the 5 s compose gives its
+      # health check, instead of a timeout after 60 s (plan 5's end-of-plan review, F-I1). 2 s rather than 1 s, so
       # a burst that holds every connection for about a second does not fail a run's lock, a store
       # or a re-price (the user's decision at the re-review of its closing round 1, N3).
       connection-timeout: 2000
@@ -117,7 +117,11 @@ management:
       group:
         # The health status on the API's own port, public (SecurityConfig), for compose's health
         # check and the orchestrator's probe. Boot takes only one segment there, hence /health and
-        # not /actuator/health (plan 7, the user's decision of 2026-11-16). The group sets nothing
-        # else: it holds every component and takes the details, roles, order and status codes above.
+        # not /actuator/health (plan 7, the user's decision of 2026-11-16). It holds every component
+        # but Boot's db, and takes the details, roles, order and status codes above. Without db, a
+        # probe with PostgreSQL out of reach waits for one pooled connection, the inventory's, which
+        # reports DOWN by itself: 503 in about 2 s, not 4 s, against compose's 5 s (the user's
+        # decision of 2026-11-16). The management port's /actuator/health keeps db.
         api:
           additional-path: server:/health
+          exclude: db
