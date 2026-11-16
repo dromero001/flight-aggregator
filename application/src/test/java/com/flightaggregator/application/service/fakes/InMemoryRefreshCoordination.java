@@ -10,8 +10,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Refresh coordination in memory: an origin is claimed once and its claim never expires, and a
- * refresh's time is remembered however old it gets.
+ * Refresh coordination in memory: an origin is claimed once and its claim never expires, unless it
+ * is given back, and a refresh's time is remembered however old it gets.
  */
 public final class InMemoryRefreshCoordination implements RefreshCoordination {
 
@@ -26,6 +26,11 @@ public final class InMemoryRefreshCoordination implements RefreshCoordination {
   @Override
   public boolean claim(Airport origin) {
     return claimed.add(origin);
+  }
+
+  @Override
+  public void release(Airport origin) {
+    claimed.remove(origin);
   }
 
   @Override

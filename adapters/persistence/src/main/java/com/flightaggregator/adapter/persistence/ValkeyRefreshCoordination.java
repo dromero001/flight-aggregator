@@ -66,6 +66,16 @@ public final class ValkeyRefreshCoordination implements RefreshCoordination {
         () -> false);
   }
 
+  /**
+   * Deletes the claim. Only its holder gives it back, at once, long before it could expire, so the
+   * key cannot be another caller's claim yet. Gives nothing back when Valkey fails the delete: the
+   * claim then expires.
+   */
+  @Override
+  public void release(Airport origin) {
+    failures.run(() -> valkey.delete(claimKey(origin)));
+  }
+
   /** Records nothing when Valkey fails the write. */
   @Override
   public void refreshed(Airport origin, Instant at) {

@@ -29,6 +29,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import net.javacrumbs.shedlock.core.DefaultLockingTaskExecutor;
+import net.javacrumbs.shedlock.core.LockingTaskExecutor;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -67,6 +69,9 @@ class RefreshConfigTest {
           .withBean(DiscardedRecords.class, () -> (provider, record) -> {})
           .withBean(ItineraryRepository.class, () -> new Rewrites())
           .withBean(RefreshCoordination.class, NothingRefreshed::new)
+          .withBean(
+              LockingTaskExecutor.class,
+              () -> new DefaultLockingTaskExecutor(configuration -> Optional.of(() -> {})))
           .withBean(Clock.class, () -> () -> NOW);
 
   /**
@@ -165,6 +170,9 @@ class RefreshConfigTest {
     public boolean claim(Airport origin) {
       return true;
     }
+
+    @Override
+    public void release(Airport origin) {}
 
     @Override
     public void refreshed(Airport origin, Instant at) {}

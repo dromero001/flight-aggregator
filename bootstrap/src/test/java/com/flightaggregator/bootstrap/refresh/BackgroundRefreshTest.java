@@ -14,17 +14,25 @@ import ch.qos.logback.core.read.ListAppender;
 import com.flightaggregator.application.port.in.ProviderReport;
 import com.flightaggregator.application.port.in.RefreshReport;
 import com.flightaggregator.application.port.in.RefreshStaleRoute;
+import com.flightaggregator.application.port.out.RefreshCoordination;
 import com.flightaggregator.bootstrap.observability.CorrelationId;
 import com.flightaggregator.domain.Airport;
 import com.flightaggregator.domain.Provider;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
+import net.javacrumbs.shedlock.core.DefaultLockingTaskExecutor;
+import net.javacrumbs.shedlock.core.LockConfiguration;
+import net.javacrumbs.shedlock.core.LockingTaskExecutor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,6 +50,10 @@ import org.slf4j.MDC;
 class BackgroundRefreshTest {
 
   private static final Airport MADRID = new Airport("MAD");
+  private static final Airport LONDON = new Airport("LHR");
+  private static final Instant NOW = Instant.parse("2026-11-20T08:00:00Z");
+
+  private final RecordingClaims claims = new RecordingClaims();
 
   private final Logger logger = (Logger) LoggerFactory.getLogger(BackgroundRefresh.class);
   private final Semaphore appended = new Semaphore(0);
@@ -81,7 +93,7 @@ class BackgroundRefreshTest {
   @ParameterizedTest
   @MethodSource("failures")
   void logsAFailureWithoutThrowing(Throwable failure, RefreshStaleRoute failing) throws Exception {
-    BackgroundRefresh scheduler = new BackgroundRefresh(failing);
+    BackgroundRefresh scheduler = scheduler(failing);
 
     assertThatCode(() -> scheduler.request(MADRID)).doesNotThrowAnyException();
 
@@ -105,7 +117,7 @@ class BackgroundRefreshTest {
     CountDownLatch released = new CountDownLatch(1);
     CompletableFuture<Boolean> onAVirtualThread = new CompletableFuture<>();
     BackgroundRefresh scheduler =
-        new BackgroundRefresh(
+        scheduler(
             origin -> {
               onAVirtualThread.complete(Thread.currentThread().isVirtual());
               awaitRelease(released);
@@ -128,7 +140,7 @@ class BackgroundRefreshTest {
    */
   @Test
   void logsTheReport() throws Exception {
-    new BackgroundRefresh(BackgroundRefreshTest::refreshed).request(MADRID);
+    scheduler(BackgroundRefreshTest::refreshed).request(MADRID);
 
     assertThat(awaitLines(1))
         .extracting(
@@ -149,8 +161,8 @@ class BackgroundRefreshTest {
   void logsEachRefreshUnderItsOwnCorrelationId() throws Exception {
     MDC.put(CorrelationId.MDC_KEY, "the search's");
     try {
-      new BackgroundRefresh(BackgroundRefreshTest::refreshed).request(MADRID);
-      new BackgroundRefresh(
+      scheduler(BackgroundRefreshTest::refreshed).request(MADRID);
+      scheduler(
               origin -> {
                 throw new IllegalStateException("lock timeout");
               })
@@ -164,6 +176,141 @@ class BackgroundRefreshTest {
       assertThat(MDC.get(CorrelationId.MDC_KEY)).isEqualTo("the search's");
     } finally {
       MDC.remove(CorrelationId.MDC_KEY);
+    }
+  }
+
+  /**
+   * One refresh at a time in the whole application (plan 5's end-of-plan review, I2): one asked for
+   * while another runs is skipped before it downloads anything, and says so at INFO.
+   */
+  @Test
+  void skipsARefreshAskedForWhileAnotherRuns() throws Exception {
+    List<Airport> refreshed = new CopyOnWriteArrayList<>();
+
+    assertThat(askForLondonWhileMadridIsRefreshed(refreshed))
+        .extracting(
+            ILoggingEvent::getLevel, ILoggingEvent::getFormattedMessage, line -> fields(line))
+        .containsExactly(
+            tuple(
+                Level.INFO,
+                "Skipped the refresh of a stale origin: another refresh is running",
+                "origin=LHR"));
+    assertThat(refreshed).containsExactly(MADRID);
+  }
+
+  /**
+   * A skipped refresh gives its origin's claim back, so the next search that finds the origin stale
+   * asks again at once, instead of after the claim expires (no queue).
+   */
+  @Test
+  void givesTheClaimOfASkippedRefreshBack() throws Exception {
+    askForLondonWhileMadridIsRefreshed(new CopyOnWriteArrayList<>());
+
+    assertThat(claims.released).containsExactly(LONDON);
+  }
+
+  /**
+   * The lock is ShedLock's row {@code refresh}: released as soon as the refresh ends, so the next
+   * search's refresh may start at once, and held at most 2 minutes, longer than one refresh, should
+   * the instance die holding it.
+   */
+  @Test
+  void holdsTheRefreshLockUntilTheRefreshEndsAndAtMostTwoMinutes() throws Exception {
+    List<LockConfiguration> taken = new CopyOnWriteArrayList<>();
+    LockingTaskExecutor recording =
+        new DefaultLockingTaskExecutor(
+            configuration -> {
+              taken.add(configuration);
+              return Optional.of(() -> {});
+            });
+
+    new BackgroundRefresh(BackgroundRefreshTest::refreshed, recording, claims, () -> NOW)
+        .request(MADRID);
+
+    awaitLines(1);
+    assertThat(taken)
+        .singleElement()
+        .satisfies(
+            configuration -> {
+              assertThat(configuration.getName()).isEqualTo("refresh");
+              assertThat(configuration.getLockAtLeastFor()).isZero();
+              assertThat(configuration.getLockAtMostFor()).isEqualTo(Duration.ofMinutes(2));
+              assertThat(configuration.getLockAtMostUntil())
+                  .isEqualTo(NOW.plus(Duration.ofMinutes(2)));
+            });
+  }
+
+  /**
+   * Asks for London's refresh while Madrid's runs, and returns the first line logged meanwhile.
+   * Madrid's refresh then ends, and its line is awaited, so that it has ended before the next test
+   * captures the log. Each origin a refresh started for is added to {@code refreshed}.
+   */
+  private List<ILoggingEvent> askForLondonWhileMadridIsRefreshed(List<Airport> refreshed)
+      throws InterruptedException {
+    CountDownLatch madridStarted = new CountDownLatch(1);
+    CountDownLatch released = new CountDownLatch(1);
+    BackgroundRefresh scheduler =
+        scheduler(
+            origin -> {
+              refreshed.add(origin);
+              if (origin.equals(MADRID)) {
+                madridStarted.countDown();
+                awaitRelease(released);
+              }
+              return refreshed(origin);
+            });
+    List<ILoggingEvent> meanwhile;
+    try {
+      scheduler.request(MADRID);
+      assertThat(madridStarted.await(10, TimeUnit.SECONDS)).isTrue();
+
+      scheduler.request(LONDON);
+      meanwhile = awaitLines(1);
+    } finally {
+      released.countDown();
+    }
+    awaitLines(1);
+    return meanwhile;
+  }
+
+  /**
+   * A scheduler over a lock of its own that one refresh at a time holds, as ShedLock's row in
+   * PostgreSQL does, and over the claims this test records.
+   */
+  private BackgroundRefresh scheduler(RefreshStaleRoute refreshes) {
+    AtomicBoolean held = new AtomicBoolean();
+    LockingTaskExecutor oneAtATime =
+        new DefaultLockingTaskExecutor(
+            configuration ->
+                held.compareAndSet(false, true)
+                    ? Optional.of(() -> held.set(false))
+                    : Optional.empty());
+    return new BackgroundRefresh(refreshes, oneAtATime, claims, () -> NOW);
+  }
+
+  /** The claims given back; search, not the scheduler, claims and marks origins. */
+  private static final class RecordingClaims implements RefreshCoordination {
+
+    private final List<Airport> released = new CopyOnWriteArrayList<>();
+
+    @Override
+    public Optional<Instant> refreshedAt(Airport origin) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean claim(Airport origin) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void release(Airport origin) {
+      released.add(origin);
+    }
+
+    @Override
+    public void refreshed(Airport origin, Instant at) {
+      throw new UnsupportedOperationException();
     }
   }
 
