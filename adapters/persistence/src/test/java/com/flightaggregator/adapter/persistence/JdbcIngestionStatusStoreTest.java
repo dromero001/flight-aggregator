@@ -5,15 +5,21 @@ import static com.flightaggregator.domain.Provider.BETA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.flightaggregator.adapter.persistence.support.LockWaits;
 import com.flightaggregator.adapter.persistence.support.PostgresTestDatabase;
 import com.flightaggregator.application.port.out.DiscardReason;
 import com.flightaggregator.application.port.out.FailureReason;
+import com.flightaggregator.application.port.out.LatestRun;
 import com.flightaggregator.application.port.out.ProviderRun;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.time.Instant;
 import java.util.AbstractList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -69,8 +75,42 @@ class JdbcIngestionStatusStoreTest {
 
     store.record(second, SECOND_RUN_END);
 
-    assertThat(store.latest()).isEqualTo(second);
-    assertThat(store.lastFinishedAt()).contains(SECOND_RUN_END);
+    assertThat(store.latest()).contains(new LatestRun(SECOND_RUN_END, second));
+  }
+
+  /**
+   * A run recorded while the latest is read does not mix into it: the read answers the run it began
+   * with, its end, its providers and their discarded records, which the screen shows together.
+   */
+  @Test
+  void readsTheLatestRunInOneSnapshot() throws Exception {
+    List<ProviderRun> first =
+        List.of(
+            new ProviderRun(
+                ALPHA, Optional.empty(), 120, Map.of(DiscardReason.PRICE, 2), Optional.empty()));
+    store.record(first, FIRST_RUN_END);
+    try (Connection run = dataSource.getConnection()) {
+      run.setAutoCommit(false);
+      try (Statement statement = run.createStatement()) {
+        statement.execute("LOCK TABLE ingestion_status IN ACCESS EXCLUSIVE MODE");
+      }
+      CompletableFuture<Optional<LatestRun>> read = CompletableFuture.supplyAsync(store::latest);
+      // The discarded records are read under no lock the run holds, so the read's first statement
+      // to wait for the run is its read of the providers' rows.
+      LockWaits.awaitAStatementBlockedBy(JdbcClient.create(dataSource), LockWaits.backendPid(run));
+
+      try (Statement statement = run.createStatement()) {
+        statement.execute("DELETE FROM ingestion_status");
+        statement.execute(
+            "INSERT INTO ingestion_status (provider, failure, offers_used, finished_at)"
+                + " VALUES ('ALPHA', 'TIMEOUT', 0, '"
+                + SECOND_RUN_END
+                + "')");
+      }
+      run.commit();
+
+      assertThat(read.get(15, TimeUnit.SECONDS)).contains(new LatestRun(FIRST_RUN_END, first));
+    }
   }
 
   /** A run's providers are recorded together or not at all: a failure halfway leaves the last. */
@@ -101,7 +141,6 @@ class JdbcIngestionStatusStoreTest {
 
     assertThatThrownBy(() -> store.record(failing, SECOND_RUN_END)).isSameAs(halfway);
 
-    assertThat(store.latest()).isEqualTo(first);
-    assertThat(store.lastFinishedAt()).contains(FIRST_RUN_END);
+    assertThat(store.latest()).contains(new LatestRun(FIRST_RUN_END, first));
   }
 }

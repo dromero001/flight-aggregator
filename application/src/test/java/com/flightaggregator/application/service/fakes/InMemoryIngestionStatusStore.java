@@ -1,6 +1,7 @@
 package com.flightaggregator.application.service.fakes;
 
 import com.flightaggregator.application.port.out.IngestionStatusStore;
+import com.flightaggregator.application.port.out.LatestRun;
 import com.flightaggregator.application.port.out.ProviderRun;
 import com.flightaggregator.domain.Provider;
 import java.time.Instant;
@@ -29,13 +30,10 @@ public final class InMemoryIngestionStatusStore implements IngestionStatusStore 
   }
 
   @Override
-  public List<ProviderRun> latest() {
-    return List.copyOf(latest.values());
-  }
-
-  @Override
-  public Optional<Instant> lastFinishedAt() {
-    return recorded.isEmpty() ? Optional.empty() : Optional.of(recorded.getLast().finishedAt());
+  public Optional<LatestRun> latest() {
+    return recorded.isEmpty()
+        ? Optional.empty()
+        : Optional.of(new LatestRun(recorded.getLast().finishedAt(), List.copyOf(latest.values())));
   }
 
   public List<Recorded> recorded() {

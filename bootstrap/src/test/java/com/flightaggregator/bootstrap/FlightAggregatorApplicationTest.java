@@ -169,7 +169,7 @@ class FlightAggregatorApplicationTest {
               Instant.now());
           assertThat(offers.offers(Provider.ALPHA)).extracting(Leg::key).containsExactly(leg.key());
           assertThat(publication.generation()).isEqualTo(generation + 1);
-          assertThat(statuses.latest()).hasSize(1);
+          assertThat(statuses.latest().orElseThrow().providers()).hasSize(1);
           status.setRollbackOnly();
         });
 
@@ -195,7 +195,7 @@ class FlightAggregatorApplicationTest {
             tuple(Provider.BETA, ProviderReport.Status.KEPT, Optional.of(FailureReason.HTTP_ERROR)),
             tuple(
                 Provider.GAMMA, ProviderReport.Status.KEPT, Optional.of(FailureReason.HTTP_ERROR)));
-    assertThat(statuses.latest())
+    assertThat(statuses.latest().orElseThrow().providers())
         .extracting(ProviderRun::provider, ProviderRun::failure)
         .containsExactly(
             tuple(Provider.ALPHA, Optional.of(FailureReason.HTTP_ERROR)),
