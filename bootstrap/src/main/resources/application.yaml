@@ -81,6 +81,10 @@ logging:
       console: ecs
 
 management:
+  server:
+    # Actuator's own port, reached only on compose's network, where Prometheus scrapes it with no
+    # token; compose never publishes it (spec 6.6, the user's decision of 2026-11-15; plan 7, Q4).
+    port: 8079
   health:
     redis:
       # Valkey down makes search slower, not broken (spec 6.2), so Boot's indicator, which would
@@ -89,9 +93,8 @@ management:
   endpoints:
     web:
       exposure:
-        # Health is public with its status only; everything else here needs the ADMIN role
-        # (SecurityConfig, spec 6.6).
-        include: health,metrics
+        # On the management port only, open to Prometheus with no token (SecurityConfig, spec 6.6).
+        include: health,metrics,prometheus
   endpoint:
     health:
       # The components behind the status are for an administrator only.
@@ -103,3 +106,10 @@ management:
         # does not name. DEGRADED answers 200 by Boot's default mapping (only DOWN and
         # OUT_OF_SERVICE are 503), so no http-mapping is set: one would replace those defaults.
         order: DOWN, OUT_OF_SERVICE, DEGRADED, UP, UNKNOWN
+      group:
+        # The health status on the API's own port, public (SecurityConfig), for compose's health
+        # check and the orchestrator's probe. Boot takes only one segment there, hence /health and
+        # not /actuator/health (plan 7, the user's decision of 2026-11-16). The group sets nothing
+        # else: it holds every component and takes the details, roles, order and status codes above.
+        api:
+          additional-path: server:/health

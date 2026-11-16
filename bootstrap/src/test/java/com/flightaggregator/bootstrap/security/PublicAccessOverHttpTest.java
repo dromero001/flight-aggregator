@@ -74,7 +74,7 @@ class PublicAccessOverHttpTest {
   /** Permitting the error page must not open the admin side. */
   @Test
   void anAnonymousAdminCallIsStillAskedForAToken() {
-    assertThat(http.getForEntity("/actuator/metrics", String.class).getStatusCode())
+    assertThat(http.getForEntity("/api/admin/ingestions", String.class).getStatusCode())
         .isEqualTo(HttpStatus.UNAUTHORIZED);
   }
 }

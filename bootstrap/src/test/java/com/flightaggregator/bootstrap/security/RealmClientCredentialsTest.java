@@ -75,7 +75,7 @@ class RealmClientCredentialsTest {
   void acceptsTheClientCredentialsTokenOfTheRealmsAdminClient() throws Exception {
     String token = clientCredentialsToken("admin-service", "demo-admin-service-secret");
 
-    mvc.perform(get("/actuator/metrics").header("Authorization", "Bearer " + token))
+    mvc.perform(get("/api/admin/status").header("Authorization", "Bearer " + token))
         .andExpect(status().isOk());
   }
 

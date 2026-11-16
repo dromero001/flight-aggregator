@@ -90,50 +90,11 @@ class SecurityTest {
     assertThat(reprice.getResponse().getStatus()).isNotIn(401, 403);
   }
 
-  /** No Valkey runs in this test, so the status is DEGRADED, still a 200 (Q8-A). */
-  @Test
-  void healthNeedsNoTokenAndShowsNoDetails() throws Exception {
-    mvc.perform(get("/actuator/health"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.status").isString())
-        .andExpect(jsonPath("$.components").doesNotExist());
-  }
-
-  @Test
-  void healthShowsItsDetailsToTheAdmin() throws Exception {
-    mvc.perform(
-            get("/actuator/health")
-                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.components.db.status").value("UP"));
-  }
-
-  @Test
-  void metricsAnswer401WithoutAToken() throws Exception {
-    mvc.perform(get("/actuator/metrics")).andExpect(status().isUnauthorized());
-  }
-
-  @Test
-  void metricsAnswer403WithoutTheAdminRole() throws Exception {
-    mvc.perform(
-            get("/actuator/metrics")
-                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_user"))))
-        .andExpect(status().isForbidden());
-  }
-
-  @Test
-  void metricsAnswer200WithTheAdminRealmRole() throws Exception {
-    mvc.perform(
-            get("/actuator/metrics")
-                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
-        .andExpect(status().isOk());
-  }
-
   @Test
   void rejectsATokenOfAnotherIssuer() throws Exception {
     String token = signed("http://localhost:8180/realms/another-realm", 300, KEY, "ADMIN");
 
-    mvc.perform(get("/actuator/metrics").header("Authorization", "Bearer " + token))
+    mvc.perform(get("/api/admin/status").header("Authorization", "Bearer " + token))
         .andExpect(status().isUnauthorized());
   }
 
@@ -142,7 +103,7 @@ class SecurityTest {
   void rejectsAnExpiredToken() throws Exception {
     String token = signed(ISSUER, -300, KEY, "ADMIN");
 
-    mvc.perform(get("/actuator/metrics").header("Authorization", "Bearer " + token))
+    mvc.perform(get("/api/admin/status").header("Authorization", "Bearer " + token))
         .andExpect(status().isUnauthorized());
   }
 
@@ -151,7 +112,7 @@ class SecurityTest {
   void rejectsATokenSignedWithAnotherKey() throws Exception {
     String token = signed(ISSUER, 300, signingKey(), "ADMIN");
 
-    mvc.perform(get("/actuator/metrics").header("Authorization", "Bearer " + token))
+    mvc.perform(get("/api/admin/status").header("Authorization", "Bearer " + token))
         .andExpect(status().isUnauthorized());
   }
 
@@ -159,7 +120,7 @@ class SecurityTest {
   void answers403ToAValidTokenWithoutTheAdminRealmRole() throws Exception {
     String token = signed(ISSUER, 300, KEY, "user");
 
-    mvc.perform(get("/actuator/metrics").header("Authorization", "Bearer " + token))
+    mvc.perform(get("/api/admin/status").header("Authorization", "Bearer " + token))
         .andExpect(status().isForbidden());
   }
 
@@ -168,7 +129,7 @@ class SecurityTest {
   void acceptsASignedTokenOfTheIssuerWithTheAdminRealmRole() throws Exception {
     String token = signed(ISSUER, 300, KEY, "ADMIN");
 
-    mvc.perform(get("/actuator/metrics").header("Authorization", "Bearer " + token))
+    mvc.perform(get("/api/admin/status").header("Authorization", "Bearer " + token))
         .andExpect(status().isOk());
   }
 

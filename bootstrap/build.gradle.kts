@@ -11,7 +11,7 @@ dependencies {
     implementation(project(":adapters:web"))
     implementation(libs.spring.boot.starter.jdbc)
     implementation(libs.spring.boot.starter.flyway)
-    // A web server keeps the process alive between runs and serves /actuator/health: without one the
+    // A web server keeps the process alive between runs and serves /health: without one the
     // JVM exits after the first run, its remaining threads being daemons (found in Task 11).
     implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.spring.boot.starter.actuator)
@@ -29,6 +29,9 @@ dependencies {
     // Swagger UI on /swagger-ui.html, to browse and try the API (plan 5's extra E2, approved by the
     // user). The same springdoc release as the adapter's contract; no code uses it.
     runtimeOnly(libs.springdoc.openapi.starter.webmvc.ui)
+    // Actuator's /actuator/prometheus, which Prometheus scrapes on the management port (spec 6.10);
+    // the BOM's version, and no code uses it.
+    runtimeOnly(libs.micrometer.registry.prometheus)
     // Flyway 10+ reads PostgreSQL through this module; no code uses it.
     runtimeOnly(libs.flyway.database.postgresql)
 

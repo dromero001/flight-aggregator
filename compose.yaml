@@ -62,14 +62,15 @@ services:
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/flight-aggregator/protocol/openid-connect/certs
     healthcheck:
       # DEGRADED (a provider not up, or Valkey down) still searches, so it is healthy too (plan 5,
-      # Q8-A); only DOWN, PostgreSQL out of reach, is not.
+      # Q8-A); only DOWN, PostgreSQL out of reach, is not. The API port's public /health (plan 7,
+      # the user's decision of 2026-11-16).
       test:
         - CMD
         - bash
         - -c
         - >-
           exec 3<>/dev/tcp/localhost/8080
-          && printf 'GET /actuator/health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3
+          && printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3
           && grep -qE '"status":"(UP|DEGRADED)"' <&3
       interval: 10s
       timeout: 5s

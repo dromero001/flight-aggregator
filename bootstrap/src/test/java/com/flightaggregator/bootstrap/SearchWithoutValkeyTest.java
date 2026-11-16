@@ -90,7 +90,7 @@ class SearchWithoutValkeyTest {
 
   @Test
   void searchesAndRepricesWhileValkeyIsDown() throws Exception {
-    assertThat(get("/actuator/health").body()).contains("\"status\":\"UP\"");
+    assertThat(get("/health").body()).contains("\"status\":\"UP\"");
 
     pauseValkey();
     try {
@@ -104,7 +104,7 @@ class SearchWithoutValkeyTest {
             .as("re-price %d of an id the inventory does not hold", reprice)
             .isEqualTo(404);
       }
-      HttpResponse<String> health = get("/actuator/health");
+      HttpResponse<String> health = get("/health");
       assertThat(health.statusCode()).isEqualTo(200);
       assertThat(health.body()).contains("\"status\":\"DEGRADED\"");
     } finally {
