@@ -11,6 +11,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -203,6 +204,76 @@ class GrafanaProvisioningTest {
             .isEmpty();
       }
     }
+  }
+
+  /**
+   * A gauge's tile reads "unknown" when no instance reports a number for it, as its alert counts it
+   * (plan 7 Task 3: NaN or missing is stale), never its last healthy value in green. The query is
+   * instant, so a gauge that went missing leaves no older value to show; NaN, and no series at all,
+   * map to "unknown" in the colour of the alert that fires on it: ProviderDataStale's and
+   * PartitionHorizonShort's red, and orange for the rows in DEFAULT, whose unknown is
+   * PartitionHorizonShort's.
+   */
+  @Test
+  void showsAnUnknownGaugeAsUnknownNeverAsItsLastValue() throws IOException, InterruptedException {
+    Map<String, JsonNode> panels = new LinkedHashMap<>();
+    dashboard().path("panels").forEach(panel -> panels.put(panel.path("title").asString(), panel));
+    List<GaugeTile> tiles =
+        List.of(
+            new GaugeTile("Data freshness", "A", "red"),
+            new GaugeTile("Partitions", "A", "red"),
+            new GaugeTile("Partitions", "B", "orange"));
+
+    for (GaugeTile tile : tiles) {
+      JsonNode panel = panels.get(tile.panel());
+      JsonNode target =
+          panel
+              .path("targets")
+              .valueStream()
+              .filter(query -> query.path("refId").asString().equals(tile.refId()))
+              .findFirst()
+              .orElseThrow();
+      assertThat(target.path("instant").asBoolean()).as("%s is instant", tile).isTrue();
+      assertThat(target.path("range").asBoolean(true)).as("%s is a range", tile).isFalse();
+      assertThat(panel.at("/fieldConfig/defaults/noValue").asString(""))
+          .as("%s with no series", tile)
+          .isEqualTo("unknown");
+      assertThat(nullAndNaN(mappings(panel, tile.refId())))
+          .as("%s reading NaN or no series", tile)
+          .isEqualTo(Map.of("text", "unknown", "color", tile.unknownColour()));
+    }
+  }
+
+  /** A stat tile that shows a gauge: its panel, its query and its colour when unknown. */
+  private record GaugeTile(String panel, String refId, String unknownColour) {}
+
+  /** The value mappings of a panel's query: an override of its refId's, or the panel's own. */
+  private static JsonNode mappings(JsonNode panel, String refId) {
+    return panel
+        .at("/fieldConfig/overrides")
+        .valueStream()
+        .filter(override -> override.at("/matcher/id").asString("").equals("byFrameRefID"))
+        .filter(override -> override.at("/matcher/options").asString("").equals(refId))
+        .flatMap(override -> override.path("properties").valueStream())
+        .filter(property -> property.path("id").asString("").equals("mappings"))
+        .map(property -> property.path("value"))
+        .findFirst()
+        .orElse(panel.at("/fieldConfig/defaults/mappings"));
+  }
+
+  /** What a mapping list shows for NaN and for no value: its text and colour, empty if neither. */
+  private static Map<String, String> nullAndNaN(JsonNode mappings) {
+    return mappings
+        .valueStream()
+        .filter(mapping -> mapping.path("type").asString("").equals("special"))
+        .filter(mapping -> mapping.at("/options/match").asString("").equals("null+nan"))
+        .map(
+            mapping ->
+                Map.of(
+                    "text", mapping.at("/options/result/text").asString(""),
+                    "color", mapping.at("/options/result/color").asString("")))
+        .findFirst()
+        .orElse(Map.of());
   }
 
   /**

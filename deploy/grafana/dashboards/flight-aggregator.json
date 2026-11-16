@@ -71,17 +71,21 @@
       "id": 3,
       "type": "stat",
       "title": "Data freshness",
-      "description": "Age of each provider's newest data, the youngest over the instances (spec 6.5). Red from 90 minutes, when ProviderDataStale fires; NaN after a restart until the instance's first run.",
+      "description": "Age of each provider's newest data, the youngest over the instances (spec 6.5). Red from 90 minutes, when ProviderDataStale fires. Unknown, in red, when no instance holds a number for it (NaN until an instance's first run, or no instance scraped), which ProviderDataStale counts as stale and fires on after 15 minutes.",
       "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "options": {
         "colorMode": "background",
-        "graphMode": "area",
+        "graphMode": "none",
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
       },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
+          "noValue": "unknown",
+          "mappings": [
+            { "type": "special", "options": { "match": "null+nan", "result": { "text": "unknown", "color": "red" } } }
+          ],
           "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
@@ -98,7 +102,9 @@
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "min by (provider) (ingestion_provider_last_fresh_seconds)",
-          "legendFormat": "{{provider}}"
+          "legendFormat": "{{provider}}",
+          "instant": true,
+          "range": false
         }
       ]
     },
@@ -201,7 +207,7 @@
       "id": 7,
       "type": "stat",
       "title": "Partitions",
-      "description": "Days of daily partitions created ahead and rows in the DEFAULT partition, max over the instances (spec 4.3). Red as their alerts fire: below 34 days, above 0 rows.",
+      "description": "Days of daily partitions created ahead and rows in the DEFAULT partition, max over the instances (spec 4.3). Red as their alerts fire: below 34 days, above 0 rows. Unknown when no instance holds a number (NaN until an instance's first run, or no instance scraped): red, since PartitionHorizonShort counts it as short and fires on it after 15 minutes; orange for the rows, whose unknown is that same alert's.",
       "gridPos": { "x": 16, "y": 16, "w": 8, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "options": {
@@ -210,7 +216,15 @@
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
       },
       "fieldConfig": {
-        "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "thresholds" } },
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "noValue": "unknown",
+          "mappings": [
+            { "type": "special", "options": { "match": "null+nan", "result": { "text": "unknown", "color": "red" } } }
+          ]
+        },
         "overrides": [
           {
             "matcher": { "id": "byFrameRefID", "options": "A" },
@@ -231,6 +245,12 @@
             "matcher": { "id": "byFrameRefID", "options": "B" },
             "properties": [
               {
+                "id": "mappings",
+                "value": [
+                  { "type": "special", "options": { "match": "null+nan", "result": { "text": "unknown", "color": "orange" } } }
+                ]
+              },
+              {
                 "id": "thresholds",
                 "value": {
                   "mode": "absolute",
@@ -249,13 +269,17 @@
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "max(ingestion_partitions_days_ahead)",
-          "legendFormat": "Days ahead"
+          "legendFormat": "Days ahead",
+          "instant": true,
+          "range": false
         },
         {
           "refId": "B",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "max(ingestion_partitions_default_rows)",
-          "legendFormat": "Rows in DEFAULT"
+          "legendFormat": "Rows in DEFAULT",
+          "instant": true,
+          "range": false
         }
       ]
     }
