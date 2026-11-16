@@ -96,6 +96,19 @@ class RateLimitConfigTest {
                             + " REPRICE]"));
   }
 
+  /** A misspelt setting stops startup instead of leaving the limit it meant to change. */
+  @Test
+  void stopsStartupOnASettingThatNamesNoLimit() {
+    runner
+        .withPropertyValues("rate-limit.actions.search.requets=3")
+        .run(
+            context ->
+                assertThat(context)
+                    .getFailure()
+                    .rootCause()
+                    .hasMessageContaining("rate-limit.actions.search.requets"));
+  }
+
   private static List<String> answersTo(
       AssertableApplicationContext context, RateLimitedAction action, int requests) {
     AdmitRequest admitRequest = context.getBean(AdmitRequest.class);
