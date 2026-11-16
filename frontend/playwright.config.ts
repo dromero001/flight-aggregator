@@ -20,9 +20,12 @@ const browserProjects = Object.entries(browsers).flatMap(([browser, device]) =>
   specs.map((spec) => ({ name: `${spec}-${browser}`, testMatch: `${spec}.spec.ts`, use: device })),
 );
 
-// The rate-limit test sends its requests from Node, not from a browser, so it runs once, last.
+// The observability checks read the stack's telemetry through Grafana and Prometheus; they run once,
+// in Chromium, after every browser's admin run. The rate-limit test sends its requests from Node,
+// not from a browser, so it runs once, last.
 const projects = [
   ...browserProjects,
+  { name: 'observability', testMatch: 'observability.spec.ts', use: devices['Desktop Chrome'] },
   { name: 'rate-limit', testMatch: 'rate-limit.spec.ts', use: devices['Desktop Chrome'] },
 ];
 
