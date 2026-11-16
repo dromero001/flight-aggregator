@@ -87,3 +87,15 @@ test('ignores a Retry-After it cannot read', async () => {
 
   expect(error.retryAfterSeconds).toBeUndefined();
 });
+
+test.each(['', '-5', '1.5'])(
+  'ignores a Retry-After of %j, which is not whole seconds',
+  async (value) => {
+    // `Number` reads "" as 0, and `Date.parse` reads "-5" as a date in 2001: "Try again in 0 seconds".
+    const response = new Response(null, { status: 429, headers: { 'Retry-After': value } });
+
+    const error = await toApiError(response);
+
+    expect(error.retryAfterSeconds).toBeUndefined();
+  },
+);
