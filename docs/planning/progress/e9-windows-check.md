@@ -36,7 +36,7 @@ A first attempt on commit `ce0d93c`, with the VM capped at 2 GB and the host's o
 | `origin=MADRID` | ✅ 400 problem+json: "origin must be a three-letter airport code, like MAD" |
 | `maxPrice=0` | ✅ 400 problem+json: "maxPrice must be an amount in euros above 0, with at most two decimals, like 150 or 149.99" |
 | Keycloak ready (README step 1) | ✅ |
-| Token with the README's command (`python3`) | ❌ **`python3` is the Microsoft Store alias** on a stock Windows: it prints "no se encontró Python…" and exits 49, so `TOKEN` is empty (finding 3) |
+| Token with the README's command (`python3`) | ❌ **`python3` is the Microsoft Store alias** on a stock Windows: it prints "Python was not found…" (translated from the laptop's Spanish locale) and exits 49, so `TOKEN` is empty (finding 3) |
 | Token with the README's alternative (`jq -r .access_token`) | ✅ (jq installed by hand; Windows does not ship it either) |
 | `GET /api/admin/status` without a token | ✅ 401 with `WWW-Authenticate: Bearer resource_metadata=…` |
 | `GET /api/admin/status` with the token | ✅ 200: generation 1, three providers `UP`, breakers `CLOSED`, 3,673 / 3,588 / 3,728 legs, discarded records by reason |
