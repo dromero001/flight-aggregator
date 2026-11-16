@@ -25,6 +25,12 @@ dependencies {
     // Binds the breakers' state and calls to Micrometer (§6.1, §6.10).
     implementation(libs.resilience4j.micrometer)
     implementation(libs.shedlock.core)
+    // Traces over OTLP with W3C trace context (§6.10), through Boot's own observability.
+    implementation(libs.spring.boot.starter.opentelemetry)
+    // Boot's RestClient.Builder, observed and propagating the trace, for the provider requests.
+    implementation(libs.spring.boot.starter.restclient)
+    // Carries the trace context onto the fan-out threads that ContextThreads builds (§6.10).
+    implementation(libs.micrometer.context.propagation)
     implementation(libs.shedlock.provider.jdbc.template)
     // Swagger UI on /swagger-ui.html, to browse and try the API (plan 5's extra E2, approved by the
     // user). The same springdoc release as the adapter's contract; no code uses it.
@@ -42,6 +48,9 @@ dependencies {
     testImplementation(libs.spring.security.test)
     testImplementation(libs.spring.boot.resttestclient)
     testImplementation(libs.spring.boot.restclient)
+    // Tracing on in a test, and its spans kept in memory (TracingEndToEndTest).
+    testImplementation(libs.spring.boot.starter.opentelemetry.test)
+    testImplementation(libs.opentelemetry.sdk.testing)
 }
 
 // The Dockerfile copies this exact name, whatever the project version.

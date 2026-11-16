@@ -12,6 +12,7 @@ import com.flightaggregator.application.port.out.RefreshScheduler;
 import com.flightaggregator.application.service.RefreshStaleRouteService;
 import com.flightaggregator.bootstrap.refresh.BackgroundRefresh;
 import java.util.List;
+import java.util.concurrent.ThreadFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -30,9 +31,10 @@ class RefreshConfig {
       DiscardedRecords discarded,
       ItineraryRepository itineraries,
       RefreshCoordination coordination,
-      Clock clock) {
+      Clock clock,
+      ThreadFactory contextThreads) {
     return new RefreshStaleRouteService(
-        providers, offers, airports, discarded, itineraries, coordination, clock);
+        providers, offers, airports, discarded, itineraries, coordination, clock, contextThreads);
   }
 
   @Bean

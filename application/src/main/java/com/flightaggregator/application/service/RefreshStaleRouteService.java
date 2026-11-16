@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadFactory;
 
 /**
  * The stale-route refresh (§4.1, §6.4; plan 5 Q2-B). It downloads one origin from every provider at
@@ -51,8 +52,9 @@ public final class RefreshStaleRouteService implements RefreshStaleRoute {
       DiscardedRecords discardedRecords,
       ItineraryRepository repository,
       RefreshCoordination coordination,
-      Clock clock) {
-    this.downloads = new ProviderDownloads(providers, catalogue, discardedRecords);
+      Clock clock,
+      ThreadFactory threads) {
+    this.downloads = new ProviderDownloads(providers, catalogue, discardedRecords, threads);
     this.store = store;
     this.repository = repository;
     this.coordination = coordination;

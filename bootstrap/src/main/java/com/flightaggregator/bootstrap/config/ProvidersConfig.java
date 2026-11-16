@@ -12,11 +12,13 @@ import com.flightaggregator.domain.Provider;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.micrometer.tagged.TaggedCircuitBreakerMetrics;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.util.concurrent.ThreadFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.resilience.annotation.EnableResilientMethods;
+import org.springframework.web.client.RestClient;
 
 /**
  * The three provider adapters, each built from its own endpoint, and their circuit breakers: one
@@ -55,8 +57,11 @@ class ProvidersConfig {
       ProvidersProperties properties,
       CircuitBreakerRegistry circuitBreakers,
       MeterRegistry meters,
-      Clock clock) {
-    return provider(Provider.ALPHA, properties, circuitBreakers, meters, clock);
+      Clock clock,
+      RestClient.Builder http,
+      ThreadFactory contextThreads) {
+    return provider(
+        Provider.ALPHA, properties, circuitBreakers, meters, clock, http, contextThreads);
   }
 
   @Bean
@@ -64,8 +69,11 @@ class ProvidersConfig {
       ProvidersProperties properties,
       CircuitBreakerRegistry circuitBreakers,
       MeterRegistry meters,
-      Clock clock) {
-    return provider(Provider.BETA, properties, circuitBreakers, meters, clock);
+      Clock clock,
+      RestClient.Builder http,
+      ThreadFactory contextThreads) {
+    return provider(
+        Provider.BETA, properties, circuitBreakers, meters, clock, http, contextThreads);
   }
 
   @Bean
@@ -73,23 +81,35 @@ class ProvidersConfig {
       ProvidersProperties properties,
       CircuitBreakerRegistry circuitBreakers,
       MeterRegistry meters,
-      Clock clock) {
-    return provider(Provider.GAMMA, properties, circuitBreakers, meters, clock);
+      Clock clock,
+      RestClient.Builder http,
+      ThreadFactory contextThreads) {
+    return provider(
+        Provider.GAMMA, properties, circuitBreakers, meters, clock, http, contextThreads);
   }
 
-  /** Every part, its retries' counter included, is named after the endpoint's provider. */
+  /**
+   * Every part, its retries' counter included, is named after the endpoint's provider. Its requests
+   * are built from Boot's {@code RestClient.Builder}, which observes each one and sends the trace
+   * as W3C {@code traceparent}, and its page loop runs on a thread that carries the caller's trace
+   * (§6.10).
+   */
   private static FlightProvider provider(
       Provider provider,
       ProvidersProperties properties,
       CircuitBreakerRegistry circuitBreakers,
       MeterRegistry meters,
-      Clock clock) {
+      Clock clock,
+      RestClient.Builder http,
+      ThreadFactory contextThreads) {
     ProviderEndpoint endpoint = properties.endpoint(provider);
     return new PagedProvider(
         endpoint,
         properties.resilience(),
         circuitBreakers,
         new CountedRetries(meters, endpoint.provider()),
-        clock);
+        clock,
+        http,
+        contextThreads);
   }
 }

@@ -28,7 +28,8 @@ import org.springframework.web.client.RestClient;
 
 /**
  * The HTTP client of one provider: its API key on every request, bounded in time, retries and body
- * size, behind a circuit breaker.
+ * size, behind a circuit breaker. It is built from the application's {@link RestClient.Builder}, so
+ * each request is observed and carries the caller's trace as W3C {@code traceparent} (§6.10).
  */
 public final class ProviderHttp {
 
@@ -55,18 +56,20 @@ public final class ProviderHttp {
 
   /**
    * Its breaker is the registry's one named after the endpoint's provider; {@code retries} hears of
-   * each retry, not of the first attempt.
+   * each retry, not of the first attempt. {@code http} is cloned, so the shared builder is left as
+   * it was.
    */
   ProviderHttp(
       ProviderEndpoint endpoint,
       ResilienceSettings settings,
       CircuitBreakerRegistry circuitBreakers,
       RetryListener retries,
-      Clock clock) {
+      Clock clock,
+      RestClient.Builder http) {
     JdkClientHttpRequestFactory requests = new JdkClientHttpRequestFactory();
     requests.setReadTimeout(settings.requestTimeout());
     this.client =
-        RestClient.builder()
+        http.clone()
             .requestFactory(requests)
             .baseUrl(endpoint.baseUrl().toString())
             .defaultHeader("X-Api-Key", endpoint.apiKey())

@@ -81,6 +81,11 @@ logging:
       console: ecs
 
 management:
+  tracing:
+    sampling:
+      # Every request and run is traced (plan 7, Q4): Boot samples 10% by default, so the run a
+      # demo shows could go untraced, and a demo's volume is small.
+      probability: 1.0
   health:
     redis:
       # Valkey down makes search slower, not broken (spec 6.2), so Boot's indicator, which would

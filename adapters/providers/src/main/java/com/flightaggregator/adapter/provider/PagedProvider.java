@@ -11,10 +11,12 @@ import com.flightaggregator.domain.LegKey;
 import com.flightaggregator.domain.Provider;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import java.util.Optional;
+import java.util.concurrent.ThreadFactory;
 import org.springframework.core.retry.RetryListener;
 import org.springframework.resilience.annotation.ConcurrencyLimit;
 import org.springframework.resilience.annotation.ConcurrencyLimit.ThrottlePolicy;
 import org.springframework.util.ConcurrencyThrottleSupport;
+import org.springframework.web.client.RestClient;
 
 /**
  * A provider downloaded page by page (§6.1, §6.7): each page is requested in the provider's own
@@ -39,17 +41,20 @@ public class PagedProvider implements FlightProvider {
 
   /**
    * The endpoint's provider: its breaker is the registry's one named after it, and {@code retries}
-   * hears of each retry of its requests.
+   * hears of each retry of its requests. Its requests are built from {@code http}, and a download's
+   * page loop runs on a thread of {@code pages}.
    */
   public PagedProvider(
       ProviderEndpoint endpoint,
       ResilienceSettings settings,
       CircuitBreakerRegistry circuitBreakers,
       RetryListener retries,
-      Clock clock) {
+      Clock clock,
+      RestClient.Builder http,
+      ThreadFactory pages) {
     this.provider = endpoint.provider();
-    this.http = new ProviderHttp(endpoint, settings, circuitBreakers, retries, clock);
-    this.paging = new PagedDownload(provider, settings);
+    this.http = new ProviderHttp(endpoint, settings, circuitBreakers, retries, clock, http);
+    this.paging = new PagedDownload(provider, settings, pages);
     this.format = formatOf(provider);
     this.pageSize = settings.pageSize();
   }

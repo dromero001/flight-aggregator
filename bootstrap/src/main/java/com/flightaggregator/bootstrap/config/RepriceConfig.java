@@ -12,6 +12,7 @@ import com.flightaggregator.bootstrap.observability.CountedItineraryRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.ThreadFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -35,13 +36,15 @@ class RepriceConfig {
       List<FlightProvider> providers,
       ItineraryRepository itineraries,
       Clock clock,
-      MeterRegistry meters) {
+      MeterRegistry meters,
+      ThreadFactory contextThreads) {
     return new RepriceItineraryService(
         reader,
         offers,
         providers,
         new CountedItineraryRepository(itineraries, meters),
         clock,
-        SETTINGS);
+        SETTINGS,
+        contextThreads);
   }
 }

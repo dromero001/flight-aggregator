@@ -30,6 +30,10 @@ spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-te
 spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }
 spring-boot-resttestclient = { module = "org.springframework.boot:spring-boot-resttestclient" }
 spring-boot-restclient = { module = "org.springframework.boot:spring-boot-restclient" }
+spring-boot-starter-restclient = { module = "org.springframework.boot:spring-boot-starter-restclient" }
+spring-boot-starter-opentelemetry = { module = "org.springframework.boot:spring-boot-starter-opentelemetry" }
+spring-boot-starter-opentelemetry-test = { module = "org.springframework.boot:spring-boot-starter-opentelemetry-test" }
+opentelemetry-sdk-testing = { module = "io.opentelemetry:opentelemetry-sdk-testing" }
 spring-boot-starter-security = { module = "org.springframework.boot:spring-boot-starter-security" }
 spring-boot-starter-oauth2-resource-server = { module = "org.springframework.boot:spring-boot-starter-oauth2-resource-server" }
 spring-security-test = { module = "org.springframework.security:spring-security-test" }
@@ -55,6 +59,7 @@ spring-data-redis = { module = "org.springframework.data:spring-data-redis" }
 spring-boot-starter-data-redis = { module = "org.springframework.boot:spring-boot-starter-data-redis" }
 lettuce-core = { module = "io.lettuce:lettuce-core" }
 micrometer-core = { module = "io.micrometer:micrometer-core" }
+micrometer-context-propagation = { module = "io.micrometer:context-propagation" }
 logback-classic = { module = "ch.qos.logback:logback-classic" }
 testcontainers-redis = { module = "com.redis:testcontainers-redis" }
 springdoc-openapi-starter-webmvc-api = { module = "org.springdoc:springdoc-openapi-starter-webmvc-api", version.ref = "springdoc" }

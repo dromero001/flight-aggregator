@@ -40,6 +40,7 @@ import org.springframework.core.retry.RetryException;
 import org.springframework.core.retry.RetryListener;
 import org.springframework.core.retry.RetryPolicy;
 import org.springframework.core.retry.Retryable;
+import org.springframework.web.client.RestClient;
 
 class ProviderHttpTest {
 
@@ -402,7 +403,7 @@ class ProviderHttpTest {
     ResilienceSettings settings =
         new ResilienceSettings(
             requestTimeout, Duration.ofSeconds(60), 3, firstBackoff, 1000, 200, 1024);
-    return new ProviderHttp(endpoint, settings, breakers, retries, clock);
+    return new ProviderHttp(endpoint, settings, breakers, retries, clock, RestClient.builder());
   }
 
   private FailureReason failureOf(String pathAndQuery) {

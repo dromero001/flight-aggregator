@@ -26,6 +26,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -53,6 +54,7 @@ public final class RepriceItineraryService implements RepriceItinerary {
   private final ItineraryRepository repository;
   private final Clock clock;
   private final RepriceSettings settings;
+  private final ThreadFactory threads;
 
   public RepriceItineraryService(
       ItineraryReader reader,
@@ -60,7 +62,8 @@ public final class RepriceItineraryService implements RepriceItinerary {
       List<FlightProvider> providers,
       ItineraryRepository repository,
       Clock clock,
-      RepriceSettings settings) {
+      RepriceSettings settings,
+      ThreadFactory threads) {
     this.reader = reader;
     this.offers = offers;
     this.providers =
@@ -69,6 +72,7 @@ public final class RepriceItineraryService implements RepriceItinerary {
     this.repository = repository;
     this.clock = clock;
     this.settings = settings;
+    this.threads = threads;
   }
 
   @Override
@@ -129,7 +133,7 @@ public final class RepriceItineraryService implements RepriceItinerary {
       return Optional.empty();
     }
     List<Future<Optional<Leg>>> requotes;
-    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+    try (ExecutorService executor = Executors.newThreadPerTaskExecutor(threads)) {
       requotes =
           itinerary.legs().stream()
               .map(leg -> executor.submit(() -> requote(leg, startedAt)))
