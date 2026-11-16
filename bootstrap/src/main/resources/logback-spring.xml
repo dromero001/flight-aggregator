@@ -5,6 +5,8 @@
   when management.opentelemetry.logging.export.otlp.endpoint is set (compose sets the Collector's), and
   drops them otherwise (spec 6.10; plan 7, Q2-A). LogExport installs the SDK into the appender once the
   context has built it; events written before that wait in the appender, up to its default 1,000.
+  This file replaces Boot's default configuration: the console is always structured, and there is no
+  log file (logging.file.* has no effect), as the application only ever logged to the console.
 -->
 <configuration>
   <include resource="org/springframework/boot/logging/logback/defaults.xml"/>

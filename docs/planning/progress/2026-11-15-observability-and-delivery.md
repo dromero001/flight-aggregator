@@ -771,3 +771,66 @@ M1 (Provider calls' description misses the startup-run caveat), M2 (no test pins
 ## Task 6 — fix round re-review
 
 Re-review of `7d45a2c..27e7866`: **Functional APPROVED, Code APPROVED** (thermo-nuclear applied). I1 closed: instant queries, `noValue: "unknown"`, a `null+nan` mapping; freshness and days ahead unknown red (their `gauge: unknown` rules), rows in DEFAULT unknown orange (its unknown is PartitionHorizonShort's, as the rule file says). The reviewer's own mutation (Partitions B not instant) turned `showsAnUnknownGaugeAsUnknownNeverAsItsLastValue` red. Minors for the closing round, with the first review's M1–M6: F-m1 the freshness description (`flight-aggregator.json:74`) leaves out "a provider with nothing stored" among the NaN causes; F-m2 `GrafanaProvisioningTest.java:228` a renamed panel gives a bare NullPointerException; F-m3 no test shows `noValue` renders in the mapping's colour (the screenshot does).
+
+## Task 5 — evidence
+
+Logs in Loki, with the jump from a line to its trace (Q2-A), plus Task 4's review Minor F-M1 (`service.name` was `unknown_service`). Branch `worktree-agent-a1def00b5149bfa77`, rebased on `main` `051a20e`.
+
+### Library (spec 6.1)
+
+Boot 4.1.2 builds the OpenTelemetry SDK's logger provider and its OTLP log exporter (`management.opentelemetry.logging.export.*`), but not the Logback appender that feeds it, and its BOM does not manage it. `io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0` on Maven Central: newest `2.33.1-alpha` (2026-10-26), whose POM needs `opentelemetry-api` 1.67.0, above the BOM's 1.62.0 (Gradle would take the higher API and leave the SDK at 1.62.0). The appender's POMs: 2.27.0 → API 1.61.0, **2.28.0 and 2.28.1 → 1.62.0**, 2.29.0 → 1.63.0. Pinned: **`2.28.1-alpha`**, published 2026-05-20, the newest release on the BOM's OpenTelemetry; resolved `opentelemetry-api:1.62.0` everywhere. Every release of the artifact carries the `-alpha` suffix (the instrumentation project's marker for that module's API stability, not a pre-release of the project): see "For the user" below.
+
+### Red → green, one test at a time
+
+**F-M1.** `TracingEndToEndTest.namesTheServiceInEverySpan` (after a run, every span's resource `service.name` is `flight-aggregator`).
+- Red: `Expecting ArrayList: ["unknown_service", "unknown_service", "unknown_service", "unknown_service"] to contain only: ["flight-aggregator"]`.
+- Green: `spring.application.name: flight-aggregator`. Boot builds the resource's `service.name` from it, which Loki turns into its `service_name` label; the console's ECS `service.name` gained it too.
+
+**Step 1.** `StructuredLogsTest.everyLineOfARunCarriesItsTraceSpanAndCorrelationIds` (Boot's `OutputCaptureExtension`; every JSON line of a `com.flightaggregator` logger written during `job.run()` has `trace.id` (32 hex), `span.id` (16 hex) and `correlation.id`, one trace id across the run, and the "Ingestion run ended" line is among them).
+- Red: `[trace.id in {... "message":"Ingestion run ended","traceId":"e2e77d8dbb25d4e3fbf95f34bb48e8de","spanId":"d113c52cfce7b995","correlation":{"id":"..."} ...}] Expected size: 32 but was: 0`. Micrometer Tracing's `Slf4JEventListener` (Boot's bean) already put the ids in the MDC, as `traceId` and `spanId`, not under their ECS names.
+- Boot's `logging.structured.json.rename` writes the renamed member as a flat dotted key (`"trace.id":"..."`), not nested like `correlation`; the test reads the key as written and was shown red again without the setting (`Expected size: 32 but was: 0 in: ""`, on the "Kept the last good offers" line).
+- Green: `logging.structured.json.rename` `[traceId]: trace.id`, `[spanId]: span.id` (Boot's setting, no code).
+
+**Step 2.** `LogExportTest` (`InMemoryLogRecordExporter` and `InMemorySpanExporter` beans, tracing on).
+- `exportsARunsLinesWithTheirTraceContext` (the "Ingestion run ended" record has the `ingestion.run` span's trace id and a `correlation.id` attribute). Red: `java.lang.AssertionError: No record of the run's report line`. Green: the appender (above); `logback-spring.xml` with Boot's `defaults.xml` and `structured-console-appender.xml` plus the `OTEL` appender (`captureMdcAttributes=correlation.id`); `LogExport`, an `InitializingBean` that calls `OpenTelemetryAppender.install(openTelemetry)` with Boot's SDK, declared in `LogExportConfig`. A first declaration in `TracingConfig` failed 18 `ProvidersConfigTest`, `RefreshConfigTest` and `RepriceConfigTest` cases, whose context runners import `TracingConfig` without an `OpenTelemetry` bean; hence its own configuration class.
+- `exportsTheKeyValuePairsOfALine`, not in the plan's list; it pins the interface's "key-value pairs are kept, so a provider failure still names its provider and reason" (Beta's "Kept the last good offers" record has `provider=BETA`, `reason=EMPTY_DOWNLOAD`). Red: `Expecting actual: [] to contain exactly (and in same order): ["EMPTY_DOWNLOAD"]`. Green: `captureKeyValuePairAttributes=true`.
+- `exportsNoSecretInAnyLogRecord` (after a run and a `GET /api/admin/status` with a bearer token, no record's body or attribute holds a provider key or the token). Passed on its first run. Mutation M1, a request interceptor in `ProviderHttp` that logs each request's `X-Api-Key` at INFO: `Expecting all elements of: ["Tomcat started on port 52894 (http) ...", ...] ... but found: ["alpha-key"]`. Restored; green.
+- Seen in passing: the startup lines (Tomcat's) are exported too: the appender keeps up to 1,000 events written before `LogExport` installs the SDK.
+
+**Step 3.** `GrafanaProvisioningTest.linksALogLineToItsTrace` (the Loki datasource, read as the anonymous Viewer, has a derived field `matcherType: label`, `matcherRegex: trace_id`, `datasourceUid: tempo`).
+- Red: `Expecting any element of: [] to satisfy the given assertions requirements but none did`.
+- Green: the derived field `TraceID` in `datasources.yaml`.
+- Then its URL, asserted to be `${__value.raw}`, was red: `expected: "${__value.raw}" but was: ""`. Grafana's provisioning expands `${...}` as an environment variable, so the link would have opened an empty Tempo query. Green: `$${__value.raw}`, Grafana's escape for a literal `$`.
+
+**Review Focus 1 with logs.** `TelemetryUnavailableTest.servesAndIngestsWithTheCollectorDown` (Task 4) already points the logs endpoint at a closed port; now that the appender feeds records, it stays green: a failing log export does not slow a search or a run.
+
+### The run (Step 4)
+
+The main checkout's stack was left running; a throwaway project `p7t5` ran `app` and its dependencies, Grafana, Loki, Tempo and the Collector from this branch, with an uncommitted override file that moved the published ports (Grafana on `127.0.0.1:13001`).
+- Red, before compose set the logs endpoint: the startup run ended (its console line with `service.name`, `trace.id`, `span.id`, `correlation.id`); through Grafana's datasource proxy, as the anonymous Viewer, Loki had no label at all and `{service_name="flight-aggregator"}` returned no stream.
+- Green: `MANAGEMENT_OPENTELEMETRY_LOGGING_EXPORT_OTLP_ENDPOINT: http://otel-collector:4318/v1/logs` in `app`'s environment, `app` recreated. Loki's labels: `["service_name"]` only. `{service_name="flight-aggregator"} |= "Ingestion run ended"` returned the run's line, with structured metadata `trace_id 6192501160b9fe4dd0d1c48e0ce59097`, `span_id 65132dc5fe7561cb`, `correlation_id`, `severity_text INFO`, `detected_level info`, `scope_name` (the logger) and each key-value pair (`outcome`, `generation`, `alpha_status`, ...).
+- Tempo, through Grafana as the anonymous Viewer: trace `6192501160b9fe4dd0d1c48e0ce59097` is that run, `task ingestionJob.run` → `ingestion.run` (span `65132dc5fe7561cb`, the record's) → 15 `http get`, resource `service.name=flight-aggregator`.
+- The jump in a browser (headless Chromium, a throwaway Playwright script): Explore on Loki as the anonymous Viewer shows the line; its details show "View trace"; following it opens a Tempo pane with trace `6192501160b9fe4dd0d1c48e0ce59097`, "flight-aggregator task ingestionJob.run", 17 spans, `ingestion.run` and its `http get` children. Screenshots in the worktree's `.superpowers/sdd/2026-11-15-observability-and-delivery/task-5-screens/` (untracked).
+- Stopped with `down -v`; nothing of the project left, the main stack untouched.
+
+### Deviations from the plan's wording
+
+- **The level is not a Loki label.** The plan's interface says the labels are the service name and the level; Loki 3.7's OTLP ingestion makes only `service_name` a label (as Task 1's smoke check saw), and keeps the level as structured metadata (`severity_text`, and Loki's `detected_level`, which Explore uses for its level colours and filters). Loki promotes resource attributes only, and the core Collector has no processor to turn the severity into one. Fewer labels than the plan says, never more: the ids stay out of the labels, as Review Focus 4 asks. Making the level a label is in the extras backlog.
+- **The console's ids are flat ECS keys, `"trace.id"` and `"span.id"`,** while `correlation.id` stays nested: Boot's rename setting writes the new name as one key. ECS reads both forms as the same field. Nesting them would replace Boot's `Slf4JEventListener` bean with one of ours: in the extras backlog.
+- **`logback-spring.xml` replaces Boot's default Logback configuration:** the OTel appender needs a place in Logback's configuration. It includes Boot's own console pieces, so the console's ECS lines are unchanged, but `logging.file.*` no longer writes a file (none was configured).
+- **A test the plan does not list, `LogExportTest.exportsTheKeyValuePairsOfALine`,** pins the interface's key-value pairs.
+- **One sentence in `docs/architecture/ingestion.md`** says what a log line now carries; the observability document itself is Task 7's.
+
+### For the user
+
+- **The appender's version carries `-alpha`.** `CLAUDE.md` asks for stable GA releases with no milestones or release candidates. `opentelemetry-logback-appender-1.0` has never been published without the suffix: each release of OpenTelemetry's Java instrumentation (2.28.1 here, a GA release of that project) publishes this module as `-alpha`, the marker of a module whose API may change. Q2-A, decided by the user, needs this appender, and Boot's reference documentation installs the same one. The alternative is a hand-written Logback-to-OpenTelemetry appender. Kept as built; the user may decide otherwise.
+
+### Concerns
+
+- Every new test context (`StructuredLogsTest`, `LogExportTest`) repeats the provider keys and the WireMock setup of `TracingEndToEndTest`; a shared helper in `OneFlightProviders` would remove it (Minor, for the closing round with Task 4's C-M2).
+
+### Gates
+
+- Module tests between commits (bootstrap), green before each commit.
+- `./gradlew build` on the final state, rebased on `main` `051a20e`: `BUILD SUCCESSFUL` (exit 0); 1,104 tests across the modules, none failed or skipped. `frontend/` is not touched.
+- Self-review (thermo-nuclear) of `main...HEAD`: Boot's own mechanisms first (`spring.application.name`, `logging.structured.json.rename`, Boot's logger provider and OTLP exporter, Boot's Logback includes); the one piece Boot leaves to the application, installing the appender, is one `InitializingBean` in its own configuration class, so the context runners that import `TracingConfig` need no `OpenTelemetry`; no secret leaves in a record (mutation M1); an export that fails is dropped by the SDK's batch processor (`TelemetryUnavailableTest`). Found and fixed in the review: the `logback-spring.xml` comment now says that it replaces Boot's default configuration and that no log file is written. Left as a Minor: the duplicated test setup (Concerns).
