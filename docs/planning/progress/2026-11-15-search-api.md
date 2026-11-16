@@ -1385,5 +1385,22 @@ Self-review (thermo-nuclear) and gates:
 ### Extras for the user to decide
 
 - **Document 401 and 403 on the admin operations** (Spring Security's bearer challenge, no problem body). Value: the dashboard's types know the admin failures. Cost: two `@ApiResponse` per operation, or Task 13's bearer scheme with a customizer, and a regeneration. Task 13 Step 1 covers the bearer scheme; left out unless you approve.
-- **A run on demand delays the next scheduled one.** Today the schedule's fixed delay counts from the last *scheduled* run's end, while `nextIngestionAt` counts from the last run's end, manual or not, as the plan defines it. So after a manual run the screen can name an earlier time than the scheduler's, and the scheduled run can be skipped for the lock's one-minute minimum. Value: one notion of "next run". Cost: rescheduling from the job (a `TaskScheduler` trigger), about 20 lines and a test. Left out unless you approve.
+- **A run on demand delays the next scheduled one.** Today the schedule's fixed delay counts from the last *scheduled* run's end, while `nextIngestionAt` counts from the last run's end, manual or not, as the plan defines it. So after a manual run the screen names a later time than the scheduler's real next run, since the scheduler counts from its own last run, which ended earlier (corrected after the review, F-m1: this said "earlier"). Value: one notion of "next run". Cost: rescheduling from the job (a `TaskScheduler` trigger), about 20 lines and a test. Left out unless you approve.
 - **Health while the first run has not ended.** No provider is recorded yet, so health is `UP` with an empty inventory. Value: an orchestrator or the dashboard could tell "no data yet" from "up". Cost: one more rule in the indicator and a test, and a design choice (`DEGRADED` or `UP`). Left out unless you approve.
+
+## Task 12 — fix round 1
+
+The review (`task-12-review.md`) answered functional APPROVED and code CHANGES REQUESTED, on one Important finding, C-I1. Because of the one-minute `lockAtLeastFor`, `POST /api/admin/ingestions` answered 409 *"An ingestion is already running."* for about 30 s after a run had ended (reproduced on compose). **The user's decision** (in the plan, under Task 12): the manual run takes the same `ingestion` lock with `lockAtLeastFor` zero, so the lock is released when the run ends; the scheduled run keeps its one-minute minimum. The branch was rebased on `main` at `ed1d65b` first, with no conflict.
+
+- `IngestionJobTest.acceptsALaunchRightAfterTheLastLaunchedRunEnded`. The test's lock provider keeps the row until the time ShedLock asks: the run's end, or `lockAtLeastUntil` when that is later, as the JDBC provider does. The clock is fixed. The test launches a run, waits on a latch for its unlock, then launches again; no timing is involved.
+  - Red: `[a launch once the first run ended] Expecting value to be true but was false`.
+  - Green: `runUnderTheLock` takes the minimum as a parameter. `run()` passes `SCHEDULED_LOCK_AT_LEAST_FOR` (1 min), and `launch()` passes `Duration.ZERO`.
+  - The shared `executeWithLock` entry, the MDC run id and the 409 text are unchanged. `takesTheIngestionLockForAtMost29MinutesAndAtLeastOne` still pins the scheduled run's minimum.
+- `docs/architecture/ingestion.md` now says that the manual run's lock has no minimum.
+- Extra 2 (`nextIngestionAt` after a manual run) had the direction backwards (F-m1). It now says that the screen names a *later* time than the scheduler's real next run. Its old clause about a scheduled run skipped for the manual run's one-minute minimum was dropped, because that minimum is gone.
+- The Minors (F-m1's code, F-m2, C-m1 to C-m4 and the rest) wait for the end-of-plan review, as the user's rule says.
+
+Gates:
+- `./gradlew build` exited 0. Tests: `application` 109, `adapters/persistence` 123, `adapters/web` 69, `bootstrap` 184 (one added), `adapters/providers` 197, `domain` 91, architecture 39, `mock-gds` 201. None failed or was skipped.
+- `npm run verify` exited 0 (51 tests). Its first run after the rebase failed with `TS2307: Cannot find module 'vitest-axe'`, because `main` had added that dependency and the worktree's `node_modules` was older. After `npm ci` it passed.
+- `npm run api:generate` leaves `schema.d.ts` unchanged, since the contract did not change.
