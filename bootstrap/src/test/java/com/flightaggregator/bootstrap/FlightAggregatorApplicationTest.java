@@ -230,9 +230,6 @@ class FlightAggregatorApplicationTest {
    */
   @Test
   void writesTheRunIdIntoEachJsonLineOfARun(CapturedOutput output) {
-    // Another test class's run may still hold the lock for its minute (lockAtLeastFor).
-    jdbc.sql("UPDATE shedlock SET lock_until = locked_at").update();
-
     job.run();
 
     List<String> runIds =

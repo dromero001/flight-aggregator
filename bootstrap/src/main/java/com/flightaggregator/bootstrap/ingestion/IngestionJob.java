@@ -69,7 +69,7 @@ public final class IngestionJob implements IngestionLauncher {
    */
   @Scheduled(initialDelay = 0, fixedDelayString = "${ingestion.interval}")
   public void run() {
-    skippedForTheLock(() -> {});
+    runUnderTheLock(() -> {});
   }
 
   /**
@@ -87,7 +87,8 @@ public final class IngestionJob implements IngestionLauncher {
         .start(
             () -> {
               try {
-                if (skippedForTheLock(() -> locked.complete(true))) {
+                boolean skipped = runUnderTheLock(() -> locked.complete(true));
+                if (skipped) {
                   locked.complete(false);
                 }
               } finally {
@@ -102,10 +103,10 @@ public final class IngestionJob implements IngestionLauncher {
   /**
    * One run, if it gets the lock, {@code onceLocked} first; otherwise it logs at {@code INFO} that
    * it skipped the run and returns at once (ShedLock's {@code TaskResult}). The lock is released
-   * when the run ends. True only for a run skipped because another held the lock: a run that ran,
-   * or failed, is false.
+   * when the run ends. Answers whether the run was skipped because another held the lock: a run
+   * that ran, or failed, was not.
    */
-  private boolean skippedForTheLock(Runnable onceLocked) {
+  private boolean runUnderTheLock(Runnable onceLocked) {
     // Removed in the finally, after the catch, so that a failed run's ERROR line carries it too.
     MDC.put(CorrelationId.MDC_KEY, UUID.randomUUID().toString());
     Instant startedAt = clock.now();
