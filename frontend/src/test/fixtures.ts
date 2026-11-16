@@ -76,12 +76,13 @@ export function providerStatus(overrides: Partial<ProviderStatus> = {}): Provide
   };
 }
 
-/** Generation 7, published at 09:00 UTC, the next run due at 09:30; one provider, Alpha. */
+/** Generation 7, published at 09:00 UTC, the next run due at 09:30 and none going on; Alpha. */
 export function statusReport(overrides: Partial<StatusReport> = {}): StatusReport {
   return {
     generation: 7,
     publishedAt: '2026-11-15T09:00:00Z',
     nextIngestionAt: '2026-11-15T09:30:00Z',
+    ingestionRunning: false,
     providers: [providerStatus()],
     ...overrides,
   };

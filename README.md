@@ -187,7 +187,7 @@ The metrics are not on the API port: Actuator serves them on its management port
 
 Swagger UI is on `http://localhost:8080/swagger-ui.html`, to browse the API and try it; its admin operations answer `401` there without a token, as anywhere else.
 
-The admin endpoints are `GET /api/admin/status` (the inventory's generation, when it was published and when the next run is due, and each provider's health, circuit breaker, newest quote, legs and discarded records) and `POST /api/admin/ingestions` (start a run now: `202 Accepted`, or `409 Conflict` while a run holds the ingestion's lock).
+The admin endpoints are `GET /api/admin/status` (the inventory's generation, when it was published, when the next run is due and whether one is going on, and each provider's health, circuit breaker, newest quote, legs and discarded records) and `POST /api/admin/ingestions` (start a run now: `202 Accepted`, or `409 Conflict` while a run holds the ingestion's lock).
 
 **1. Wait until Keycloak is ready.** This polls the realm until it answers:
 

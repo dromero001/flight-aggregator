@@ -52,7 +52,8 @@ class AdminControllerTest {
 
   /**
    * The provider-status screen (§6.8): the generation, when it was published and when the next run
-   * is due, and each provider's row; a time not known yet is written as null.
+   * is due, whether a run is going on, and each provider's row; a time not known yet is written as
+   * null.
    */
   @Test
   void servesTheStatus() throws Exception {
@@ -61,7 +62,7 @@ class AdminControllerTest {
             7,
             Optional.of(Instant.parse("2026-11-20T08:01:00Z")),
             Optional.empty(),
-            false,
+            true,
             List.of(
                 new ProviderStatus(
                     Provider.ALPHA,
@@ -91,6 +92,7 @@ class AdminControllerTest {
                       "generation": 7,
                       "publishedAt": "2026-11-20T08:01:00Z",
                       "nextIngestionAt": null,
+                      "ingestionRunning": true,
                       "providers": [
                         {
                           "provider": "ALPHA",
