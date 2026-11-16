@@ -6,6 +6,8 @@ Flight aggregation & cache optimization system: ingests itineraries from three l
 
 How it is built and why, with its assumptions and limitations: [SOLUTION.md](SOLUTION.md).
 
+**How to use it,** with screenshots: the [user manual](docs/user-manual/README.md) ([PDF](docs/user-manual/user-manual.pdf)) covers the search, the admin's provider status and ingestion, Grafana, Swagger UI and troubleshooting. To run it, see [Run the aggregator](#run-the-aggregator).
+
 ## Requirements
 
 - **Docker with Compose v2** (the `docker compose` command): Docker Desktop on macOS and Windows, Docker Engine with its Compose plugin on Linux. The images build the Java and the frontend code themselves, so nothing else is needed to run the stack.
@@ -251,6 +253,8 @@ The pipeline, the alert rules, the dashboard's panels, what is not collected and
 ## Documentation
 
 [SOLUTION.md](SOLUTION.md) summarises the solution: each decision, why it was taken, the alternative rejected and the measured figures, then the assumptions, the limitations and how AI was used. The rest of the documentation is split by what each part shows.
+
+**User manual:** [docs/user-manual/](docs/user-manual/README.md), how to search, run the admin screen, read Grafana and try the API, with screenshots, apart from the three blocks below; its [PDF](docs/user-manual/user-manual.pdf) is generated from it.
 
 ### 1. Architecture — what is built
 - [Architecture overview](docs/architecture/README.md): hexagonal modules, flows and the domain glossary
