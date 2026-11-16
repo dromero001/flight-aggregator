@@ -27,6 +27,9 @@ dependencies {
     implementation(libs.shedlock.core)
     // Traces over OTLP with W3C trace context (§6.10), through Boot's own observability.
     implementation(libs.spring.boot.starter.opentelemetry)
+    // Sends each log record over OTLP too, with its trace context (§6.10, plan 7 Q2-A): Boot builds
+    // the log exporter, but leaves the Logback appender to the application (LogExport).
+    implementation(libs.opentelemetry.logback.appender)
     // Boot's RestClient.Builder, observed and propagating the trace, for the provider requests.
     implementation(libs.spring.boot.starter.restclient)
     // Carries the trace context onto the fan-out threads that ContextThreads builds (§6.10).

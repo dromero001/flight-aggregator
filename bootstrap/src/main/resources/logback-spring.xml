@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Boot's own console, structured as logging.structured.format.console says (ECS), plus OpenTelemetry's
+  appender, which hands each log event to Boot's OpenTelemetry SDK: Boot exports the records over OTLP
+  when management.opentelemetry.logging.export.otlp.endpoint is set (compose sets the Collector's), and
+  drops them otherwise (spec 6.10; plan 7, Q2-A). LogExport installs the SDK into the appender once the
+  context has built it; events written before that wait in the appender, up to its default 1,000.
+-->
+<configuration>
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+  <include resource="org/springframework/boot/logging/logback/structured-console-appender.xml"/>
+
+  <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
+    <!-- The run's or refresh's id (CorrelationId), as the record's attribute correlation.id. -->
+    <captureMdcAttributes>correlation.id</captureMdcAttributes>
+  </appender>
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+    <appender-ref ref="OTEL"/>
+  </root>
+</configuration>
