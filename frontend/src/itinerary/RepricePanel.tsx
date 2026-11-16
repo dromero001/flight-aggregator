@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ApiError } from '../api/apiError';
 import type { RepriceResponse } from '../api/types';
 import { price } from './format';
@@ -49,6 +50,8 @@ interface RepricePanelProps {
 /** What the re-price of an opened card answered (spec 6.5 and 6.8; plan 6, Q5-A). */
 export function RepricePanel({ result }: RepricePanelProps) {
   const { data, error, isPending } = result;
+  // Booking is out of scope (spec 6.8): "Select" goes no further, and says so (plan 6 E8).
+  const [selected, setSelected] = useState(false);
   return (
     <div className={styles.panel} role="status">
       {isPending && <p>Checking the price…</p>}
@@ -61,10 +64,19 @@ export function RepricePanel({ result }: RepricePanelProps) {
               <LegList legs={data.itinerary.legs} label="Alternative legs" />
             </>
           )}
-          <p>{confirmation(data)}</p>
-          <button className={styles.select} type="button">
-            Select
-          </button>
+          <div className={styles.offer}>
+            <p>{confirmation(data)}</p>
+            <button
+              className={styles.select}
+              type="button"
+              onClick={() => {
+                setSelected(true);
+              }}
+            >
+              Select
+            </button>
+          </div>
+          {selected && <p>Booking is not part of this demo.</p>}
         </>
       )}
     </div>

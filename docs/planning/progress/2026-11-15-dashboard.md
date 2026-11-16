@@ -468,3 +468,21 @@ Red → green, one test at a time (`format.test.ts`):
 Choices to review: the name stands before the code ("Iberia IB 3166", as E2 wrote it); the "Airline" filter still takes a code (unchanged, Task 3); the list must follow the dataset by hand, which the module's comment says.
 
 Checks: `npm run verify` exit 0 (69 tests in 12 files). Self-review (thermo-nuclear): no carrier list existed in the frontend; one map, read in one place, with no wrapper function around the map.
+
+### E8: a note when "Select" is pressed (approved extra, assigned to Task 6)
+
+Red → green in `RepricePanel.test.tsx`:
+- `'says booking is not part of the demo when Select is pressed'` (no note before the click, "Booking is not part of this demo." after it): red `Unable to find an element with the text: Booking is not part of this demo.`. Green: "Select" sets a flag in the panel, and the note shows under the price inside the panel's `role="status"` region, so it is announced. The flag lives in the panel, whose content mounts only while the card is open, so closing and reopening the card clears it.
+
+Look, Task 6's panel and the three extras together (checked by eye at 960 and 390 px with Playwright screenshots of a throwaway page on Vite's dev server, `fetch` stubbed with a changed price and an alternative; not committed): the open card sits under a dashed perforation like the stub's; the notice, the alternative's legs and then the price with "Select" on one row, the note under them; "+1" raised beside the arrival time; the summary's focus ring drawn inside the card, which clips anything beyond its border. The first screenshot showed the panel laid out in a wrapping row (the notice beside the alternative's legs), so this commit also makes the panel a column, with the price and "Select" on their own row; layout only, the tests unchanged.
+
+Checks: `npm run verify` exit 0 (70 tests in 12 files). Self-review (thermo-nuclear): one boolean in the component that owns "Select", no new module; the note's text sits next to the button it explains.
+
+### Extras for the user to decide
+- **"+1" on each leg in the open card:** a leg that lands the next local day (an overnight long-haul leg) shows only its time there; E1 named the card's arrival. Value: the leg list reads right too. Cost: one call of `daysLater` per leg in `LegList`, one test. Left out unless you approve.
+- **Telling the chosen legs from the alternative's by more than the list's accessible name:** both lists look alike in the open card; only the notice between them separates them. Value: a clearer alternative. Cost: a heading or caption, one test. Left out unless you approve.
+
+### Concerns
+- The 2xx-without-body guard is now in both hooks (`useItinerarySearch`, `useReprice`); a helper in `client.ts` would hold it once (not done here, to leave Task 5's file alone while it is under review).
+- On reopening a card whose price changed, the card shows the search's price while "Checking the price…" shows, then the new answer (TanStack clears a mutation's data when it runs again).
+- `toApiError`'s HTTP-date `Retry-After` (Task 2's Minor C-1) reaches the re-price too: a 429 with a date would read "Try again in NaN seconds".

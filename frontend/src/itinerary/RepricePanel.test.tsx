@@ -190,3 +190,15 @@ test('says the price is being checked', async () => {
   expect(within(panel).getByText('Checking the price…')).toBeInTheDocument();
   expect(within(panel).queryByRole('button', { name: 'Select' })).not.toBeInTheDocument();
 });
+
+test('says booking is not part of the demo when Select is pressed', async () => {
+  const panel = await openCard(() =>
+    HttpResponse.json({ outcome: 'CONFIRMED', itinerary: connecting() }),
+  );
+  const select = await within(panel).findByRole('button', { name: 'Select' });
+  expect(within(panel).queryByText('Booking is not part of this demo.')).not.toBeInTheDocument();
+
+  await userEvent.click(select);
+
+  expect(within(panel).getByText('Booking is not part of this demo.')).toBeInTheDocument();
+});
