@@ -18,6 +18,12 @@
           "202" : {
             "description" : "A run started; it goes on in the background"
           },
+          "401" : {
+            "description" : "No valid bearer token"
+          },
+          "403" : {
+            "description" : "The token does not hold the ADMIN role"
+          },
           "409" : {
             "content" : {
               "application/problem+json" : {
@@ -29,6 +35,11 @@
             "description" : "Another run is going on; try again once it ends"
           }
         },
+        "security" : [
+          {
+            "bearer" : [ ]
+          }
+        ],
         "tags" : [
           "admin-controller"
         ]
@@ -47,8 +58,19 @@
               }
             },
             "description" : "The inventory's and each provider's status"
+          },
+          "401" : {
+            "description" : "No valid bearer token"
+          },
+          "403" : {
+            "description" : "The token does not hold the ADMIN role"
           }
         },
+        "security" : [
+          {
+            "bearer" : [ ]
+          }
+        ],
         "tags" : [
           "admin-controller"
         ]
@@ -561,6 +583,13 @@
           "providers",
           "publishedAt"
         ]
+      }
+    },
+    "securitySchemes" : {
+      "bearer" : {
+        "bearerFormat" : "JWT",
+        "scheme" : "bearer",
+        "type" : "http"
       }
     }
   }

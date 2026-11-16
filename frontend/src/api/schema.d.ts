@@ -182,6 +182,20 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description No valid bearer token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The token does not hold the ADMIN role */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
       /** @description Another run is going on; try again once it ends */
       409: {
         headers: {
@@ -210,6 +224,20 @@ export interface operations {
         content: {
           'application/json': components['schemas']['StatusResponse'];
         };
+      };
+      /** @description No valid bearer token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The token does not hold the ADMIN role */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

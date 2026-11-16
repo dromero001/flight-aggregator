@@ -202,6 +202,87 @@ class OpenApiContractTest {
         .isEqualTo("#/components/schemas/ProblemDetail");
   }
 
+  /** Every endpoint of the API (plan 5 Tasks 9, 10 and 12) is in the contract, and no other. */
+  @Test
+  void documentsEveryEndpoint() throws Exception {
+    assertThat(contract().path("paths").propertyNames())
+        .containsExactlyInAnyOrder(
+            "/api/itineraries",
+            "/api/itineraries/{id}/reprice",
+            "/api/admin/status",
+            "/api/admin/ingestions");
+  }
+
+  /**
+   * Each endpoint documents the body it answers and every status it may answer, the admin side's
+   * 401 without a token and 403 without the ADMIN role included (§6.6), so the dashboard's types
+   * know each answer it must handle.
+   */
+  @ParameterizedTest(name = "{1} {0}")
+  @CsvSource({
+    "/api/itineraries, get, SearchResponse, 200 400 429",
+    "/api/itineraries/{id}/reprice, post, RepriceResponse, 200 400 404 429 503",
+    "/api/admin/status, get, StatusResponse, 200 401 403",
+    "/api/admin/ingestions, post, , 202 401 403 409"
+  })
+  void documentsEachEndpointsBodyAndEveryStatus(
+      String path, String method, String body, String statuses) throws Exception {
+    JsonNode responses = contract().path("paths").path(path).path(method).path("responses");
+    String success = statuses.substring(0, 3);
+
+    assertThat(responses.propertyNames()).containsExactlyInAnyOrder(statuses.split(" "));
+    assertThat(responses.path(success).at("/content/application~1json/schema/$ref").asString())
+        .isEqualTo(body == null ? "" : "#/components/schemas/" + body);
+  }
+
+  /** §6.6: the admin side takes a JWT, issued by Keycloak, as a bearer token. */
+  @Test
+  void definesTheBearerSchemeAsAJwt() throws Exception {
+    JsonNode schemes = contract().at("/components/securitySchemes");
+
+    assertThat(schemes.propertyNames()).containsExactly("bearer");
+    assertThat(schemes.at("/bearer/type").asString()).isEqualTo("http");
+    assertThat(schemes.at("/bearer/scheme").asString()).isEqualTo("bearer");
+    assertThat(schemes.at("/bearer/bearerFormat").asString()).isEqualTo("JWT");
+  }
+
+  /** §6.6: the admin operations ask for the bearer token; search and re-price are public. */
+  @ParameterizedTest(name = "{1} {0} needs a token: {2}")
+  @CsvSource({
+    "/api/itineraries, get, false",
+    "/api/itineraries/{id}/reprice, post, false",
+    "/api/admin/status, get, true",
+    "/api/admin/ingestions, post, true"
+  })
+  void requiresTheBearerSchemeOnTheAdminOperationsOnly(String path, String method, boolean admin)
+      throws Exception {
+    JsonNode security = contract().path("paths").path(path).path(method).path("security");
+
+    assertThat(security.valueStream().flatMap(requirement -> requirement.propertyNames().stream()))
+        .containsExactlyElementsOf(admin ? List.of("bearer") : List.of());
+  }
+
+  /**
+   * Spring Security answers a missing token or role with a {@code WWW-Authenticate} challenge and
+   * no body, so the contract promises none: not the operation's own answer, as springdoc would
+   * write by default.
+   */
+  @ParameterizedTest(name = "{1} {0} answers {2} with no body")
+  @CsvSource({
+    "/api/admin/status, get, 401",
+    "/api/admin/status, get, 403",
+    "/api/admin/ingestions, post, 401",
+    "/api/admin/ingestions, post, 403"
+  })
+  void documentsTheAdminChallengesWithoutABody(String path, String method, String status)
+      throws Exception {
+    JsonNode response =
+        contract().path("paths").path(path).path(method).path("responses").path(status);
+
+    assertThat(response.path("description").asString()).isNotEmpty();
+    assertThat(response.has("content")).isFalse();
+  }
+
   /** §6.5, §6.6 and Q9: a problem to retry says when, in whole seconds. */
   @ParameterizedTest(name = "{1} {0} answers {2}")
   @CsvSource({
