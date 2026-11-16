@@ -834,3 +834,7 @@ The main checkout's stack was left running; a throwaway project `p7t5` ran `app`
 - Module tests between commits (bootstrap), green before each commit.
 - `./gradlew build` on the final state, rebased on `main` `051a20e`: `BUILD SUCCESSFUL` (exit 0); 1,104 tests across the modules, none failed or skipped. `frontend/` is not touched.
 - Self-review (thermo-nuclear) of `main...HEAD`: Boot's own mechanisms first (`spring.application.name`, `logging.structured.json.rename`, Boot's logger provider and OTLP exporter, Boot's Logback includes); the one piece Boot leaves to the application, installing the appender, is one `InitializingBean` in its own configuration class, so the context runners that import `TracingConfig` need no `OpenTelemetry`; no secret leaves in a record (mutation M1); an export that fails is dropped by the SDK's batch processor (`TelemetryUnavailableTest`). Found and fixed in the review: the `logback-spring.xml` comment now says that it replaces Boot's default configuration and that no log file is written. Left as a Minor: the duplicated test setup (Concerns).
+
+## Task 5 — the user's answer
+
+The appender's version ("For the user" above): **accepted** by the user on 2026-11-16, `2.28.1-alpha`, recorded as an exception in the plan's Global Constraints.

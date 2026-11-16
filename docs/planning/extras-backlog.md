@@ -59,3 +59,20 @@ Extras that a review turned into a finding are not here: they are fixed in the c
 | Register `provider.calls`, `ingestion.runs` and `ingestion.records.discarded` at zero at startup, so `rate` and `increase` see the first run and the Grafana panels drop their `unless … offset 1h` term | plan 7 Task 6 (E-T6-1) | the startup run's provider calls show on the dashboard | production code in three classes, a test each |
 | The log level as a Loki stream label (today only `service_name` is a label; the level is structured metadata, `severity_text` and Loki's `detected_level`, filtered with `\| detected_level="warn"`). Loki promotes only resource attributes to labels, so it needs the Collector's contrib distribution (a `transform` processor) or a resource attribute per level | plan 7 Task 5 | `{service_name="flight-aggregator", level="WARN"}` as a stream selector | a contrib Collector image or extra pipeline config, a test |
 | Nest the console's trace and span ids as `"trace":{"id":…}` like `correlation`, by a `Slf4JEventListener` bean with ECS keys instead of Boot's `logging.structured.json.rename` (today flat dotted keys, `"trace.id":"…"`; ECS reads both the same) | plan 7 Task 5 | one key style in the JSON | one bean replacing Boot's, the setting removed |
+
+## Left by plan 5's closing round 3 (the user's decision of 2026-11-16: known limitations, not built before delivery)
+
+All ten were graded Minor by the reviews; the reasons each was not fixed are in `docs/planning/progress/2026-11-15-search-api.md`, "End-of-plan fix round 3". M1 and M4 are named in `SOLUTION.md` as known security limits; T7-C2, T8-C2 and T8-C3 are looked at again in the final review against plan 7 Task 4's fan-out changes.
+
+| Id | Limitation | The fix it would need |
+|---|---|---|
+| N2 | `port.in` and `port.out` depend on each other | eight value types into a shared package and two ArchUnit rules |
+| N5 | `Retry-After: 60` and the breaker's open time have two owners | tie them through the controller's constructor or `RepriceResult.Unconfirmable` |
+| N6 | the health ping goes through Valkey's breaker, and every probe runs the status use case | move the ping off the breaker; a cheaper probe |
+| M1 | `X-Forwarded-For` is trusted from any private address, so a caller on the host or compose network can change its rate-limit key | trust only the proxy's address (compose would have to fix the subnet), or stop publishing the app port |
+| M4 | admin tokens carry no audience check | an audience mapper on both realm clients and an `aud` check in the resource server |
+| T4-C1 | single-statement reads open a `REPEATABLE READ` transaction (it carries the 2 s bound) | a `READ COMMITTED` transaction or JDBC's query timeout |
+| T7-C2 | a refresh that ends after a run can write pre-run offers (narrow window; the next refresh or run corrects it) | `replaceThrough` checks the `published_at` read before the offers and answers "superseded" |
+| T8-C2 | the virtual-thread fan-out is written twice | one fan-out shared by `ProviderDownloads` and `RepriceItineraryService` |
+| T8-C3 | a spent time budget reads as "not sold" | a `Deadline` value in the fan-out |
+| T12-F-m2 | shutdown does not wait for a run started by hand | await the run on shutdown |

@@ -6,9 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# A newer push cancels the run still going on the same branch, main included (the user's decision
+# of 2026-11-16): the newest commit's run covers every earlier one, and parallel runs on main had
+# Maven Central answer 429 to the e2e job's image builds.
 concurrency:
-  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
