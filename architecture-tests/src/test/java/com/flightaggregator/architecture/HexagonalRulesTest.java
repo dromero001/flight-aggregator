@@ -30,6 +30,21 @@ class HexagonalRulesTest {
     return String.join("\n", result.getFailureReport().getDetails());
   }
 
+  /**
+   * Evaluated on swagger-core's own JSON utility, which springdoc brings to the runtime classpath
+   * and which uses Jackson 2's {@code ObjectMapper}: no fixture of this module can compile against
+   * Jackson 2, and none needs to.
+   */
+  @Test
+  void usingJacksonTwoIsAViolation() {
+    String swaggerCore = "io.swagger.v3.core.util";
+    EvaluationResult result =
+        HexagonalRules.nothingUsesJacksonTwo(swaggerCore)
+            .evaluate(new ClassFileImporter().importPackages(swaggerCore));
+
+    assertThat(violations(result)).contains("com.fasterxml.jackson.databind.ObjectMapper");
+  }
+
   @Test
   void domainDependingOnAnAdapterIsAViolation() {
     EvaluationResult result = evaluate("domainleak", HexagonalRules::domainDependsOnlyOnTheJdk);
