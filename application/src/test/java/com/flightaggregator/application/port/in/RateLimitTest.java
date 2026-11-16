@@ -19,4 +19,13 @@ class RateLimitTest {
         .isThrownBy(() -> new RateLimit(60, Duration.parse(window)))
         .withMessageContaining("window");
   }
+
+  /** A limit of no request at all would refuse every request: a setting's mistake, not a limit. */
+  @ParameterizedTest
+  @ValueSource(ints = {0, -1})
+  void refusesFewerThanOneRequest(int requests) {
+    assertThatIllegalArgumentException()
+        .isThrownBy(() -> new RateLimit(requests, Duration.ofMinutes(1)))
+        .withMessage("A rate limit must admit at least 1 request, not " + requests);
+  }
 }
