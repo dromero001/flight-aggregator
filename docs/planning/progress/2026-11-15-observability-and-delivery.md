@@ -1415,3 +1415,38 @@ CI run 43903138832 on `dc58627`: `backend`, `frontend`, `images` and `e2e` green
 Every task was built on its own branch and worktree (pushed as `wip/…`), reviewed, and reached `main` by fast-forward, so GitHub shows a linear history with no pull requests or merge commits. To make the increments visible without rewriting history (the ruleset forbids it anyway): an annotated tag on each plan's closing commit; [`increments.md`](../increments.md), one row per plan with its commit range, tasks, review verdicts and CI run; G3 and G4a integrated through pull requests with merge commits; and the `wip/*` branches kept on GitHub as the record of each task's work (no longer deleted after delivery).
 
 Also decided: quoted prompts in `docs/ai/sessions/` keep only the English translation, and only prompts that add value to the project are kept (routine approvals are summarised without a quote); session 09 corrected accordingly.
+
+## G3 — evidence
+
+The user's choice of about 17:55 ([extras backlog](../extras-backlog.md)), built in its own worktree on `8e9451c` and pushed as `wip/g3-extras`. Seven of the eight extras are built; `npm run dev` signing in is not (below).
+
+### A date on the alternative's legs
+- Red: `RepricePanel.test.tsx`, "dates the alternative legs that fly on another day than the chosen itinerary": expected `Iberia IB 3166 MAD Sat 21 Nov 08:15 to LHR 09:40`, received `Iberia IB 3166 MAD 08:15 to LHR 09:40`.
+- Green: `LegList` takes `datedFrom` (the chosen itinerary's departure, through `RepricePanel`); a leg whose local departure date differs (`daysLater`) shows `localDate` before its time. A same-day alternative keeps times only (the existing test). `dashboard.md` updated.
+
+### One shared renewal for concurrent 401s
+- Red 1: `client.test.ts`, "shares one renewal among admin calls that answer 401 at once": `expected "vi.fn()" to be called once, but got 2 times` (`signinSilent`). Green: one in-flight renewal per admin client, cleared when it settles.
+- Red 2: "signs in again once when admin calls that answer 401 at once cannot renew": the same message, for `signinRedirect`. Green: the shared promise holds the whole outcome (`renewOrSignIn`: renew, or sign in again when the expired token cannot be renewed). `oidc-client-ts` 3.5.0 has no such sharing of its own: each `signinSilent` exchanges the refresh token again.
+
+### `npm run dev` signs in — not built
+The ruling (Vite on 3000 with `strictPort`) does not fail when the compose dashboard holds the port: with the stack up, `vite --port 3000 --strictPort` started ("ready … Local: http://localhost:3000/"), listening on `[::1]:3000` beside Docker's `127.0.0.1:3000`; `curl http://localhost:3000` reached Vite (`::1`), `curl http://127.0.0.1:3000` reached nginx. Pinning Vite to `127.0.0.1` would make it fail, but Vite then prints `http://127.0.0.1:3000/`, whose redirect the realm refuses, and widening the realm is ruled out. Left to the controller.
+
+### `openapi-typescript --check` instead of `schema.test.ts`
+- Red: `--check` against the committed, Prettier-formatted `schema.d.ts`: "Generated types are not up-to-date!", exit 1.
+- Green: `api:generate` without Prettier, `api:check` = `--check`, the file in `.prettierignore`, regenerated: exit 0. `schema.test.ts` and its entries in both tsconfigs and the ESLint config removed.
+- As strong as before: a contract with a field added, a missing `schema.d.ts` (`ENOENT`) and a hand-edited one each exit 1. `npm run verify` now starts with `api:check`, since its Vitest run caught drift before; CI's named step stays first.
+
+### `E2E_BROWSERS` and `E2E_BASE_URL`
+- `e2e/browsers.ts` (Vitest in Node; Vitest's exclude narrowed to `e2e/**/*.spec.ts`). Red 1: `Cannot find module './browsers'`; green: all browsers when unset. Red 2: `expected [ 'chromium', 'firefox', 'webkit' ] to deeply equal [ 'chromium', 'webkit' ]` for `'webkit, chromium'`; green: the named ones in the config's order. Red 3: `expected [Function] to throw an error` for `'chromium,safari'`; green: `E2E_BROWSERS names an unknown browser, "safari"; the valid ones are chromium, firefox, webkit`.
+- `playwright test --list`: unset, 42 tests; `E2E_BROWSERS=chromium`, 20; `chromium,safari`, exit 1 with that message. `--reporter=json`: `E2E_BASE_URL=http://localhost:3999` resolves every project's `baseURL` to it, unset to `http://localhost:3000`.
+
+### Screenshots and traces of failed end-to-end tests
+`screenshot: 'only-on-failure'`, `trace: 'retain-on-failure'`. A throwaway failing spec under a scratch config reusing the real `use` left `test-failed-1.png` and `trace.zip`. They land in `test-results/e2e/`, which the `e2e` job already uploads on `failure() || cancelled()` (`e2e-reports`), so CI needed no change.
+
+### Playwright's browsers cached in CI
+The `e2e` job runs on `ubuntu-latest`, not in Playwright's image, and downloaded the three browsers on every run. `actions/cache` v6.1.0 (latest stable, 2026-06-26, pinned by commit) on `~/.cache/ms-playwright`, keyed by the OS and `@playwright/test`'s version; `playwright install --with-deps` stays and, on a hit, installs only the system packages. `ci.yml` parses; `actionlint` is not installed here.
+
+### Gates
+- `npm run verify`: exit 0, 179 tests in 22 files.
+- `E2E_BROWSERS=chromium npx playwright test` against the running stack on `http://localhost:3000` (built from `main`): 20 passed in 2.9 min, exit 0.
+- Self-review (thermo-nuclear): no structural finding; the open points are in the controller's report.

@@ -53,10 +53,12 @@ interface RepricePanelProps {
   result: Reprice;
   /** The price the card showed when it was opened. */
   shownPrice: Itinerary['price'];
+  /** The opened itinerary's departure: an alternative's leg on another day shows its date. */
+  departure: Itinerary['departure'];
 }
 
 /** What the re-price of an opened card answered (spec 6.5 and 6.8; plan 6, Q5-A). */
-export function RepricePanel({ result, shownPrice }: RepricePanelProps) {
+export function RepricePanel({ result, shownPrice, departure }: RepricePanelProps) {
   const { data, error, isPending } = result;
   // Booking is out of scope (spec 6.8): "Select" goes no further, and says so (plan 6 E8).
   const [selected, setSelected] = useState(false);
@@ -70,7 +72,12 @@ export function RepricePanel({ result, shownPrice }: RepricePanelProps) {
             <>
               <p>{data.notice ?? ALTERNATIVE_NOTICE}</p>
               {/* Captioned, so its legs are not read as the chosen ones above. */}
-              <LegList legs={data.itinerary.legs} label="Alternative legs" captioned />
+              <LegList
+                legs={data.itinerary.legs}
+                label="Alternative legs"
+                captioned
+                datedFrom={departure}
+              />
             </>
           )}
           <div className={styles.offer}>

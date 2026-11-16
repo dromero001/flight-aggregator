@@ -9,7 +9,7 @@ export default defineConfig({
   },
   test: {
     // e2e/ holds Playwright's specs, run by `npm run e2e` against the compose stack.
-    exclude: ['**/node_modules/**', 'e2e/**'],
+    exclude: ['**/node_modules/**', 'e2e/**/*.spec.ts'],
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
   },

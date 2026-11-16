@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { selectBrowsers } from './e2e/browsers.js';
 
 // The specs run against the compose stack (docker compose up --build), through nginx.
 // One worker, no retries, and the real rate limits. The projects run in this order, each one after
@@ -16,8 +17,19 @@ const browsers = {
   webkit: devices['Desktop Safari'],
 };
 
-const browserProjects = Object.entries(browsers).flatMap(([browser, device]) =>
-  specs.map((spec) => ({ name: `${spec}-${browser}`, testMatch: `${spec}.spec.ts`, use: device })),
+// E2E_BROWSERS=chromium,webkit runs those browsers only, where another does not start (Firefox on
+// macOS 27); unset, all three. An unknown name stops the run, listing the valid ones.
+const chosenBrowsers = selectBrowsers(
+  process.env.E2E_BROWSERS,
+  Object.keys(browsers) as (keyof typeof browsers)[],
+);
+
+const browserProjects = chosenBrowsers.flatMap((browser) =>
+  specs.map((spec) => ({
+    name: `${spec}-${browser}`,
+    testMatch: `${spec}.spec.ts`,
+    use: browsers[browser],
+  })),
 );
 
 // The observability checks read the stack's telemetry through Grafana and Prometheus; they run once,
@@ -36,7 +48,13 @@ export default defineConfig({
   retries: 0,
   reporter: [['list'], ['html', { open: 'never' }]],
   outputDir: 'test-results/e2e',
-  use: { baseURL: 'http://localhost:3000' },
+  use: {
+    // The dashboard as compose publishes it; E2E_BASE_URL points at a stack on other ports.
+    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
+    // Kept in outputDir for a failed test only, which CI uploads with the report.
+    screenshot: 'only-on-failure',
+    trace: 'retain-on-failure',
+  },
   projects: projects.map((project, index) => ({
     ...project,
     dependencies: index === 0 ? [] : [projects[index - 1].name],

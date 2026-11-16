@@ -4,387 +4,387 @@
  */
 
 export interface paths {
-  '/api/admin/ingestions': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/admin/ingestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["runIngestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    post: operations['runIngestion'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/admin/status': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/admin/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get: operations['status'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/itineraries': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/itineraries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get: operations['search'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/itineraries/{id}/reprice': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/itineraries/{id}/reprice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reprice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    post: operations['reprice'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-  schemas: {
-    ItineraryResponse: {
-      /** Format: date-time */
-      arrival: string;
-      /** Format: date-time */
-      departure: string;
-      destination: string;
-      /** Format: int64 */
-      durationMinutes: number;
-      /** Format: uuid */
-      id: string;
-      legs: components['schemas']['Leg'][];
-      origin: string;
-      price: components['schemas']['Price'];
-      /** Format: date-time */
-      quotedAt: string;
-      /** Format: int32 */
-      stops: number;
+    schemas: {
+        ItineraryResponse: {
+            /** Format: date-time */
+            arrival: string;
+            /** Format: date-time */
+            departure: string;
+            destination: string;
+            /** Format: int64 */
+            durationMinutes: number;
+            /** Format: uuid */
+            id: string;
+            legs: components["schemas"]["Leg"][];
+            origin: string;
+            price: components["schemas"]["Price"];
+            /** Format: date-time */
+            quotedAt: string;
+            /** Format: int32 */
+            stops: number;
+        };
+        Leg: {
+            /** Format: date-time */
+            arrival: string;
+            carrier: string;
+            /** Format: date-time */
+            departure: string;
+            destination: string;
+            /** Format: int32 */
+            flightNumber: number;
+            origin: string;
+        };
+        Price: {
+            amount: string;
+            /** @enum {string} */
+            currency: "EUR";
+        };
+        /** @description An RFC 9457 problem: what went wrong with the request */
+        ProblemDetail: {
+            /** @description What went wrong, and what to do about it */
+            detail: string;
+            /**
+             * Format: uri-reference
+             * @description The path of the request, such as /api/itineraries
+             */
+            instance: string;
+            /**
+             * Format: int32
+             * @description The HTTP status code
+             */
+            status: number;
+            /** @description The status's reason phrase, such as "Bad Request" */
+            title: string;
+        };
+        ProviderStatusResponse: {
+            /** @enum {string} */
+            breaker: "CLOSED" | "OPEN" | "HALF_OPEN";
+            discarded: {
+                [key: string]: number;
+            };
+            /** @enum {string} */
+            health: "UP" | "DEGRADED" | "DOWN";
+            /** Format: int32 */
+            legs: number;
+            /** Format: date-time */
+            newestQuotedAt: string | null;
+            /** @enum {string} */
+            provider: "ALPHA" | "BETA" | "GAMMA";
+            stale: boolean;
+        };
+        RepriceResponse: {
+            itinerary: components["schemas"]["ItineraryResponse"];
+            /** @description Why another itinerary is offered; only with ALTERNATIVE */
+            notice?: string;
+            /** @enum {string} */
+            outcome: "CONFIRMED" | "PRICE_CHANGED" | "ALTERNATIVE";
+            /** @description The price shown before; only with PRICE_CHANGED */
+            previousPrice?: components["schemas"]["Price"];
+        };
+        SearchResponse: {
+            inventoryChanged: boolean;
+            itineraries: components["schemas"]["ItineraryResponse"][];
+            nextCursor: string | null;
+        };
+        StatusResponse: {
+            /** Format: int64 */
+            generation: number;
+            ingestionRunning: boolean;
+            /** Format: date-time */
+            nextIngestionAt: string | null;
+            providers: components["schemas"]["ProviderStatusResponse"][];
+            /** Format: date-time */
+            publishedAt: string | null;
+        };
     };
-    Leg: {
-      /** Format: date-time */
-      arrival: string;
-      carrier: string;
-      /** Format: date-time */
-      departure: string;
-      destination: string;
-      /** Format: int32 */
-      flightNumber: number;
-      origin: string;
-    };
-    Price: {
-      amount: string;
-      /** @enum {string} */
-      currency: 'EUR';
-    };
-    /** @description An RFC 9457 problem: what went wrong with the request */
-    ProblemDetail: {
-      /** @description What went wrong, and what to do about it */
-      detail: string;
-      /**
-       * Format: uri-reference
-       * @description The path of the request, such as /api/itineraries
-       */
-      instance: string;
-      /**
-       * Format: int32
-       * @description The HTTP status code
-       */
-      status: number;
-      /** @description The status's reason phrase, such as "Bad Request" */
-      title: string;
-    };
-    ProviderStatusResponse: {
-      /** @enum {string} */
-      breaker: 'CLOSED' | 'OPEN' | 'HALF_OPEN';
-      discarded: {
-        [key: string]: number;
-      };
-      /** @enum {string} */
-      health: 'UP' | 'DEGRADED' | 'DOWN';
-      /** Format: int32 */
-      legs: number;
-      /** Format: date-time */
-      newestQuotedAt: string | null;
-      /** @enum {string} */
-      provider: 'ALPHA' | 'BETA' | 'GAMMA';
-      stale: boolean;
-    };
-    RepriceResponse: {
-      itinerary: components['schemas']['ItineraryResponse'];
-      /** @description Why another itinerary is offered; only with ALTERNATIVE */
-      notice?: string;
-      /** @enum {string} */
-      outcome: 'CONFIRMED' | 'PRICE_CHANGED' | 'ALTERNATIVE';
-      /** @description The price shown before; only with PRICE_CHANGED */
-      previousPrice?: components['schemas']['Price'];
-    };
-    SearchResponse: {
-      inventoryChanged: boolean;
-      itineraries: components['schemas']['ItineraryResponse'][];
-      nextCursor: string | null;
-    };
-    StatusResponse: {
-      /** Format: int64 */
-      generation: number;
-      ingestionRunning: boolean;
-      /** Format: date-time */
-      nextIngestionAt: string | null;
-      providers: components['schemas']['ProviderStatusResponse'][];
-      /** Format: date-time */
-      publishedAt: string | null;
-    };
-  };
-  responses: never;
-  parameters: never;
-  requestBodies: never;
-  headers: never;
-  pathItems: never;
+    responses: never;
+    parameters: never;
+    requestBodies: never;
+    headers: never;
+    pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-  runIngestion: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    runIngestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A run started; it goes on in the background */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The token does not hold the ADMIN role */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Another run is going on; try again once it ends */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
     };
-    requestBody?: never;
-    responses: {
-      /** @description A run started; it goes on in the background */
-      202: {
-        headers: {
-          [name: string]: unknown;
+    status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        content?: never;
-      };
-      /** @description No valid bearer token */
-      401: {
-        headers: {
-          [name: string]: unknown;
+        requestBody?: never;
+        responses: {
+            /** @description The inventory's and each provider's status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description No valid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The token does not hold the ADMIN role */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The inventory could not be read in time; try again after Retry-After */
+            503: {
+                headers: {
+                    /** @description How many seconds to wait before asking again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
         };
-        content?: never;
-      };
-      /** @description The token does not hold the ADMIN role */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Another run is going on; try again once it ends */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/problem+json': components['schemas']['ProblemDetail'];
-        };
-      };
     };
-  };
-  status: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    search: {
+        parameters: {
+            query?: {
+                /** @description The airport the trip departs from: a three-letter code, in any case */
+                origin?: string;
+                /** @description The airport the trip arrives at: a three-letter code, in any case */
+                destination?: string;
+                /** @description The highest final price in euros, inclusive, above 0 */
+                maxPrice?: string;
+                /** @description The airline that operates every leg: a two-character code, in any case */
+                carrier?: string;
+                /** @description The order of the results */
+                sort?: "price" | "departure" | "duration";
+                /** @description How many itineraries the page holds at most */
+                limit?: number;
+                /** @description The previous page's nextCursor, to read the page after it */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of itineraries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description A parameter or the cursor is not valid; the detail names it */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Too many searches from this address; try again after Retry-After */
+            429: {
+                headers: {
+                    /** @description How many seconds to wait before asking again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The search took too long to read; try again after Retry-After */
+            503: {
+                headers: {
+                    /** @description How many seconds to wait before asking again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
     };
-    requestBody?: never;
-    responses: {
-      /** @description The inventory's and each provider's status */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    reprice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of the chosen itinerary, as the search gave it */
+                id: string;
+            };
+            cookie?: never;
         };
-        content: {
-          'application/json': components['schemas']['StatusResponse'];
+        requestBody?: never;
+        responses: {
+            /** @description The choice confirmed, at its price or a new one, or the best alternative */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepriceResponse"];
+                };
+            };
+            /** @description The id is not an itinerary id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description No itinerary with this id is on sale; search again */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Too many re-prices from this address; try again after Retry-After */
+            429: {
+                headers: {
+                    /** @description How many seconds to wait before asking again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Nothing could be confirmed, or the flights could not be read in time; try again after Retry-After */
+            503: {
+                headers: {
+                    /** @description How many seconds to wait before asking again */
+                    "Retry-After": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
         };
-      };
-      /** @description No valid bearer token */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description The token does not hold the ADMIN role */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description The inventory could not be read in time; try again after Retry-After */
-      503: {
-        headers: {
-          /** @description How many seconds to wait before asking again */
-          'Retry-After': number;
-          [name: string]: unknown;
-        };
-        content: {
-          'application/problem+json': components['schemas']['ProblemDetail'];
-        };
-      };
     };
-  };
-  search: {
-    parameters: {
-      query?: {
-        /** @description The airport the trip departs from: a three-letter code, in any case */
-        origin?: string;
-        /** @description The airport the trip arrives at: a three-letter code, in any case */
-        destination?: string;
-        /** @description The highest final price in euros, inclusive, above 0 */
-        maxPrice?: string;
-        /** @description The airline that operates every leg: a two-character code, in any case */
-        carrier?: string;
-        /** @description The order of the results */
-        sort?: 'price' | 'departure' | 'duration';
-        /** @description How many itineraries the page holds at most */
-        limit?: number;
-        /** @description The previous page's nextCursor, to read the page after it */
-        cursor?: string;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description One page of itineraries */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['SearchResponse'];
-        };
-      };
-      /** @description A parameter or the cursor is not valid; the detail names it */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/problem+json': components['schemas']['ProblemDetail'];
-        };
-      };
-      /** @description Too many searches from this address; try again after Retry-After */
-      429: {
-        headers: {
-          /** @description How many seconds to wait before asking again */
-          'Retry-After': number;
-          [name: string]: unknown;
-        };
-        content: {
-          'application/problem+json': components['schemas']['ProblemDetail'];
-        };
-      };
-      /** @description The search took too long to read; try again after Retry-After */
-      503: {
-        headers: {
-          /** @description How many seconds to wait before asking again */
-          'Retry-After': number;
-          [name: string]: unknown;
-        };
-        content: {
-          'application/problem+json': components['schemas']['ProblemDetail'];
-        };
-      };
-    };
-  };
-  reprice: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description The id of the chosen itinerary, as the search gave it */
-        id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The choice confirmed, at its price or a new one, or the best alternative */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['RepriceResponse'];
-        };
-      };
-      /** @description The id is not an itinerary id */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/problem+json': components['schemas']['ProblemDetail'];
-        };
-      };
-      /** @description No itinerary with this id is on sale; search again */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/problem+json': components['schemas']['ProblemDetail'];
-        };
-      };
-      /** @description Too many re-prices from this address; try again after Retry-After */
-      429: {
-        headers: {
-          /** @description How many seconds to wait before asking again */
-          'Retry-After': number;
-          [name: string]: unknown;
-        };
-        content: {
-          'application/problem+json': components['schemas']['ProblemDetail'];
-        };
-      };
-      /** @description Nothing could be confirmed, or the flights could not be read in time; try again after Retry-After */
-      503: {
-        headers: {
-          /** @description How many seconds to wait before asking again */
-          'Retry-After': number;
-          [name: string]: unknown;
-        };
-        content: {
-          'application/problem+json': components['schemas']['ProblemDetail'];
-        };
-      };
-    };
-  };
 }

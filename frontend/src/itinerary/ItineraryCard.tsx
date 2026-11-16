@@ -107,7 +107,7 @@ export function ItineraryCard({ itinerary, now, summaryRef }: ItineraryCardProps
         {open && (
           <>
             <LegList legs={legs} label="Legs" />
-            <RepricePanel result={reprice} shownPrice={shownPrice} />
+            <RepricePanel result={reprice} shownPrice={shownPrice} departure={departure} />
           </>
         )}
       </div>
